@@ -1,0 +1,336 @@
+{
+  "BINGERVILLE": [
+    {
+      "name": "INSTALLATION GENERALE",
+      "start": "2026-06-01",
+      "end": "aout-26",
+      "duration": 3
+    },
+    {
+      "name": "DEBROUSSEMENT MECANIQUE ET MISE EN DECHARGE",
+      "start": "2026-06-01",
+      "end": "2027-02-01",
+      "duration": 9
+    },
+    {
+      "name": "DEMOLITION CONSTRUCTION ET BETON",
+      "start": "2026-06-01",
+      "end": "2027-03-01",
+      "duration": 10
+    },
+    {
+      "name": "AIRE DE DEPOTAGE, OUVRAGE DE RECEPTION",
+      "start": "2027-04-01",
+      "end": "2027-07-01",
+      "duration": 4
+    },
+    {
+      "name": "BASSIN DE SEDIMENTATION",
+      "start": "2026-09-01",
+      "end": "2027-04-01",
+      "duration": 8
+    },
+    {
+      "name": "LITS DE SECHAGES",
+      "start": "2026-06-01",
+      "end": "2027-01-01",
+      "duration": 8
+    },
+    {
+      "name": "BASSIN DE LAGUNAGE",
+      "start": "fevr 27",
+      "end": "2027-09-01",
+      "duration": 8
+    },
+    {
+      "name": "AIRE DE SECHAGE",
+      "start": "2027-04-01",
+      "end": "2027-06-01",
+      "duration": 3
+    },
+    {
+      "name": "HANGAR DE STOCKAGE",
+      "start": "2027-02-01",
+      "end": "2027-09-01",
+      "duration": 8
+    },
+    {
+      "name": "LOCAL TECHNIQUE, CLOTURE ET TRAVAUX DIVERS",
+      "start": "2026-11-01",
+      "end": "2027-06-01",
+      "duration": 8
+    },
+    {
+      "name": "VOIE D'ACCES",
+      "start": "2027-04-01",
+      "end": "2027-08-01",
+      "duration": 5
+    },
+    {
+      "name": "VOIE D'EXPLOITATION",
+      "start": "2027-01-01",
+      "end": "2027-06-01",
+      "duration": 6
+    },
+    {
+      "name": "ALIMENTATION ELECTRIQUE ET EAU POTABLE",
+      "start": "2027-09-01",
+      "end": "2027-09-01",
+      "duration": 13
+    },
+    {
+      "name": "RECEPTION PROVISOIRE ET REPLI",
+      "start": "2027-09-01",
+      "end": "2027-09-01",
+      "duration": 1
+    }
+  ],
+  "SONGON": [
+    {
+      "name": "INSTALLATION GENERALE",
+      "start": "2027-01-18",
+      "end": "2027-01-31",
+      "duration": 2
+    },
+    {
+      "name": "Démobilisation de matériels et entretien du site",
+      "start": "2027-01-18",
+      "end": "2027-01-31",
+      "duration": 2
+    },
+    {
+      "name": "AIRE DE DEPOTAGE, OUVRAGE DE RECEPTION",
+      "start": "2026-08-01",
+      "end": "2027-01-24",
+      "duration": 23
+    },
+    {
+      "name": "Aire de depotage",
+      "start": "2026-09-01",
+      "end": "2026-12-31",
+      "duration": 16
+    },
+    {
+      "name": "Ouvrage de réception",
+      "start": "2026-08-01",
+      "end": "2026-11-30",
+      "duration": 16
+    },
+    {
+      "name": "Equipements",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "BASSIN DE SEDIMENTATION",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "Equipements",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "LITS DE SECHAGES",
+      "start": "2026-09-01",
+      "end": "2027-01-24",
+      "duration": 19
+    },
+    {
+      "name": "Regards hauteur comprise entre 1.5 et 2.00",
+      "start": "2026-09-01",
+      "end": "2026-12-31",
+      "duration": 16
+    },
+    {
+      "name": "Canalisation pour alimentation des lits",
+      "start": "2026-09-14",
+      "end": "2027-01-24",
+      "duration": 17
+    },
+    {
+      "name": "Couverture en bache",
+      "start": "2026-09-14",
+      "end": "2027-01-24",
+      "duration": 17
+    },
+    {
+      "name": "BASSIN DE LAGUNAGE",
+      "start": "2026-07-01",
+      "end": "2016-07-31",
+      "duration": 4
+    },
+    {
+      "name": "Bassin facultatif 1.1",
+      "start": "2026-07-01",
+      "end": "2016-07-31",
+      "duration": 4
+    },
+    {
+      "name": "AIRE DE SECHAGE",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "Couverture en bache",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "HANGAR DE STOCKAGE",
+      "start": "2026-08-01",
+      "end": "2027-01-24",
+      "duration": 23
+    },
+    {
+      "name": "Terrassement",
+      "start": "2026-08-01",
+      "end": "2026-09-13",
+      "duration": 6
+    },
+    {
+      "name": "Genie civil de l'infrastructure",
+      "start": "2026-08-17",
+      "end": "2026-10-18",
+      "duration": 8
+    },
+    {
+      "name": "Charpente metallique et couverture",
+      "start": "2026-10-18",
+      "end": "2027-01-24",
+      "duration": 13
+    },
+    {
+      "name": "LOCAL TECHNIQUE, CLOTURE ET TRAVAUX DIVERS",
+      "start": "2026-08-01",
+      "end": "2026-10-31",
+      "duration": 20
+    },
+    {
+      "name": "Guérite",
+      "start": "2026-11-01",
+      "end": "2026-12-31",
+      "duration": 8
+    },
+    {
+      "name": "Batiment d'exploitation",
+      "start": "2026-08-01",
+      "end": "2026-11-30",
+      "duration": 16
+    },
+    {
+      "name": "Parking",
+      "start": "2026-11-01",
+      "end": "2026-12-31",
+      "duration": 8
+    },
+    {
+      "name": "Abris de repos",
+      "start": "2026-11-01",
+      "end": "2026-12-31",
+      "duration": 8
+    },
+    {
+      "name": "Abris du groupe électrogène",
+      "start": "2026-10-01",
+      "end": "2026-11-30",
+      "duration": 8
+    },
+    {
+      "name": "barbélé de sécurité et tyrolienne de la cloture",
+      "start": "2026-08-01",
+      "end": "2026-12-31",
+      "duration": 20
+    },
+    {
+      "name": "VOIE D'EXPLOITATION",
+      "start": "2026-09-14",
+      "end": "2027-01-24",
+      "duration": 17
+    },
+    {
+      "name": "Bétonnage des voies",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "Fourniture et pose de caniveau",
+      "start": "2026-09-14",
+      "end": "2026-12-31",
+      "duration": 14
+    },
+    {
+      "name": "Fourniture et pose de dalot",
+      "start": "2026-10-01",
+      "end": "2026-12-31",
+      "duration": 12
+    },
+    {
+      "name": "Protection des talus en perré maçonné",
+      "start": "2026-11-01",
+      "end": "2027-01-24",
+      "duration": 11
+    },
+    {
+      "name": "Engazonnement",
+      "start": "2026-11-01",
+      "end": "2027-01-24",
+      "duration": 11
+    },
+    {
+      "name": "ALIMENTATION ELECTRIQUE ET EAU POTABLE",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "Construction d'un poste transformateur HTA/BT",
+      "start": "2026-10-01",
+      "end": "2026-12-31",
+      "duration": 12
+    },
+    {
+      "name": "Fourniture et pose des lampadaires solaire",
+      "start": "2026-10-01",
+      "end": "2027-01-24",
+      "duration": 15
+    },
+    {
+      "name": "TGBT alimentant les pompes de réfoulement",
+      "start": "2026-10-01",
+      "end": "2026-12-31",
+      "duration": 12
+    },
+    {
+      "name": "EQUIPEMENTS ANNEXES",
+      "start": "2026-11-01",
+      "end": "2027-01-24",
+      "duration": 11
+    },
+    {
+      "name": "petits materiels d'exploitation",
+      "start": "2026-11-01",
+      "end": "2027-01-24",
+      "duration": 11
+    },
+    {
+      "name": "Equipement de laboratoire",
+      "start": "2026-11-01",
+      "end": "2027-01-24",
+      "duration": 11
+    },
+    {
+      "name": "RECEPTION PROVISOIRE ET REPLI",
+      "start": "2027-01-25",
+      "end": "2027-01-31",
+      "duration": 1
+    }
+  ]
+}

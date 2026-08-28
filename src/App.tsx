@@ -1,0 +1,345 @@
+import React, { useState } from 'react';
+import { AppStateProvider, useAppState } from './core/database/AppStateContext';
+import { ApiService } from './services/api';
+import { Sidebar, isMenuItemAllowed, BLOCKED_ITEM_IDS } from './shared/components/Sidebar';
+import { Header } from './shared/components/Header';
+import { DashboardGeneral } from './modules/dashboard/DashboardGeneral';
+import { DashboardKpi } from './modules/dashboard/DashboardKpi';
+import { ProjectsPortfolio } from './modules/projects/ProjectsPortfolio';
+import { PortfolioDashboard } from './modules/projects/PortfolioDashboard';
+import { CreateProjectWizard } from './modules/projects/CreateProjectWizard';
+import { ProjectDetails360 } from './modules/projects/ProjectDetails360';
+import { WbsModule } from './modules/wbs/WbsModule';
+import { BudgetModule } from './modules/budgets/BudgetModule';
+import { CostControlModule } from './modules/budgets/CostControlModule';
+import { ProductionModule } from './modules/production/ProductionModule';
+import { DocumentsModule } from './modules/documents/DocumentsModule';
+import { RisksModule } from './modules/risks/RisksModule';
+import { AlertsCenterModule } from './modules/alerts/AlertsCenterModule';
+import { ProcurementDAModule } from './modules/procurement/ProcurementDAModule';
+import { ProcurementValidationModule } from './modules/procurement/ProcurementValidationModule';
+import { StockModule } from './modules/stock/StockModule';
+import { MouvementWbsModule } from './modules/stock/MouvementWbsModule';
+import { DailyReportModule } from './modules/production/DailyReportModule';
+import { PlanningModule } from './modules/production/PlanningModule';
+import { SettingsCostNaturesModule } from './modules/admin/SettingsCostNaturesModule';
+import { AuditTrailModule } from './modules/admin/AuditTrailModule';
+import { UsersRolesModule } from './modules/admin/UsersRolesModule';
+import { WorkflowsEngineModule } from './modules/admin/WorkflowsEngineModule';
+import { PerformanceAnalyticsModule } from './modules/analytics/PerformanceAnalyticsModule';
+import { AlertsDriftsModule } from './modules/analytics/AlertsDriftsModule';
+import { LoginPage } from './modules/auth/LoginPage';
+import { CeoCommandCenter } from './modules/dashboard/CeoCommandCenter';
+import { VueProjet360 } from './modules/projects/VueProjet360';
+import { DebourseSecModule } from './modules/debourse/DebourseSecModule';
+
+const MainApp: React.FC = () => {
+  const { isBackendConnected, backendError, retryBackendConnection, setCurrentUser, currentUser, projects = [] } = useAppState();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(true);
+  const [currentView, setCurrentView] = useState<string>('dashboard-portfolio');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Protection RBAC et des modules temporairement bloqués par l'administrateur
+  React.useEffect(() => {
+    if (BLOCKED_ITEM_IDS.includes(currentView)) {
+      console.warn(`🔒 Redirection : La vue '${currentView}' est temporairement bloquée par l'administrateur.`);
+      setCurrentView('dashboard-portfolio');
+      return;
+    }
+    if (currentUser && !isMenuItemAllowed(currentUser.role, currentView)) {
+      console.warn(`🔒 Redirection RBAC : Vue '${currentView}' non autorisée pour le rôle [${currentUser.role}].`);
+      setCurrentView('dashboard-portfolio');
+    }
+  }, [currentView, currentUser]);
+
+  React.useEffect(() => {
+    async function checkExistingAuth() {
+      const token = localStorage.getItem('gebat_jwt_token');
+      if (!token) {
+        setIsAuthenticated(false);
+        setIsVerifyingAuth(false);
+        return;
+      }
+      try {
+        const res = await ApiService.getMe();
+        if (res && res.user) {
+          setCurrentUser(res.user);
+          localStorage.setItem('gebat_current_user', JSON.stringify(res.user));
+          setIsAuthenticated(true);
+        } else {
+          throw new Error('Session non valide');
+        }
+      } catch (e) {
+        localStorage.removeItem('gebat_jwt_token');
+        localStorage.removeItem('gebat_current_user');
+        setIsAuthenticated(false);
+      } finally {
+        setIsVerifyingAuth(false);
+      }
+    }
+
+    if (isBackendConnected) {
+      checkExistingAuth();
+    } else if (isBackendConnected === false) {
+      setIsVerifyingAuth(false);
+    }
+  }, [isBackendConnected]);
+
+  // Connexion automatique et fluide au serveur API Backend & MySQL
+  if (isBackendConnected === null || isBackendConnected === false || isVerifyingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white text-center font-sans">
+        <div className="w-16 h-16 relative flex items-center justify-center mb-6">
+          <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="font-mono font-black text-xs text-blue-400">360°</span>
+        </div>
+        <h2 className="text-xl font-black tracking-tight uppercase text-white">GEBAT 360° ERP System</h2>
+        <p className="text-slate-400 text-xs mt-2 font-medium">
+          Initialisation & Connexion à la base de données MySQL (`gebat_360_db`)...
+        </p>
+        {isBackendConnected === false && (
+          <span className="mt-4 text-[11px] font-mono text-amber-400 bg-amber-500/10 px-3.5 py-1.5 rounded-full border border-amber-500/20 animate-pulse flex items-center gap-2 mx-auto">
+            <span>⚡ Reconnexion automatique au serveur backend en cours...</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  const getTitle = () => {
+    switch (currentView) {
+      case 'dashboard-general': return 'Tableau de Bord Général';
+      case 'dashboard-portfolio': return 'Portefeuille des Projets';
+      case 'dashboard-alerts': return 'Gestion des Risques Projet';
+      case 'projects-list': return 'Gestion des Projets';
+      case 'projects-new': return 'Création Nouveau Projet (Assistant WBS/Budget)';
+      case 'vue-projet-360': return 'Vue Projet 360° — Tableau de Bord Consolidé';
+      case 'projects-360': return 'Fiche Projet 360°';
+      case 'btp-wbs': return 'Structure WBS (Work Breakdown Structure)';
+      case 'btp-debourse': return 'Déboursé Sec (DS) — Construction & Analyse des Coûts Théoriques';
+      case 'btp-budget': return 'Budget Initial V0 & Déboursé Révisé';
+      case 'btp-production': return 'Rapport Journalier & Suivi de Production';
+      case 'btp-cost-control': return 'Cost Control & Prévisionnel EAC';
+      case 'btp-eac': return 'Calculs EAC & Marges Prévisionnelles';
+      case 'procurement-da': return 'Demandes d’Achat & Contrôle Budgétaire';
+      case 'procurement-validation': return 'Centre de Validation des DA & Budgets';
+      case 'procurement-receptions': return 'Réception Marchandise & Mise à jour Stock';
+      case 'stock-list': return 'Gestion des Stocks Magasins';
+      case 'stock-movements': return 'Consommation Stock vers WBS Chantier';
+      case 'analytics-performance': return 'Performance Economique & Technique';
+      case 'analytics-alerts': return 'Alertes Métier & Dépassements';
+      case 'ceo-command-center': return 'CEO Command Center — Vue Exécutive Consolidée';
+      case 'admin-users': return 'Gestion des Utilisateurs & Permissions Rôle';
+      case 'admin-workflows': return 'Paramétrage des Circuit de Validation';
+      case 'admin-audit': return 'Audit Trail & Historique Inaltérable';
+      default: return 'GEBAT 360° Construction Operating System';
+    }
+  };
+
+  const renderContent = () => {
+    if (selectedProjectId && (currentView === 'vue-projet-360' || currentView === 'projects-360')) {
+      return (
+        <ProjectDetails360
+          projectId={selectedProjectId}
+          onBack={() => setSelectedProjectId(null)}
+          onSelectProject={id => setSelectedProjectId(id)}
+        />
+      );
+    }
+
+    switch (currentView) {
+      case 'dashboard-general':
+        return (
+          <DashboardGeneral
+            onNavigate={view => setCurrentView(view)}
+            onSelectProject={id => {
+              setSelectedProjectId(id);
+              setCurrentView('vue-projet-360');
+            }}
+          />
+        );
+
+      case 'dashboard-alerts':
+        return (
+          <AlertsCenterModule
+            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+          />
+        );
+
+      case 'btp-risks':
+        return (
+          <RisksModule
+            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+          />
+        );
+
+      case 'analytics-performance':
+        return (
+          <PerformanceAnalyticsModule
+            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+          />
+        );
+
+      case 'analytics-alerts':
+        return <AlertsDriftsModule />;
+
+      case 'ceo-command-center':
+        return <CeoCommandCenter />;
+
+      case 'dashboard-portfolio':
+        return (
+          <DashboardGeneral
+            onNavigate={view => setCurrentView(view)}
+            onSelectProject={id => {
+              setSelectedProjectId(id);
+              setCurrentView('vue-projet-360');
+            }}
+          />
+        );
+
+      case 'projects-list':
+        return (
+          <ProjectsPortfolio
+            onSelectProject={id => {
+              setSelectedProjectId(id);
+              setCurrentView('vue-projet-360');
+            }}
+            onNewProjectClick={() => setCurrentView('projects-new')}
+          />
+        );
+
+      case 'projects-new':
+        return (
+          <CreateProjectWizard
+            onCancel={() => setCurrentView('dashboard-portfolio')}
+            onSuccess={() => setCurrentView('dashboard-portfolio')}
+          />
+        );
+
+      case 'vue-projet-360':
+        return (
+          <ProjectDetails360
+            projectId={selectedProjectId || projects[0]?.id || ''}
+            onBack={() => setCurrentView('dashboard-portfolio')}
+            onSelectProject={id => setSelectedProjectId(id)}
+            onNavigateView={viewKey => setCurrentView(viewKey)}
+          />
+        );
+
+      case 'procurement-da':
+      case 'procurement-receptions':
+        return <ProcurementDAModule />;
+
+      case 'procurement-validation':
+      case 'admin-workflows':
+        return <WorkflowsEngineModule />;
+
+      case 'admin-users':
+        return <UsersRolesModule />;
+
+      case 'admin-settings':
+        return <SettingsCostNaturesModule />;
+
+      case 'stock-list':
+        return <StockModule />;
+
+      case 'stock-movements':
+        return <MouvementWbsModule />;
+
+      case 'btp-planning':
+        return <PlanningModule />;
+
+      case 'btp-production':
+        return (
+          <ProductionModule
+            onBackToProject={() => {
+              if (projects[0]?.id) setSelectedProjectId(projects[0].id);
+              setCurrentView('vue-projet-360');
+            }}
+          />
+        );
+
+      case 'projects-360':
+      case 'btp-documents':
+        return (
+          <DocumentsModule
+            onBackToProject={() => {
+              if (projects[0]?.id) setSelectedProjectId(projects[0].id);
+              setCurrentView('vue-projet-360');
+            }}
+          />
+        );
+
+      case 'admin-audit':
+        return <AuditTrailModule />;
+
+      case 'btp-wbs':
+        return (
+          <WbsModule
+            onBackToProject={() => {
+              if (projects[0]?.id) setSelectedProjectId(projects[0].id);
+              setCurrentView('vue-projet-360');
+            }}
+          />
+        );
+
+      case 'btp-debourse':
+        return <DebourseSecModule />;
+
+      case 'btp-budget':
+        return (
+          <BudgetModule
+            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+          />
+        );
+
+      case 'btp-cost-control':
+      case 'btp-eac':
+        return <CostControlModule />;
+
+      case 'analytics-performance':
+        return <PerformanceAnalyticsModule />;
+
+      case 'analytics-alerts':
+        return <AlertsDriftsModule />;
+
+      default:
+        return <DashboardGeneral />;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900">
+      <Sidebar
+        currentView={currentView}
+        setCurrentView={v => {
+          setSelectedProjectId(null);
+          setCurrentView(v);
+        }}
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        <Header currentViewTitle={getTitle()} onNavigate={setCurrentView} />
+        <main className="px-3 sm:px-4 py-6 flex-1 w-full">
+          {renderContent()}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  return (
+    <AppStateProvider>
+      <MainApp />
+    </AppStateProvider>
+  );
+}

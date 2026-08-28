@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Suppression des flèches/compteurs (spin buttons) sur tous les champs numériques */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Custom Scrollbar pour la Sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #090d16;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* ==============================================================================
+   MODE SOMBRE GLOBAL DE GEBAT 360°
+   ============================================================================== */
+
+html.dark body {
+  background-color: #0b1329 !important;
+  color: #f8fafc !important;
+}
+
+html.dark .bg-white {
+  background-color: #16223f !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #1a2a4e !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #0b1329 !important;
+}
+
+html.dark .bg-slate-200 {
+  background-color: #243b6b !important;
+}
+
+html.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #a4b3c6 !important;
+}
+
+html.dark .border-slate-200 {
+  border-color: #203562 !important;
+}
+
+html.dark .border-slate-300 {
+  border-color: #2d4a85 !important;
+}
+
+/* Formulaires et inputs en mode sombre */
+html.dark input, 
+html.dark select, 
+html.dark textarea {
+  background-color: #1a2a4e !important;
+  color: #ffffff !important;
+  border-color: #2d4a85 !important;
+}
+
+html.dark input::placeholder {
+  color: #64748b !important;
+}
+
+/* Grilles, cartes et conteneurs d'informations */
+html.dark .shadow-xs,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+}
