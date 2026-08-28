@@ -78,29 +78,49 @@ export const ProductionModule: React.FC = () => {
   const [cumulDate, setCumulDate] = useState<number>(0);
   const [totalPlanned, setTotalPlanned] = useState<number>(0);
 
-  // Synchronisation automatique de l'unité et des quantitatifs du WBS sélectionné
+  // Synchronisation automatique des quantitatifs réels du WBS et des cumulatifs historiques
   React.useEffect(() => {
     if (selectedActivity) {
       if (selectedActivity.unit) {
         setUnit(selectedActivity.unit);
       }
-      if (selectedActivity.contractQty || selectedActivity.plannedQty) {
-        setTotalPlanned(Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0));
+      
+      const contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || selectedActivity.totalQty || 0);
+      setTotalPlanned(contractVolume);
+
+      // Calcul du cumul réel historique déjà enregistré dans la base pour ce projet et cette activité
+      const previousCumul = dailyReports
+        .filter(r => (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code) && 
+                     (r.wbsCode === selectedWbsCode || r.wbsId === selectedWbsCode || r.activityName === selectedActivity.description))
+        .reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
+
+      const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
+        .find((n: any) => n.code === selectedWbsCode || n.id === selectedWbsCode);
+        
+      const initialCumul = Number(wbsNodeMatch?.actualQty || selectedActivity.realizedQty || 0);
+      const totalCumulToDate = previousCumul > 0 ? previousCumul : initialCumul;
+      setCumulDate(totalCumulToDate);
+
+      // Calcul de l'objectif journalier réaliste (Volume total / 30 jours de chantier)
+      if (contractVolume > 0 && (!targetQty || targetQty === 0)) {
+        const calculatedDailyTarget = Math.max(1, Math.round(contractVolume / 30));
+        setTargetQty(calculatedDailyTarget);
       }
     }
-  }, [selectedActivity]);
+  }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap]);
 
-  // Taux d'avancement calculé
+  // Taux d'avancement du jour calculé (%)
   const advancePct = useMemo(() => {
     if (!targetQty || targetQty === 0) return 0;
     return parseFloat(((realizedQty / targetQty) * 100).toFixed(1));
   }, [realizedQty, targetQty]);
 
-  // Cumul pct
+  // Cumul pct réel (Cumul historique + réalisé aujourd'hui / Total prévu DQE)
   const cumulPct = useMemo(() => {
     if (!totalPlanned || totalPlanned === 0) return 0;
-    return parseFloat(((cumulDate / totalPlanned) * 100).toFixed(1));
-  }, [cumulDate, totalPlanned]);
+    const totalToDate = (cumulDate || 0) + (realizedQty || 0);
+    return parseFloat(((totalToDate / totalPlanned) * 100).toFixed(1));
+  }, [cumulDate, realizedQty, totalPlanned]);
 
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
