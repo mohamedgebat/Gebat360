@@ -254,21 +254,21 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) 
             className="flex items-center gap-2 hover:bg-slate-100/80 p-1 rounded-xl transition cursor-pointer group text-left"
             title="Consulter mon profil et modifier mon mot de passe"
           >
-            {currentUser.photoUrl ? (
+            {currentUser?.photoUrl ? (
               <img
                 src={currentUser.photoUrl}
                 alt={currentUser.name}
-                className="w-9 h-9 rounded-full object-cover border border-slate-300 shadow-2xs group-hover:border-blue-500 transition"
+                className="w-9 h-9 rounded-full object-cover border-2 border-blue-500 shadow-2xs group-hover:border-blue-600 transition"
               />
             ) : (
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-2xs group-hover:bg-blue-700 transition">
-                {currentUser.avatar}
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-xs shadow-2xs border border-blue-400/40 group-hover:scale-105 transition">
+                {currentUser?.avatar || (currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'YM')}
               </div>
             )}
 
             <div className="hidden lg:block text-left">
-              <span className="block text-xs font-black text-slate-900 leading-tight group-hover:text-blue-600 transition">{currentUser.name}</span>
-              <span className="block text-[11px] font-extrabold text-blue-600">{currentUser.role}</span>
+              <span className="block text-xs font-black text-slate-900 leading-tight group-hover:text-blue-600 transition">{currentUser?.name || 'Yacouba Mohamed'}</span>
+              <span className="block text-[11px] font-extrabold text-blue-600">{currentUser?.role || 'Super Admin'}</span>
             </div>
           </button>
 
