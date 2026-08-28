@@ -19,7 +19,7 @@ const formatQty = (val: number | undefined | null): string => {
 };
 
 export const ProductionModule: React.FC = () => {
-  const { projects, createDailyReport, addAuditLog, currentUser, wbsMap, dailyReports, stockItems = [], selectedProjectId, setSelectedProjectId, setActiveTab } = useAppState();
+  const { projects, createDailyReport, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], selectedProjectId, setSelectedProjectId, setActiveTab } = useAppState();
 
   // Projet sélectionné par défaut
   const selectedProject = useMemo(() => {
@@ -64,7 +64,7 @@ export const ProductionModule: React.FC = () => {
   const [temperature, setTemperature] = useState<string>('');
   const [generalComment, setGeneralComment] = useState<string>('');
   const [workShift, setWorkShift] = useState<string>('');
-  const [teamLeader, setTeamLeader] = useState<string>('');
+  const [teamLeader, setTeamLeader] = useState<string>(currentUser?.name || 'Yacouba Mohamed');
 
   // Activité sélectionnée courante
   const selectedActivity = useMemo(() => {
@@ -622,13 +622,28 @@ export const ProductionModule: React.FC = () => {
               Équipe / Chef d'équipe
             </label>
             <select
-              value={teamLeader}
+              value={teamLeader || currentUser?.name || ''}
               onChange={e => setTeamLeader(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
             >
-              <option value="Babacar Diatta">Babacar Diatta</option>
-              <option value="Kouassi Jean">Kouassi Jean</option>
-              <option value="Mamadou Koné">Mamadou Koné</option>
+              {currentUser?.name && (
+                <option value={currentUser.name}>
+                  {currentUser.name} (Utilisateur Connecté)
+                </option>
+              )}
+              {users && users.length > 0 ? (
+                users.filter(u => u.name !== currentUser?.name).map(u => (
+                  <option key={u.id} value={u.name}>
+                    {u.name} ({u.role})
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Kouassi Jean">Kouassi Jean</option>
+                  <option value="Mamadou Koné">Mamadou Koné</option>
+                  <option value="Babacar Diatta">Babacar Diatta</option>
+                </>
+              )}
             </select>
           </div>
         </div>
