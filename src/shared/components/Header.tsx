@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { UserProfileModal } from './UserProfileModal';
-import { PwaInstallButton } from './PwaInstallPrompt';
 import { Bell, ShieldCheck, Search, AlertTriangle, ArrowRight, CheckCircle2, X, LogOut, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
@@ -95,9 +94,6 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) 
           </button>
         )}
 
-
-        {/* BOUTON D'INSTALLATION PWA (APPLICATION BUREAU & MOBILE) */}
-        <PwaInstallButton />
 
         {/* BOUTON DE CHANGEMENT DE THEME (MODE SOMBRE / MODE CLAIR) */}
         <button
