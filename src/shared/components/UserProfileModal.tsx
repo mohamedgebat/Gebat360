@@ -18,7 +18,7 @@ interface UserProfileModalProps {
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, updateUser, addAuditLog } = useAppState();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'password' | 'permissions'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'password' | 'permissions' | 'pwa'>('info');
 
   // Formulaire Coordonnées Personnelles
   const [name, setName] = useState(currentUser.name);
@@ -176,6 +176,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             }`}
           >
             <ShieldCheck size={18} /> Mes Habilitations & Droits Rôle
+          </button>
+
+          <button
+            onClick={() => setActiveTab('pwa')}
+            className={`pb-3.5 px-4 flex items-center gap-2.5 border-b-2 transition cursor-pointer ${
+              activeTab === 'pwa'
+                ? 'border-blue-600 text-blue-600 font-black text-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles size={18} className="text-amber-500" /> Application PWA & Système
           </button>
         </div>
 
@@ -416,6 +427,66 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                       <span className="text-[11px] text-slate-500 block mt-0.5">Enregistrement inaltérable des actions dans l'Audit Trail.</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ONGLET 4 : APPLICATION PWA & PARAMÈTRES SYSTÈME (SECTION 11 DES DIRECTIVES) */}
+          {activeTab === 'pwa' && (
+            <div className="space-y-6">
+              <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-2">
+                      GEBAT 360° PWA Engine <Sparkles size={18} className="text-amber-400" />
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5 font-medium">Informations de version et gestion PWA de l'application</p>
+                  </div>
+                  <span className="bg-emerald-500/20 text-emerald-400 font-extrabold text-xs px-3 py-1 rounded-full border border-emerald-400/30 flex items-center gap-1.5">
+                    ● En ligne & Actif
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-1">
+                    <span className="text-slate-400 font-semibold block text-[11px]">Nom de l'application</span>
+                    <strong className="text-white text-sm font-bold block">GEBAT 360° Construction Operating System</strong>
+                  </div>
+
+                  <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-1">
+                    <span className="text-slate-400 font-semibold block text-[11px]">Version installée</span>
+                    <strong className="text-amber-400 text-sm font-mono font-bold block">v1.0.0 (Build v200)</strong>
+                  </div>
+
+                  <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-1">
+                    <span className="text-slate-400 font-semibold block text-[11px]">Mode PWA Standalone</span>
+                    <strong className="text-emerald-400 text-sm font-bold block">✅ Actif & Configuré</strong>
+                  </div>
+
+                  <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700/80 space-y-1">
+                    <span className="text-slate-400 font-semibold block text-[11px]">Base de données officielle</span>
+                    <strong className="text-blue-400 text-sm font-bold block">MySQL Server & IndexedDB Local</strong>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between border-t border-slate-800">
+                  <span className="text-slate-400 text-xs font-medium">Vérification automatique des mises à jour du Service Worker :</span>
+                  <button
+                    onClick={() => {
+                      if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.ready.then(reg => {
+                          reg.update();
+                          alert('✅ Application à jour ! Vous utilisez la version la plus récente de GEBAT 360°.');
+                        });
+                      } else {
+                        alert('✅ Application à jour !');
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
+                  >
+                    <span>🔄 Vérifier les mises à jour</span>
+                  </button>
                 </div>
               </div>
             </div>

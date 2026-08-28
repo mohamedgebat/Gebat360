@@ -8,6 +8,59 @@ interface HeaderProps {
   onNavigate?: (view: string) => void;
 }
 
+const NetworkStatusBadge: React.FC = () => {
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsSyncing(true);
+      setTimeout(() => {
+        setIsOnline(true);
+        setIsSyncing(false);
+      }, 1500);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setIsSyncing(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (isSyncing) {
+    return (
+      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs animate-pulse">
+        <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
+        <span>Synchronisation...</span>
+      </div>
+    );
+  }
+
+  if (!isOnline) {
+    return (
+      <div className="flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs" title="Mode hors ligne actif. Les données saisies sont conservées localement.">
+        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span>Hors ligne</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs" title="Application connectée au réseau">
+      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>En ligne</span>
+    </div>
+  );
+};
+
 export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) => {
   const { currentUser, alerts, purchaseRequests, theme, toggleTheme } = useAppState();
 
@@ -81,6 +134,9 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) 
             className="pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 rounded-xl w-44 lg:w-56 focus:outline-none focus:border-blue-600 focus:bg-white transition shadow-2xs"
           />
         </div>
+
+        {/* INDICATEUR D'ÉTAT DU RÉSEAU (SECTION 20 DES DIRECTIVES PWA GEBAT) */}
+        <NetworkStatusBadge />
 
         {/* BADGE COMPTEUR VALIDATIONS */}
         {pendingValidationsCount > 0 && (
