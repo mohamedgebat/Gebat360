@@ -80,6 +80,7 @@ export const ProductionModule: React.FC = () => {
 
   // Synchronisation automatique des quantitatifs réels du WBS et des cumulatifs historiques
   React.useEffect(() => {
+    setRealizedQty(0);
     if (selectedActivity) {
       if (selectedActivity.unit) {
         setUnit(selectedActivity.unit);
@@ -97,7 +98,7 @@ export const ProductionModule: React.FC = () => {
       const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
         .find((n: any) => n.code === selectedWbsCode || n.id === selectedWbsCode);
         
-      const initialCumul = Number(wbsNodeMatch?.actualQty || selectedActivity.realizedQty || 0);
+      const initialCumul = Number(wbsNodeMatch?.actualQty || 0);
       const totalCumulToDate = previousCumul > 0 ? previousCumul : initialCumul;
       setCumulDate(totalCumulToDate);
 
@@ -698,13 +699,18 @@ export const ProductionModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">Quantité réalisée</label>
+                <label className="block text-[10.5px] font-extrabold text-blue-700 mb-1 flex items-center justify-between">
+                  <span>Quantité réalisée <span className="text-rose-500">*</span></span>
+                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-tight">Saisie terrain</span>
+                </label>
                 <input
                   type="number"
                   step="any"
-                  value={realizedQty}
+                  min="0"
+                  value={realizedQty === 0 ? '' : realizedQty}
+                  placeholder="0"
                   onChange={e => setRealizedQty(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-900"
+                  className="w-full p-2 bg-blue-50/50 border-2 border-blue-500 rounded-xl font-mono font-black text-xs text-blue-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-2xs transition"
                 />
               </div>
 
