@@ -3,12 +3,16 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-// Nettoyage automatique des Service Workers obsolètes en arrière-plan
+// Enregistrement de l'application PWA (Progressive Web App) et Service Worker
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-    }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then((registration) => {
+        console.log('📱 [PWA] GEBAT 360° Service Worker enregistré avec succès:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('⚠️ [PWA] Échec enregistrement Service Worker:', error);
+      });
   });
 }
 

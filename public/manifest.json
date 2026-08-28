@@ -1,0 +1,27 @@
+{
+  "name": "GEBAT 360° — Construction Operating System",
+  "short_name": "GEBAT 360",
+  "description": "Système d'exploitation et de pilotage financier & technique des chantiers BTP de GEBAT SA",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/logo_gebat.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo_gebat_official.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"]
+}

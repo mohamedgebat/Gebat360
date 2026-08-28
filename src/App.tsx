@@ -32,6 +32,7 @@ import { LoginPage } from './modules/auth/LoginPage';
 import { CeoCommandCenter } from './modules/dashboard/CeoCommandCenter';
 import { VueProjet360 } from './modules/projects/VueProjet360';
 import { DebourseSecModule } from './modules/debourse/DebourseSecModule';
+import { PwaInstallPrompt } from './shared/components/PwaInstallPrompt';
 
 const MainApp: React.FC = () => {
   const { isBackendConnected, backendError, retryBackendConnection, setCurrentUser, currentUser, projects = [] } = useAppState();
@@ -332,6 +333,7 @@ const MainApp: React.FC = () => {
           {renderContent()}
         </main>
       </div>
+      <PwaInstallPrompt />
     </div>
   );
 };
