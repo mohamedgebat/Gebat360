@@ -78,6 +78,18 @@ export const ProductionModule: React.FC = () => {
   const [cumulDate, setCumulDate] = useState<number>(0);
   const [totalPlanned, setTotalPlanned] = useState<number>(0);
 
+  // Synchronisation automatique de l'unité et des quantitatifs du WBS sélectionné
+  React.useEffect(() => {
+    if (selectedActivity) {
+      if (selectedActivity.unit) {
+        setUnit(selectedActivity.unit);
+      }
+      if (selectedActivity.contractQty || selectedActivity.plannedQty) {
+        setTotalPlanned(Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0));
+      }
+    }
+  }, [selectedActivity]);
+
   // Taux d'avancement calculé
   const advancePct = useMemo(() => {
     if (!targetQty || targetQty === 0) return 0;
@@ -645,22 +657,13 @@ export const ProductionModule: React.FC = () => {
             <div className="grid grid-cols-4 gap-3 pt-3">
               <div>
                 <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">Unité</label>
-                <select
-                  value={unit}
-                  onChange={e => setUnit(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 cursor-pointer"
-                >
-                  <option value="m²">m²</option>
-                  <option value="m³">m³</option>
-                  <option value="ml">ml</option>
-                  <option value="fft">fft</option>
-                  <option value="Kg">Kg</option>
-                  <option value="t">t</option>
-                  <option value="U">U</option>
-                  <option value="L">L</option>
-                  <option value="jr">jr</option>
-                  <option value="mois">mois</option>
-                </select>
+                <input
+                  type="text"
+                  value={selectedActivity?.unit || unit || 'm²'}
+                  disabled
+                  className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed text-center"
+                  title="Unité renseignée automatiquement d'après l'activité WBS sélectionnée"
+                />
               </div>
 
               <div>

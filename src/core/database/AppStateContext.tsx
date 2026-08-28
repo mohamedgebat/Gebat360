@@ -113,9 +113,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkBackendConnection();
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans le localStorage du navigateur (DATA_VERSION v209)
+  // Purge automatique des données obsolètes enregistrées dans le localStorage du navigateur (DATA_VERSION v210)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_08_28_production_wbs_activity_select_updated_v209';
+    const DATA_VERSION = 'v2026_08_28_production_unit_field_automatic_wbs_sync_v210';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
