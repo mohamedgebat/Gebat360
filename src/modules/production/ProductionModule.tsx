@@ -621,30 +621,13 @@ export const ProductionModule: React.FC = () => {
             <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
               Équipe / Chef d'équipe
             </label>
-            <select
-              value={teamLeader || currentUser?.name || ''}
-              onChange={e => setTeamLeader(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
-            >
-              {currentUser?.name && (
-                <option value={currentUser.name}>
-                  {currentUser.name} (Utilisateur Connecté)
-                </option>
-              )}
-              {users && users.length > 0 ? (
-                users.filter(u => u.name !== currentUser?.name).map(u => (
-                  <option key={u.id} value={u.name}>
-                    {u.name} ({u.role})
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="Kouassi Jean">Kouassi Jean</option>
-                  <option value="Mamadou Koné">Mamadou Koné</option>
-                  <option value="Babacar Diatta">Babacar Diatta</option>
-                </>
-              )}
-            </select>
+            <input
+              type="text"
+              value={currentUser?.name || 'Yacouba Mohamed'}
+              disabled
+              className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed"
+              title="Fixé automatiquement sur l'utilisateur connecté"
+            />
           </div>
         </div>
       </div>
