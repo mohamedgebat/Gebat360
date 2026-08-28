@@ -113,9 +113,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkBackendConnection();
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans le localStorage du navigateur (DATA_VERSION v203)
+  // Purge automatique des données obsolètes enregistrées dans le localStorage du navigateur (DATA_VERSION v204)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_08_28_login_bg_sanitation_worksite_updated_v203';
+    const DATA_VERSION = 'v2026_08_28_photo_url_persistent_indexeddb_localstorage_v204';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
@@ -128,24 +128,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = localStorage.getItem('gebat_current_user');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_current_user');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.email) return parsed;
+        } catch (e) {}
+      }
     }
     return INITIAL_USERS[0];
   });
+
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('gebat_users');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const hasOutdatedData = Array.isArray(parsed) && parsed.some((u: any) => u.email === 'y.mohamed@gebat-sa.com' || u.employeeCode === 'EMP-2026-084');
-        if (hasOutdatedData) {
-          localStorage.removeItem('gebat_users');
-          return INITIAL_USERS;
-        }
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_users');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
     }
     return INITIAL_USERS;
   });
@@ -156,8 +159,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try {
           const dbUsers = await ApiService.getUsers();
           if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-            setUsers(dbUsers);
-            localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
+            setUsers(prevUsers => {
+              const merged = dbUsers.map((dbU: any) => {
+                const existing = prevUsers.find(u => u.id === dbU.id || u.email === dbU.email);
+                return {
+                  ...dbU,
+                  photoUrl: dbU.photoUrl || existing?.photoUrl || (dbU.email === currentUser?.email ? currentUser?.photoUrl : undefined)
+                };
+              });
+              localStorage.setItem('gebat_users', JSON.stringify(merged));
+              return merged;
+            });
           }
         } catch (err) {
           console.warn('⚠️ Impossible de charger la liste des utilisateurs depuis MySQL:', err);
@@ -1458,11 +1470,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUsers(prev => {
       const updated = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
       localStorage.setItem('gebat_users', JSON.stringify(updated));
+      indexedDBStorage.setItem('gebat_users', updated);
       return updated;
     });
     if (currentUser && (currentUser.id === updatedUser.id || currentUser.email === updatedUser.email)) {
       setCurrentUser(updatedUser);
       localStorage.setItem('gebat_current_user', JSON.stringify(updatedUser));
+      indexedDBStorage.setItem('gebat_current_user', updatedUser);
     }
     ApiService.updateUser(updatedUser.id, updatedUser).catch(err => console.error('Error updating user in DB:', err));
     addAuditLog('MODIFICATION_UTILISATEUR', 'ADMINISTRATION', updatedUser.email, `Fiche utilisateur ${updatedUser.name} mise à jour (Rôle: ${updatedUser.role}, Statut: ${updatedUser.status || 'ACTIF'}).`);
