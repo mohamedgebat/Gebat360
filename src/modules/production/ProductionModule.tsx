@@ -530,9 +530,10 @@ export const ProductionModule: React.FC = () => {
               onChange={e => setSelectedWbsCode(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
             >
-              {realActivitiesSource.slice(0, 15).map(act => (
+              <option value="">Sélectionner une activité WBS...</option>
+              {realActivitiesSource.map(act => (
                 <option key={act.id} value={act.wbsCode || act.priceNo}>
-                  {act.wbsCode} - {act.description}
+                  {act.wbsCode ? `${act.wbsCode} - ` : ''}{act.description}
                 </option>
               ))}
             </select>
