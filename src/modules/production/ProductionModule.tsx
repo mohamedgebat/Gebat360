@@ -57,8 +57,37 @@ export const ProductionModule: React.FC = () => {
     return REAL_DS_BINGERVILLE_ACTIVITIES;
   }, [selectedProject]);
 
+  // Source dynamique de WBS / Activités pour le projet sélectionné (base de données MySQL / IndexedDB wbsMap)
+  const projectWbsNodes = useMemo(() => {
+    if (!selectedProject) return realActivitiesSource;
+    const projectTree = wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [];
+    if (Array.isArray(projectTree) && projectTree.length > 0) {
+      const flat: Array<{ id: string; wbsCode: string; priceNo?: string; description: string; unit?: string; contractQty?: number; plannedQty?: number }> = [];
+      const walk = (items: typeof projectTree) => {
+        items.forEach((item: any) => {
+          if (!item.children || item.children.length === 0) {
+            flat.push({
+              id: item.id || item.code,
+              wbsCode: item.code || item.id,
+              priceNo: item.code,
+              description: item.name || item.description || item.wbsCode,
+              unit: item.unit || 'm²',
+              contractQty: Number(item.quantity || item.plannedQty || item.contractQty || 100),
+              plannedQty: Number(item.quantity || item.plannedQty || item.contractQty || 100)
+            });
+          } else {
+            walk(item.children);
+          }
+        });
+      };
+      walk(projectTree);
+      if (flat.length > 0) return flat;
+    }
+    return realActivitiesSource;
+  }, [selectedProject, wbsMap, realActivitiesSource]);
+
   // 1. INFORMATIONS GÉNÉRALES
-  const [selectedWbsCode, setSelectedWbsCode] = useState<string>(realActivitiesSource[1]?.wbsCode || '02.01');
+  const [selectedWbsCode, setSelectedWbsCode] = useState<string>('');
   const [locationZone, setLocationZone] = useState<string>('');
   const [weather, setWeather] = useState<string>('');
   const [temperature, setTemperature] = useState<string>('');
@@ -68,8 +97,9 @@ export const ProductionModule: React.FC = () => {
 
   // Activité sélectionnée courante
   const selectedActivity = useMemo(() => {
-    return realActivitiesSource.find(a => a.wbsCode === selectedWbsCode || a.priceNo === selectedWbsCode) || realActivitiesSource[1] || realActivitiesSource[0];
-  }, [realActivitiesSource, selectedWbsCode]);
+    if (!selectedWbsCode) return null;
+    return projectWbsNodes.find(a => a.wbsCode === selectedWbsCode || a.priceNo === selectedWbsCode || a.id === selectedWbsCode) || null;
+  }, [projectWbsNodes, selectedWbsCode]);
 
   // 2. OBJECTIFS & RÉALISATIONS
   const [unit, setUnit] = useState<string>('m²');
@@ -86,7 +116,7 @@ export const ProductionModule: React.FC = () => {
         setUnit(selectedActivity.unit);
       }
       
-      const contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || selectedActivity.totalQty || 0);
+      const contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0);
       setTotalPlanned(contractVolume);
 
       // Calcul du cumul réel historique déjà enregistré dans la base pour ce projet et cette activité
@@ -101,12 +131,9 @@ export const ProductionModule: React.FC = () => {
       const initialCumul = Number(wbsNodeMatch?.actualQty || 0);
       const totalCumulToDate = previousCumul > 0 ? previousCumul : initialCumul;
       setCumulDate(totalCumulToDate);
-
-      // Calcul de l'objectif journalier réaliste (Volume total / 30 jours de chantier)
-      if (contractVolume > 0 && (!targetQty || targetQty === 0)) {
-        const calculatedDailyTarget = Math.max(1, Math.round(contractVolume / 30));
-        setTargetQty(calculatedDailyTarget);
-      }
+    } else {
+      setTotalPlanned(0);
+      setCumulDate(0);
     }
   }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap]);
 
@@ -125,7 +152,6 @@ export const ProductionModule: React.FC = () => {
 
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
-
   const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([]);
 
   const personnelTotals = useMemo(() => {
@@ -141,7 +167,31 @@ export const ProductionModule: React.FC = () => {
 
   // 4. CONSOMMATIONS & LIVRAISONS
   const [consumptionTab, setConsumptionTab] = useState<'consommations' | 'livraisons'>('consommations');
-  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>([]);
+
+  // Initialisation dynamique des consommations basées sur les articles de stock réels de la base de données
+  const defaultStockConsumptions = useMemo(() => {
+    if (stockItems && stockItems.length > 0) {
+      return stockItems.slice(0, 5).map(item => ({
+        article: item.name,
+        unit: item.unit || 'U',
+        prevue: Number(item.minQuantity || 100),
+        consommee: 0,
+        ecart: 0
+      }));
+    }
+    return [
+      { article: 'Ciment CPJ 42.5 (Sacs)', unit: 'Sac', prevue: 150, consommee: 0, ecart: 0 },
+      { article: 'Fer à Béton HA Ø12 (Barres)', unit: 'Barre', prevue: 80, consommee: 0, ecart: 0 },
+      { article: 'Gasoil / Carburant Engins', unit: 'L', prevue: 300, consommee: 0, ecart: 0 },
+      { article: 'Sable de Lagune 0/4', unit: 'm³', prevue: 45, consommee: 0, ecart: 0 }
+    ];
+  }, [stockItems]);
+
+  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>(defaultStockConsumptions);
+
+  React.useEffect(() => {
+    setConsommationsRows(defaultStockConsumptions);
+  }, [defaultStockConsumptions]);
 
   const handleAddConsumptionRow = () => {
     setConsommationsRows(prev => [
@@ -564,8 +614,8 @@ export const ProductionModule: React.FC = () => {
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
             >
               <option value="">Sélectionner une activité WBS...</option>
-              {realActivitiesSource.map(act => (
-                <option key={act.id} value={act.wbsCode || act.priceNo}>
+              {projectWbsNodes.map(act => (
+                <option key={act.id} value={act.wbsCode || act.priceNo || act.id}>
                   {act.wbsCode ? `${act.wbsCode} - ` : ''}{act.description}
                 </option>
               ))}
