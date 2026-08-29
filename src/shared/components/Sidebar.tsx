@@ -52,7 +52,24 @@ export const BLOCKED_ITEM_IDS = [
   ...(IS_KPI_BLOCKED ? ['btp-cost-control', 'ceo-command-center'] : []),
 ];
 
-// Helper RBAC : Filtrage dynamique des menus selon le rôle
+// Helper RBAC : Page dédiée et exclusive par défaut selon le profil connecté
+export function getDefaultViewForRole(role: string | undefined): string {
+  if (!role) return 'dashboard-portfolio';
+  const r = role.toUpperCase().replace(/\s+/g, '_');
+
+  if (r.includes('CHEF_CHANTIER')) return 'btp-production';
+  if (r.includes('CONDUCTEUR')) return 'btp-production';
+  if (r.includes('MAGASINIER')) return 'stock-list';
+  if (r.includes('ACHAT') || r.includes('ACHETEUR')) return 'procurement-da';
+  if (r.includes('COST') || r.includes('CONTROLEUR')) return 'btp-cost-control';
+  if (r.includes('DAF') || r.includes('COMPTABL')) return 'btp-debourse';
+  if (r.includes('DIRECTEUR_TECHNIQUE') || r === 'DT') return 'btp-planning';
+  if (r.includes('DIRECTEUR_PROJET') || r === 'DP') return 'vue-projet-360';
+
+  return 'dashboard-portfolio';
+}
+
+// Helper RBAC : Habilitation stricte des pages et menus selon le rôle
 export function isMenuItemAllowed(role: string | undefined, itemId: string): boolean {
   if (!role) return true;
   const r = role.toUpperCase().replace(/\s+/g, '_');
@@ -70,13 +87,13 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
     return true;
   }
 
-  // Directeur de Projet
-  if (r === 'DIRECTEUR_PROJET') {
+  // Directeur de Projet (DP)
+  if (r.includes('DIRECTEUR_PROJET') || r === 'DP') {
     return !['admin-users', 'admin-settings', 'admin-audit', 'ceo-command-center'].includes(itemId);
   }
 
   // Conducteur de Travaux
-  if (r === 'CONDUCTEUR_TRAVAUX') {
+  if (r.includes('CONDUCTEUR')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
       'btp-wbs', 'btp-planning', 'btp-production', 'procurement-da',
@@ -85,15 +102,15 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
   }
 
   // Chef de Chantier
-  if (r === 'CHEF_CHANTIER') {
+  if (r.includes('CHEF_CHANTIER')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'btp-wbs',
       'btp-production', 'procurement-da', 'stock-list'
     ].includes(itemId);
   }
 
-  // Cost Controller
-  if (r === 'COST_CONTROLLER') {
+  // Cost Controller / Contrôleur de Gestion
+  if (r.includes('COST') || r.includes('CONTROLEUR')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
       'btp-wbs', 'btp-debourse', 'btp-cost-control', 'procurement-da',
@@ -102,7 +119,7 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
   }
 
   // Achats / Acheteur
-  if (['ACHATS', 'ACHETEUR'].includes(r)) {
+  if (r.includes('ACHAT') || r.includes('ACHETEUR')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'procurement-da',
       'procurement-validation', 'admin-workflows', 'stock-list', 'stock-movements'
@@ -110,7 +127,7 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
   }
 
   // Magasinier
-  if (r === 'MAGASINIER') {
+  if (r.includes('MAGASINIER')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'stock-list',
       'stock-movements', 'procurement-da'
@@ -118,7 +135,7 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
   }
 
   // DAF / Comptable
-  if (['DAF', 'COMPTABLE'].includes(r)) {
+  if (r.includes('DAF') || r.includes('COMPTABL')) {
     return [
       'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
       'btp-debourse', 'btp-cost-control', 'procurement-da',

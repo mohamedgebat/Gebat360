@@ -42,16 +42,19 @@ const MainApp: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  // Protection RBAC et des modules temporairement bloqués par l'administrateur
+  // Protection & Habilitation RBAC Stricte : Orientations automatiques vers la page dédiée du profil
   React.useEffect(() => {
+    if (!currentUser) return;
+    const dedicatedView = getDefaultViewForRole(currentUser.role);
+
     if (BLOCKED_ITEM_IDS.includes(currentView)) {
-      console.warn(`🔒 Redirection : La vue '${currentView}' est temporairement bloquée par l'administrateur.`);
-      setCurrentView('dashboard-portfolio');
+      console.warn(`🔒 Redirection : La vue '${currentView}' est temporairement bloquée.`);
+      setCurrentView(dedicatedView);
       return;
     }
-    if (currentUser && !isMenuItemAllowed(currentUser.role, currentView)) {
-      console.warn(`🔒 Redirection RBAC : Vue '${currentView}' non autorisée pour le rôle [${currentUser.role}].`);
-      setCurrentView('dashboard-portfolio');
+    if (!isMenuItemAllowed(currentUser.role, currentView)) {
+      console.warn(`🔒 Redirection RBAC : Vue '${currentView}' non habilitée pour le profil [${currentUser.role}]. Redirection vers la page dédiée '${dedicatedView}'.`);
+      setCurrentView(dedicatedView);
     }
   }, [currentView, currentUser]);
 
@@ -111,7 +114,12 @@ const MainApp: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+    return <LoginPage onLoginSuccess={() => {
+      setIsAuthenticated(true);
+      if (currentUser?.role) {
+        setCurrentView(getDefaultViewForRole(currentUser.role));
+      }
+    }} />;
   }
 
   const getTitle = () => {
