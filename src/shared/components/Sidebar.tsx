@@ -134,14 +134,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
 
   const activeAlertsCount = alerts.filter(a => a.status === 'Actif').length;
 
-  // Tous les Grands Titres sont désormais PLIÉS (fermés) par défaut
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-
+  // Mode Accordéon : Lorsqu'un grand titre est ouvert, toutes les autres sections se ferment automatiquement
   const toggleSection = (title: string) => {
-    setOpenSections(prev => ({
-      ...prev,
-      [title]: !prev[title],
-    }));
+    setOpenSections(prev => {
+      const isCurrentlyOpen = prev[title];
+      if (isCurrentlyOpen) {
+        return {};
+      }
+      return { [title]: true };
+    });
   };
 
   const rawMenuSections = [
@@ -224,6 +225,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
       items: section.items.filter(item => isMenuItemAllowed(userRole, item.id)),
     }))
     .filter(section => section.items.length > 0);
+
+  // Synchronisation dynamique : Ouvre automatiquement la section de la vue active et ferme les autres
+  React.useEffect(() => {
+    const activeSection = menuSections.find(section =>
+      section.items.some(item => item.id === currentView)
+    );
+    if (activeSection) {
+      setOpenSections({ [activeSection.title]: true });
+    }
+  }, [currentView]);
 
   return (
     <aside
