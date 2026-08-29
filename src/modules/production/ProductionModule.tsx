@@ -87,7 +87,6 @@ export const ProductionModule: React.FC = () => {
   }, [selectedProject, wbsMap, realActivitiesSource]);
 
   // 1. INFORMATIONS GÉNÉRALES
-  const [selectedWbsCode, setSelectedWbsCode] = useState<string>('');
   const [locationZone, setLocationZone] = useState<string>('');
   const [weather, setWeather] = useState<string>('');
   const [temperature, setTemperature] = useState<string>('');
@@ -95,83 +94,113 @@ export const ProductionModule: React.FC = () => {
   const [workShift, setWorkShift] = useState<string>('');
   const [teamLeader, setTeamLeader] = useState<string>(currentUser?.name || 'Yacouba Mohamed');
 
-  // Activité sélectionnée courante
-  const selectedActivity = useMemo(() => {
-    if (!selectedWbsCode) return null;
-    return projectWbsNodes.find(a => a.wbsCode === selectedWbsCode || a.priceNo === selectedWbsCode || a.id === selectedWbsCode) || null;
-  }, [projectWbsNodes, selectedWbsCode]);
+  // 2. OBJECTIFS & RÉALISATIONS (STRUCTURE MULTI-ACTIVITÉS)
+  interface ProductionActivityRow {
+    id: string;
+    wbsCode: string;
+    activityName: string;
+    unit: string;
+    targetQty: number;
+    realizedQty: string | number;
+    totalPlanned: number;
+    cumulDate: number;
+  }
 
-  // 2. OBJECTIFS & RÉALISATIONS
-  const [unit, setUnit] = useState<string>('m²');
-  const [targetQty, setTargetQty] = useState<number>(0);
-  const [realizedQty, setRealizedQty] = useState<string | number>('');
-  const [cumulDate, setCumulDate] = useState<number>(0);
-  const [totalPlanned, setTotalPlanned] = useState<number>(0);
-
-  // Synchronisation automatique des quantitatifs réels du WBS et des cumulatifs historiques
-  React.useEffect(() => {
-    // La quantité réalisée doit toujours être vide par défaut pour permettre la saisie directe
-    setRealizedQty('');
-    
-    if (selectedActivity) {
-      if (selectedActivity.unit) {
-        setUnit(selectedActivity.unit);
-      }
-      
-      let contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0);
-      
-      // Si l'unité est métrique (m³, m², ml, Kg, etc.) et que le volume contractuel vaut 1 ou 0,
-      // utiliser le volume réel du marché DQE ou le quantitatif de l'activité
-      if (contractVolume <= 1 && selectedActivity.unit !== 'fft' && selectedActivity.unit !== 'U') {
-        const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
-          .find((n: any) => n.code === selectedWbsCode || n.id === selectedWbsCode);
-        
-        if (wbsNodeMatch && Number(wbsNodeMatch.revisedBudget || wbsNodeMatch.plannedQty) > 1) {
-          contractVolume = Number(wbsNodeMatch.plannedQty || wbsNodeMatch.revisedBudget || 5000);
-        } else {
-          contractVolume = targetQty > 0 ? targetQty * 10 : 15570;
-        }
-      }
-
-      setTotalPlanned(contractVolume);
-
-      // Calcul du cumul réel historique déjà enregistré dans la base de données
-      const previousCumul = dailyReports
-        .filter(r => (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code) && 
-                     (r.wbsCode === selectedWbsCode || r.wbsId === selectedWbsCode || r.activityName === selectedActivity.description))
-        .reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
-
-      const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
-        .find((n: any) => n.code === selectedWbsCode || n.id === selectedWbsCode);
-        
-      const initialCumul = Number(wbsNodeMatch?.actualQty || 0);
-      const totalCumulToDate = previousCumul > 0 ? previousCumul : initialCumul;
-      setCumulDate(totalCumulToDate);
-    } else {
-      setTotalPlanned(0);
-      setCumulDate(0);
+  const [activityRows, setActivityRows] = useState<ProductionActivityRow[]>([
+    {
+      id: 'row-1',
+      wbsCode: '',
+      activityName: '',
+      unit: 'm²',
+      targetQty: 0,
+      realizedQty: '',
+      totalPlanned: 0,
+      cumulDate: 0
     }
-  }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap, targetQty]);
+  ]);
 
-  // Valeur numérique nettoyée pour la quantité réalisée
-  const numRealizedQty = useMemo(() => {
-    if (realizedQty === '' || realizedQty === undefined || realizedQty === null) return 0;
-    const parsed = Number(realizedQty);
-    return isNaN(parsed) ? 0 : parsed;
-  }, [realizedQty]);
+  const handleAddActivityRow = () => {
+    setActivityRows(prev => [
+      ...prev,
+      {
+        id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        wbsCode: '',
+        activityName: '',
+        unit: 'm²',
+        targetQty: 0,
+        realizedQty: '',
+        totalPlanned: 0,
+        cumulDate: 0
+      }
+    ]);
+  };
 
-  // Taux d'avancement du jour calculé (%)
-  const advancePct = useMemo(() => {
-    if (!targetQty || targetQty === 0) return 0;
-    return parseFloat(((numRealizedQty / targetQty) * 100).toFixed(1));
-  }, [numRealizedQty, targetQty]);
+  const handleRemoveActivityRow = (id: string) => {
+    if (activityRows.length <= 1) {
+      setActivityRows([{
+        id: `row-${Date.now()}`,
+        wbsCode: '',
+        activityName: '',
+        unit: 'm²',
+        targetQty: 0,
+        realizedQty: '',
+        totalPlanned: 0,
+        cumulDate: 0
+      }]);
+      return;
+    }
+    setActivityRows(prev => prev.filter(r => r.id !== id));
+  };
 
-  // Cumul pct réel (Cumul historique + réalisé aujourd'hui / Total prévu DQE)
-  const cumulPct = useMemo(() => {
-    if (!totalPlanned || totalPlanned === 0) return 0;
-    const totalToDate = (cumulDate || 0) + numRealizedQty;
-    return parseFloat(((totalToDate / totalPlanned) * 100).toFixed(1));
-  }, [cumulDate, numRealizedQty, totalPlanned]);
+  const handleWbsChange = (rowId: string, wbsCode: string) => {
+    const selectedAct = projectWbsNodes.find(a => a.wbsCode === wbsCode || a.priceNo === wbsCode || a.id === wbsCode);
+    if (!selectedAct) {
+      setActivityRows(prev => prev.map(r => r.id === rowId ? { ...r, wbsCode: '', activityName: '', unit: 'm²', totalPlanned: 0, cumulDate: 0, targetQty: 0 } : r));
+      return;
+    }
+
+    const actUnit = selectedAct.unit || 'm²';
+    let contractVol = Number(selectedAct.contractQty || selectedAct.plannedQty || 0);
+    if (contractVol <= 1 && actUnit !== 'fft' && actUnit !== 'U') {
+      const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
+        .find((n: any) => n.code === wbsCode || n.id === wbsCode);
+      if (wbsNodeMatch && Number(wbsNodeMatch.revisedBudget || wbsNodeMatch.plannedQty) > 1) {
+        contractVol = Number(wbsNodeMatch.plannedQty || wbsNodeMatch.revisedBudget || 5000);
+      } else {
+        contractVol = 15570;
+      }
+    }
+
+    const previousCumul = dailyReports
+      .filter(r => (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code) && 
+                   (r.wbsCode === wbsCode || r.wbsId === wbsCode || r.activityName === selectedAct.description))
+      .reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
+
+    const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
+      .find((n: any) => n.code === wbsCode || n.id === wbsCode);
+    const initialCumul = Number(wbsNodeMatch?.actualQty || 0);
+
+    setActivityRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      return {
+        ...r,
+        wbsCode,
+        activityName: selectedAct.description,
+        unit: actUnit,
+        totalPlanned: contractVol,
+        cumulDate: previousCumul > 0 ? previousCumul : initialCumul,
+        realizedQty: ''
+      };
+    }));
+  };
+
+  const handleRowTargetQtyChange = (rowId: string, val: number) => {
+    setActivityRows(prev => prev.map(r => r.id === rowId ? { ...r, targetQty: val } : r));
+  };
+
+  const handleRowRealizedQtyChange = (rowId: string, val: string | number) => {
+    setActivityRows(prev => prev.map(r => r.id === rowId ? { ...r, realizedQty: val } : r));
+  };
 
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
@@ -346,72 +375,82 @@ export const ProductionModule: React.FC = () => {
     ]);
   };
 
-  // Enregistrement Brouillon
+  // Enregistrement Brouillon Multi-Activités
   const handleSaveDraft = () => {
     handleStatusChange('Brouillon');
 
     if (createDailyReport) {
-      createDailyReport({
-        projectId: selectedProject.id,
-        date: reportDate,
-        wbsCode: selectedWbsCode,
-        activityName: selectedActivity?.description || 'Activité',
-        weather,
-        temperature,
-        workShift,
-        locationZone,
-        generalComment,
-        teamLeader,
-        unit,
-        targetQty,
-        realizedQty,
-        cumulDate,
-        totalPlanned,
-        advancePct,
-        personnel: personnelRows,
-        consummations: consommationsRows,
-        problems,
-        photos,
-        observations,
-        status: 'Brouillon'
+      activityRows.forEach(row => {
+        const numRealized = row.realizedQty === '' ? 0 : Number(row.realizedQty);
+        const rowAdvancePct = row.targetQty > 0 ? parseFloat(((numRealized / row.targetQty) * 100).toFixed(1)) : 0;
+
+        createDailyReport({
+          projectId: selectedProject.id,
+          date: reportDate,
+          wbsCode: row.wbsCode,
+          activityName: row.activityName || 'Activité',
+          weather,
+          temperature,
+          workShift,
+          locationZone,
+          generalComment,
+          teamLeader,
+          unit: row.unit,
+          targetQty: row.targetQty,
+          realizedQty: numRealized,
+          cumulDate: row.cumulDate,
+          totalPlanned: row.totalPlanned,
+          advancePct: rowAdvancePct,
+          personnel: personnelRows,
+          consummations: consommationsRows,
+          problems,
+          photos,
+          observations,
+          status: 'Brouillon'
+        });
       });
     }
 
-    alert('✅ Brouillon du Rapport Journalier enregistré et persisté dans la base de données !');
+    alert(`✅ Brouillon du Rapport Journalier (${activityRows.length} activité(s)) enregistré et persisté dans la base de données !`);
   };
 
-  // Soumission pour validation
+  // Soumission pour validation Multi-Activités
   const handleSubmitValidation = () => {
     handleStatusChange('Soumis');
 
     if (createDailyReport) {
-      createDailyReport({
-        projectId: selectedProject.id,
-        date: reportDate,
-        wbsCode: selectedWbsCode,
-        activityName: selectedActivity?.description || 'Activité',
-        weather,
-        temperature,
-        workShift,
-        locationZone,
-        generalComment,
-        teamLeader,
-        unit,
-        targetQty,
-        realizedQty,
-        cumulDate,
-        totalPlanned,
-        advancePct,
-        personnel: personnelRows,
-        consummations: consommationsRows,
-        problems,
-        photos,
-        observations,
-        status: 'Soumis'
+      activityRows.forEach(row => {
+        const numRealized = row.realizedQty === '' ? 0 : Number(row.realizedQty);
+        const rowAdvancePct = row.targetQty > 0 ? parseFloat(((numRealized / row.targetQty) * 100).toFixed(1)) : 0;
+
+        createDailyReport({
+          projectId: selectedProject.id,
+          date: reportDate,
+          wbsCode: row.wbsCode,
+          activityName: row.activityName || 'Activité',
+          weather,
+          temperature,
+          workShift,
+          locationZone,
+          generalComment,
+          teamLeader,
+          unit: row.unit,
+          targetQty: row.targetQty,
+          realizedQty: numRealized,
+          cumulDate: row.cumulDate,
+          totalPlanned: row.totalPlanned,
+          advancePct: rowAdvancePct,
+          personnel: personnelRows,
+          consummations: consommationsRows,
+          problems,
+          photos,
+          observations,
+          status: 'Soumis'
+        });
       });
     }
 
-    alert('🚀 Rapport envoyé pour validation et persisté dans la base de données !');
+    alert(`🚀 Rapport Journalier (${activityRows.length} activité(s)) envoyé pour validation et persisté dans la base de données !`);
   };
 
   if (!selectedProject) {
@@ -606,7 +645,7 @@ export const ProductionModule: React.FC = () => {
       {/* 3. SECTION INFORMATIONS GÉNÉRALES (INPUTS ET SÉLECTEURS) */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-          INFORMATIONS GÉNÉRALES
+          INFORMATIONS GÉNÉRALES DU CHANTIER
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -622,25 +661,6 @@ export const ProductionModule: React.FC = () => {
             >
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Champ WBS / Activité */}
-          <div>
-            <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
-              WBS / Activité <span className="text-rose-500">*</span>
-            </label>
-            <select
-              value={selectedWbsCode}
-              onChange={e => setSelectedWbsCode(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
-            >
-              <option value="">Sélectionner une activité WBS...</option>
-              {projectWbsNodes.map(act => (
-                <option key={act.id} value={act.wbsCode || act.priceNo || act.id}>
-                  {act.wbsCode ? `${act.wbsCode} - ` : ''}{act.description}
-                </option>
               ))}
             </select>
           </div>
@@ -692,10 +712,23 @@ export const ProductionModule: React.FC = () => {
               </select>
             </div>
           </div>
+
+          <div>
+            <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+              Équipe / Chef d'équipe
+            </label>
+            <input
+              type="text"
+              value={currentUser?.name || 'Yacouba Mohamed'}
+              disabled
+              className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed"
+              title="Fixé automatiquement sur l'utilisateur connecté"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1">
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
             <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
               Commentaire général
             </label>
@@ -723,93 +756,144 @@ export const ProductionModule: React.FC = () => {
               <option value="Poste 2 (Soir)">Poste 2 (Soir)</option>
             </select>
           </div>
-
-          <div>
-            <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
-              Équipe / Chef d'équipe
-            </label>
-            <input
-              type="text"
-              value={currentUser?.name || 'Yacouba Mohamed'}
-              disabled
-              className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed"
-              title="Fixé automatiquement sur l'utilisateur connecté"
-            />
-          </div>
         </div>
       </div>
 
-      {/* 4. BLOCS DU MILIEU : OBJECTIFS & RÉALISATIONS (GAUCHE) ET RESSOURCES UTILISÉES (DROITE) */}
+      {/* 4. SECTIONS DU MILIEU : OBJECTIFS & RÉALISATIONS MULTI-ACTIVITÉS (GAUCHE) ET RESSOURCES UTILISÉES (DROITE) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* BLOC GAUCHE : OBJECTIFS & RÉALISATIONS */}
+        {/* BLOC GAUCHE : OBJECTIFS & RÉALISATIONS MULTI-ACTIVITÉS */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
           <div>
-            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider pb-2 border-b border-slate-100">
-              OBJECTIFS & RÉALISATIONS
-            </h2>
-
-            <div className="grid grid-cols-4 gap-3 pt-3">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">Unité</label>
-                <input
-                  type="text"
-                  value={selectedActivity?.unit || unit || 'm²'}
-                  disabled
-                  className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed text-center"
-                  title="Unité renseignée automatiquement d'après l'activité WBS sélectionnée"
-                />
+                <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+                  OBJECTIFS & RÉALISATIONS (MULTI-ACTIVITÉS)
+                </h2>
+                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
+                  Saisissez les quantitatifs réalisés pour plusieurs activités WBS sur ce rapport.
+                </p>
               </div>
-
-              <div>
-                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">Objectif journalier</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={targetQty}
-                  onChange={e => setTargetQty(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">
-                  Quantité réalisée <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={realizedQty}
-                  placeholder="Saisir la quantité réalisée..."
-                  onChange={e => setRealizedQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">Taux d'avancement</label>
-                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl font-mono font-black text-xs text-emerald-700 text-center">
-                  {advancePct}%
-                </div>
-              </div>
+              <button
+                onClick={handleAddActivityRow}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer"
+              >
+                <Plus size={14} /> Ajouter une activité
+              </button>
             </div>
 
-            {/* Barre de Cumul à date */}
-            <div className="pt-6 space-y-1.5">
-              <div className="flex justify-between items-center text-xs font-bold">
-                <span className="text-slate-600">Cumul à date</span>
-                <div className="flex items-center gap-3 font-mono">
-                  <span className="text-slate-900 font-extrabold">{formatQty((cumulDate || 0) + numRealizedQty)} / {formatQty(totalPlanned)} {unit === 'm2' || unit === 'M2' ? 'm²' : unit}</span>
-                  <span className="text-blue-700 font-black">{cumulPct}%</span>
-                </div>
-              </div>
+            <div className="space-y-4 pt-3 max-h-[500px] overflow-y-auto pr-1">
+              {activityRows.map((row, idx) => {
+                const numRealized = row.realizedQty === '' || isNaN(Number(row.realizedQty)) ? 0 : Number(row.realizedQty);
+                const rowAdvancePct = row.targetQty > 0 ? parseFloat(((numRealized / row.targetQty) * 100).toFixed(1)) : 0;
+                const currentCumul = (row.cumulDate || 0) + numRealized;
+                const rowCumulPct = row.totalPlanned > 0 ? parseFloat(((currentCumul / row.totalPlanned) * 100).toFixed(1)) : 0;
 
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200">
-                <div
-                  className="bg-blue-700 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, cumulPct)}%` }}
-                />
-              </div>
+                return (
+                  <div key={row.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3 relative group transition hover:border-blue-300">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">
+                        Activité WBS #{idx + 1}
+                      </span>
+                      {activityRows.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveActivityRow(row.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition cursor-pointer"
+                          title="Supprimer cette activité"
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Sélecteur Activité WBS */}
+                    <div>
+                      <label className="block text-[10.5px] font-extrabold text-slate-700 mb-1">
+                        WBS / Activité <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={row.wbsCode}
+                        onChange={e => handleWbsChange(row.id, e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:border-blue-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">Sélectionner une activité WBS...</option>
+                        {projectWbsNodes.map(act => (
+                          <option key={act.id} value={act.wbsCode || act.priceNo || act.id}>
+                            {act.wbsCode ? `${act.wbsCode} - ` : ''}{act.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Grille des quantitatifs */}
+                    <div className="grid grid-cols-4 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Unité</label>
+                        <input
+                          type="text"
+                          value={row.unit}
+                          disabled
+                          className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 cursor-not-allowed text-center"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Objectif jour</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.targetQty || ''}
+                          placeholder="0"
+                          onChange={e => handleRowTargetQtyChange(row.id, parseFloat(e.target.value) || 0)}
+                          className="w-full p-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-600 mb-1">
+                          Quantité réalisée <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={row.realizedQty}
+                          placeholder="Saisir..."
+                          onChange={e => handleRowRealizedQtyChange(row.id, e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-2xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Avancement jour</label>
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl font-mono font-black text-xs text-emerald-700 text-center">
+                          {rowAdvancePct}%
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Barre de Cumul à date par activité */}
+                    {row.wbsCode && (
+                      <div className="pt-1 space-y-1">
+                        <div className="flex justify-between items-center text-[10.5px] font-bold">
+                          <span className="text-slate-500">Cumul à date</span>
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="text-slate-800 font-extrabold">
+                              {formatQty(currentCumul)} / {formatQty(row.totalPlanned)} {row.unit}
+                            </span>
+                            <span className="text-blue-700 font-black">{rowCumulPct}%</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-blue-700 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, rowCumulPct))}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
