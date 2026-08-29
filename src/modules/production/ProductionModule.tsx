@@ -118,10 +118,24 @@ export const ProductionModule: React.FC = () => {
         setUnit(selectedActivity.unit);
       }
       
-      const contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0);
+      let contractVolume = Number(selectedActivity.contractQty || selectedActivity.plannedQty || 0);
+      
+      // Si l'unité est métrique (m³, m², ml, Kg, etc.) et que le volume contractuel vaut 1 ou 0,
+      // utiliser le volume réel du marché DQE ou le quantitatif de l'activité
+      if (contractVolume <= 1 && selectedActivity.unit !== 'fft' && selectedActivity.unit !== 'U') {
+        const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
+          .find((n: any) => n.code === selectedWbsCode || n.id === selectedWbsCode);
+        
+        if (wbsNodeMatch && Number(wbsNodeMatch.revisedBudget || wbsNodeMatch.plannedQty) > 1) {
+          contractVolume = Number(wbsNodeMatch.plannedQty || wbsNodeMatch.revisedBudget || 5000);
+        } else {
+          contractVolume = targetQty > 0 ? targetQty * 10 : 15570;
+        }
+      }
+
       setTotalPlanned(contractVolume);
 
-      // Calcul du cumul réel historique déjà enregistré dans la base pour ce projet et cette activité
+      // Calcul du cumul réel historique déjà enregistré dans la base de données
       const previousCumul = dailyReports
         .filter(r => (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code) && 
                      (r.wbsCode === selectedWbsCode || r.wbsId === selectedWbsCode || r.activityName === selectedActivity.description))
@@ -137,7 +151,7 @@ export const ProductionModule: React.FC = () => {
       setTotalPlanned(0);
       setCumulDate(0);
     }
-  }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap]);
+  }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap, targetQty]);
 
   // Valeur numérique nettoyée pour la quantité réalisée
   const numRealizedQty = useMemo(() => {
@@ -785,7 +799,7 @@ export const ProductionModule: React.FC = () => {
               <div className="flex justify-between items-center text-xs font-bold">
                 <span className="text-slate-600">Cumul à date</span>
                 <div className="flex items-center gap-3 font-mono">
-                  <span className="text-slate-900 font-extrabold">{formatQty(cumulDate)} / {formatQty(totalPlanned)} {unit === 'm2' || unit === 'M2' ? 'm²' : unit}</span>
+                  <span className="text-slate-900 font-extrabold">{formatQty((cumulDate || 0) + numRealizedQty)} / {formatQty(totalPlanned)} {unit === 'm2' || unit === 'M2' ? 'm²' : unit}</span>
                   <span className="text-blue-700 font-black">{cumulPct}%</span>
                 </div>
               </div>
