@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AppStateProvider, useAppState } from './core/database/AppStateContext';
 import { ApiService } from './services/api';
-import { Sidebar, isMenuItemAllowed, BLOCKED_ITEM_IDS } from './shared/components/Sidebar';
+import { Sidebar, isMenuItemAllowed, getDefaultViewForRole, BLOCKED_ITEM_IDS } from './shared/components/Sidebar';
 import { Header } from './shared/components/Header';
 import { DashboardGeneral } from './modules/dashboard/DashboardGeneral';
 import { DashboardKpi } from './modules/dashboard/DashboardKpi';
