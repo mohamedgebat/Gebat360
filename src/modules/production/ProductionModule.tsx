@@ -284,64 +284,19 @@ export const ProductionModule: React.FC = () => {
     { time: `${getTodayFrDate()} ${getNowTimeStr()}`, text: `Rapport créé par ${currentUser?.name || 'Chef de Projet'}` },
   ]);
 
-  // Synchronisation dynamique automatique depuis les données réelles de l'application (dailyReports & stockMovements)
+  // Synchronisation dynamique automatique des consommations depuis le stock de l'application
   React.useEffect(() => {
-    if (selectedActivity) {
-      const actUnit = selectedActivity.unit || 'm²';
-      const planned = Number(selectedActivity.contractQty || 51900);
-
-      // 1. Filtrer les rapports réels enregistrés dans l'application pour ce projet et cette activité WBS
-      const matchingAppReports = (dailyReports || []).filter(r =>
-        (r.projectId === selectedProjectId || r.projectId === selectedProject?.code || r.projectId === selectedProject?.id) &&
-        (r.wbsCode === selectedWbsCode || r.wbsId === selectedWbsCode)
-      );
-
-      let target = Math.round(planned * 0.03) || 1557;
-      let realized = parseFloat((target * 0.917).toFixed(2)) || 1427.77;
-      let cumul = parseFloat((planned * 0.549).toFixed(2)) || 28493.10;
-
-      if (matchingAppReports.length > 0) {
-        const latest = matchingAppReports[matchingAppReports.length - 1];
-        target = Number(latest.plannedQty || target);
-        realized = Number(latest.realizedQty || realized);
-        const sumCumul = matchingAppReports.reduce((s, r) => s + Number(r.realizedQty || 0), 0);
-        if (sumCumul > 0) cumul = sumCumul;
-        if (latest.weather) setWeather(latest.weather as any);
-        if (latest.notes) setGeneralComment(latest.notes);
-        if (latest.status) setReportStatus(latest.status as any);
-      }
-
-      setUnit(actUnit);
-      setTotalPlanned(planned);
-      setTargetQty(target);
-      // setRealizedQty est conservé toujours vide par défaut pour permettre la saisie manuelle
-      setCumulDate(cumul);
-
-      // 2. Charger les consommations réelles depuis les mouvements de stock de l'application ou les ressources réelles BDD
-      if (selectedActivity.resources && selectedActivity.resources.length > 0) {
-        const realCons = selectedActivity.resources.map(res => {
-          const prevue = res.correctedQty || res.theoreticalQty || 100;
-          const consommee = parseFloat((prevue * 0.96).toFixed(2));
-          const ecart = parseFloat((consommee - prevue).toFixed(2));
-          return {
-            article: res.name.charAt(0).toUpperCase() + res.name.slice(1),
-            unit: res.unit || 'U',
-            prevue,
-            consommee,
-            ecart
-          };
-        });
-        setConsommationsRows(realCons);
-      } else {
-        setConsommationsRows([
-          { article: 'Gasoil', unit: 'L', prevue: 120.00, consommee: 118.00, ecart: -2.00 },
-          { article: 'Ciment CPJ 45', unit: 'sac', prevue: 150.00, consommee: 148.00, ecart: -2.00 },
-          { article: 'Gravillon 10/20', unit: 'm³', prevue: 25.00, consommee: 26.00, ecart: 1.00 },
-          { article: 'Sable 0/5', unit: 'm³', prevue: 18.00, consommee: 17.50, ecart: -0.50 },
-        ]);
-      }
+    if (stockItems && stockItems.length > 0) {
+      const realCons = stockItems.slice(0, 4).map(item => ({
+        article: item.name,
+        unit: item.unit || 'U',
+        prevue: Number(item.minQuantity || 100),
+        consommee: 0,
+        ecart: 0
+      }));
+      setConsommationsRows(realCons);
     }
-  }, [selectedWbsCode, selectedProjectId, selectedActivity, dailyReports]);
+  }, [stockItems]);
 
   // Contrôle d'accès et d'habilitation selon le rôle du compte connecté (Brouillon -> Soumis -> Validé -> Verrouillé)
   const handleStatusChange = (targetStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé') => {
