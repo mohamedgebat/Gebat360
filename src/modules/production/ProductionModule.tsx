@@ -153,6 +153,44 @@ export const ProductionModule: React.FC = () => {
     return previousCumul > 0 ? previousCumul : initialCumul;
   }, [currentWbsCode, currentSelectedAct, dailyReports, selectedProject, wbsMap]);
 
+  // PROPOSITION 1 : CALCUL AUTOMATIQUE DE L'OBJECTIF JOUR SUR BASE DU PLANNING GANTT (Reste à faire / Délai restants)
+  const remainingQty = useMemo(() => {
+    return Math.max(0, currentContractVol - currentCumulDate);
+  }, [currentContractVol, currentCumulDate]);
+
+  // Nombre de jours de travail restants selon le planning Gantt (ou valeur par défaut basée sur le délai projet)
+  const remainingWorkDays = useMemo(() => {
+    if (!currentWbsCode) return 15;
+    const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
+      .find((n: any) => n.code === currentWbsCode || n.id === currentWbsCode);
+    
+    if (wbsNodeMatch?.endDate) {
+      const today = new Date();
+      const end = new Date(wbsNodeMatch.endDate);
+      const diffTime = end.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) return Math.max(1, Math.round(diffDays * (5 / 7)));
+    }
+    
+    return 15; // 15 jours d'exécution ouvrés par défaut si non spécifié
+  }, [currentWbsCode, wbsMap, selectedProject]);
+
+  // Objectif jour calculé automatiquement d'après le planning Gantt (Reste à faire / Jours restants)
+  const autoCalculatedTargetQty = useMemo(() => {
+    if (!currentWbsCode || remainingQty <= 0) return 0;
+    const calculated = Math.round(remainingQty / (remainingWorkDays || 1));
+    return calculated > 0 ? calculated : Math.ceil(remainingQty);
+  }, [currentWbsCode, remainingQty, remainingWorkDays]);
+
+  // Synchronisation automatique de l'objectif jour au changement d'activité WBS
+  React.useEffect(() => {
+    if (currentWbsCode && autoCalculatedTargetQty > 0) {
+      setCurrentTargetQty(autoCalculatedTargetQty);
+    } else if (!currentWbsCode) {
+      setCurrentTargetQty(0);
+    }
+  }, [currentWbsCode, autoCalculatedTargetQty]);
+
   // Quantité réalisée numérique nettoyée
   const numCurrentRealized = useMemo(() => {
     if (currentRealizedQty === '' || currentRealizedQty === undefined || currentRealizedQty === null) return 0;
@@ -812,14 +850,22 @@ export const ProductionModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-extrabold text-slate-600 mb-1">Objectif jour</label>
+                  <label className="block text-[10px] font-extrabold text-slate-600 mb-1 flex items-center justify-between">
+                    <span>Objectif jour</span>
+                    {currentWbsCode && autoCalculatedTargetQty > 0 && (
+                      <span className="text-[9px] font-black text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded" title="Calculé automatiquement par le système d'après le planning Gantt">
+                        Auto Gantt
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     step="any"
                     value={currentTargetQty || ''}
                     placeholder="0"
                     onChange={e => setCurrentTargetQty(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:border-blue-500"
+                    title="Objectif journalier calculé automatiquement selon le reste à faire et le nombre de jours restants au planning Gantt"
                   />
                 </div>
 
@@ -845,6 +891,19 @@ export const ProductionModule: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Badge d'explication PROPOSITION 1 (Calcul Gantt Reste à Faire / Délai) */}
+              {currentWbsCode && remainingQty > 0 && (
+                <div className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-600 font-extrabold">💡 Objectif Gantt calculé :</span>
+                    <span>Reste <strong className="font-mono font-black text-slate-900">{formatQty(remainingQty)} {currentActUnit}</strong> sur <strong className="font-mono font-extrabold text-slate-900">{remainingWorkDays} jours ouvrés</strong></span>
+                  </div>
+                  <span className="font-mono font-black text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded-lg shrink-0">
+                    {autoCalculatedTargetQty} {currentActUnit}/j
+                  </span>
+                </div>
+              )}
 
               {/* Cumul à date de l'activité courante */}
               {currentWbsCode && (
