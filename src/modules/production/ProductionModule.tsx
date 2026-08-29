@@ -104,13 +104,15 @@ export const ProductionModule: React.FC = () => {
   // 2. OBJECTIFS & RÉALISATIONS
   const [unit, setUnit] = useState<string>('m²');
   const [targetQty, setTargetQty] = useState<number>(0);
-  const [realizedQty, setRealizedQty] = useState<number>(0);
+  const [realizedQty, setRealizedQty] = useState<string | number>('');
   const [cumulDate, setCumulDate] = useState<number>(0);
   const [totalPlanned, setTotalPlanned] = useState<number>(0);
 
   // Synchronisation automatique des quantitatifs réels du WBS et des cumulatifs historiques
   React.useEffect(() => {
-    setRealizedQty(0);
+    // La quantité réalisée doit toujours être vide par défaut pour permettre la saisie directe
+    setRealizedQty('');
+    
     if (selectedActivity) {
       if (selectedActivity.unit) {
         setUnit(selectedActivity.unit);
@@ -137,18 +139,25 @@ export const ProductionModule: React.FC = () => {
     }
   }, [selectedActivity, selectedWbsCode, selectedProject, dailyReports, wbsMap]);
 
+  // Valeur numérique nettoyée pour la quantité réalisée
+  const numRealizedQty = useMemo(() => {
+    if (realizedQty === '' || realizedQty === undefined || realizedQty === null) return 0;
+    const parsed = Number(realizedQty);
+    return isNaN(parsed) ? 0 : parsed;
+  }, [realizedQty]);
+
   // Taux d'avancement du jour calculé (%)
   const advancePct = useMemo(() => {
     if (!targetQty || targetQty === 0) return 0;
-    return parseFloat(((realizedQty / targetQty) * 100).toFixed(1));
-  }, [realizedQty, targetQty]);
+    return parseFloat(((numRealizedQty / targetQty) * 100).toFixed(1));
+  }, [numRealizedQty, targetQty]);
 
   // Cumul pct réel (Cumul historique + réalisé aujourd'hui / Total prévu DQE)
   const cumulPct = useMemo(() => {
     if (!totalPlanned || totalPlanned === 0) return 0;
-    const totalToDate = (cumulDate || 0) + (realizedQty || 0);
+    const totalToDate = (cumulDate || 0) + numRealizedQty;
     return parseFloat(((totalToDate / totalPlanned) * 100).toFixed(1));
-  }, [cumulDate, realizedQty, totalPlanned]);
+  }, [cumulDate, numRealizedQty, totalPlanned]);
 
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
@@ -262,7 +271,7 @@ export const ProductionModule: React.FC = () => {
       setUnit(actUnit);
       setTotalPlanned(planned);
       setTargetQty(target);
-      setRealizedQty(realized);
+      // setRealizedQty est conservé toujours vide par défaut pour permettre la saisie manuelle
       setCumulDate(cumul);
 
       // 2. Charger les consommations réelles depuis les mouvements de stock de l'application ou les ressources réelles BDD
@@ -756,10 +765,10 @@ export const ProductionModule: React.FC = () => {
                   type="number"
                   step="any"
                   min="0"
-                  value={realizedQty === 0 ? '' : realizedQty}
-                  placeholder="0"
-                  onChange={e => setRealizedQty(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2 bg-blue-50/50 border-2 border-blue-500 rounded-xl font-mono font-black text-xs text-blue-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-2xs transition"
+                  value={realizedQty}
+                  placeholder="Saisir la quantité réalisée..."
+                  onChange={e => setRealizedQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition shadow-2xs"
                 />
               </div>
 
