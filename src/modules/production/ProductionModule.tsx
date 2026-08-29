@@ -699,9 +699,8 @@ export const ProductionModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10.5px] font-extrabold text-blue-700 mb-1 flex items-center justify-between">
-                  <span>Quantité réalisée <span className="text-rose-500">*</span></span>
-                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-tight">Saisie terrain</span>
+                <label className="block text-[10.5px] font-extrabold text-slate-600 mb-1">
+                  Quantité réalisée <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
