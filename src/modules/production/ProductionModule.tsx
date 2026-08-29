@@ -320,10 +320,40 @@ export const ProductionModule: React.FC = () => {
   // 7. OBSERVATIONS & REMARQUES
   const [observations, setObservations] = useState('');
 
-  // 8. HISTORIQUE DE SOUMISSION
+  // 8. HISTORIQUE DE SOUMISSION & REJET
   const [historyLogs, setHistoryLogs] = useState([
     { time: `${getTodayFrDate()} ${getNowTimeStr()}`, text: `Rapport créé par ${currentUser?.name || 'Chef de Projet'}` },
   ]);
+
+  // État de la modal de renvoi / demande de correction
+  const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
+  const [rejectionReason, setRejectionReason] = useState<string>('');
+
+  // Verrouillage dynamique du formulaire : Seul le statut Brouillon autorise l'édition par le terrain
+  const isFormEditable = useMemo(() => {
+    return reportStatus === 'Brouillon';
+  }, [reportStatus]);
+
+  // Renvoyer le rapport en Brouillon avec motif explicite du valitateur (DP / DT)
+  const handleRejectReport = () => {
+    if (!rejectionReason.trim()) {
+      alert('⚠️ Veuillez indiquer le motif du rejet ou les corrections demandées au chef de chantier.');
+      return;
+    }
+
+    setReportStatus('Brouillon');
+    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    setHistoryLogs(prev => [
+      { 
+        time: `${formattedReportDate} ${timeStr}`, 
+        text: `↩️ Rapport renvoyé en Brouillon par ${currentUser?.name || 'Validateur'} — Motif : "${rejectionReason}"` 
+      },
+      ...prev
+    ]);
+    setShowRejectModal(false);
+    setRejectionReason('');
+    alert('↩️ Rapport renvoyé au chef de chantier en statut Brouillon avec le motif d\'ajustement !');
+  };
 
   // Synchronisation dynamique automatique des consommations depuis le stock de l'application
   React.useEffect(() => {
@@ -569,109 +599,201 @@ export const ProductionModule: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. BARRE DE PROGRESSION STEPS WORKFLOW (1. Brouillon -> 2. Soumis -> 3. Validé -> 4. Verrouillé) EXACT MEDIA_1787766318646.PNG */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex-1 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
-          {/* Step 1 : Brouillon */}
-          <button
-            onClick={() => handleStatusChange('Brouillon')}
-            className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
-              reportStatus === 'Brouillon'
-                ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs'
-                : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            <div className={`p-2.5 rounded-xl shrink-0 ${reportStatus === 'Brouillon' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
-              <FileText size={18} />
-            </div>
-            <div>
-              <span className="font-black text-xs block text-slate-900">1. Brouillon</span>
-              <span className="text-[10.5px] font-medium text-slate-500">En cours de saisie</span>
-            </div>
-          </button>
+      {/* 2. BARRE DE PROGRESSION STEPS WORKFLOW (1. Brouillon -> 2. Soumis -> 3. Validé -> 4. Verrouillé) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex-1 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            {/* Step 1 : Brouillon */}
+            <button
+              onClick={() => handleStatusChange('Brouillon')}
+              className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
+                reportStatus === 'Brouillon'
+                  ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs ring-2 ring-blue-500/20'
+                  : reportStatus === 'Soumis' || reportStatus === 'Validé' || reportStatus === 'Verrouillé'
+                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                  : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${
+                reportStatus === 'Brouillon' ? 'bg-blue-600 text-white shadow-xs' : 'bg-emerald-600 text-white shadow-xs'
+              }`}>
+                {reportStatus !== 'Brouillon' ? <CheckCircle2 size={18} /> : <FileText size={18} />}
+              </div>
+              <div>
+                <span className="font-black text-xs block text-slate-900">1. Brouillon</span>
+                <span className="text-[10.5px] font-medium text-slate-500">En cours de saisie</span>
+              </div>
+            </button>
 
-          <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
+            <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
 
-          {/* Step 2 : Soumis */}
-          <button
-            onClick={() => handleStatusChange('Soumis')}
-            className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
-              reportStatus === 'Soumis'
-                ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs'
-                : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            <div className={`p-2.5 rounded-xl shrink-0 ${reportStatus === 'Soumis' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
-              <Send size={18} />
-            </div>
-            <div>
-              <span className="font-black text-xs block text-slate-900">2. Soumis</span>
-              <span className="text-[10.5px] font-medium text-slate-500">Envoyé pour validation</span>
-            </div>
-          </button>
+            {/* Step 2 : Soumis */}
+            <button
+              onClick={() => handleStatusChange('Soumis')}
+              className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
+                reportStatus === 'Soumis'
+                  ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs ring-2 ring-blue-500/20'
+                  : reportStatus === 'Validé' || reportStatus === 'Verrouillé'
+                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                  : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${
+                reportStatus === 'Soumis' 
+                  ? 'bg-blue-600 text-white shadow-xs' 
+                  : reportStatus === 'Validé' || reportStatus === 'Verrouillé'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                {reportStatus === 'Validé' || reportStatus === 'Verrouillé' ? <CheckCircle2 size={18} /> : <Send size={18} />}
+              </div>
+              <div>
+                <span className="font-black text-xs block text-slate-900">2. Soumis</span>
+                <span className="text-[10.5px] font-medium text-slate-500">Envoyé pour validation</span>
+              </div>
+            </button>
 
-          <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
+            <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
 
-          {/* Step 3 : Validé */}
-          <button
-            onClick={() => handleStatusChange('Validé')}
-            className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
-              reportStatus === 'Validé'
-                ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs'
-                : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            <div className={`p-2.5 rounded-xl shrink-0 ${reportStatus === 'Validé' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
-              <CheckCircle2 size={18} />
-            </div>
-            <div>
-              <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
-                3. Validé
-                <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1 rounded">Habilité DP/DT</span>
+            {/* Step 3 : Validé */}
+            <button
+              onClick={() => handleStatusChange('Validé')}
+              className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
+                reportStatus === 'Validé'
+                  ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-2xs ring-2 ring-emerald-500/20'
+                  : reportStatus === 'Verrouillé'
+                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                  : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${
+                reportStatus === 'Validé' || reportStatus === 'Verrouillé' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
+              }`}>
+                <CheckCircle2 size={18} />
+              </div>
+              <div>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
+                  3. Validé
+                  <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1 rounded">Habilité DP/DT</span>
+                </span>
+                <span className="text-[10.5px] font-medium text-slate-500">Approuvé par DP</span>
+              </div>
+            </button>
+
+            <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
+
+            {/* Step 4 : Verrouillé */}
+            <button
+              onClick={() => handleStatusChange('Verrouillé')}
+              className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
+                reportStatus === 'Verrouillé'
+                  ? 'bg-purple-50/90 border-purple-300 text-purple-900 shadow-2xs ring-2 ring-purple-500/20'
+                  : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${reportStatus === 'Verrouillé' ? 'bg-purple-700 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
+                <Lock size={18} />
+              </div>
+              <div>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
+                  4. Verrouillé
+                  <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1 rounded">Habilité DP/CdG</span>
+                </span>
+                <span className="text-[10.5px] font-medium text-slate-500">Données consolidées</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Encadré de statut à droite */}
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs font-medium space-y-1 text-right shrink-0 min-w-[210px]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-500 font-bold text-[11px]">Statut actuel</span>
+              <span className={`px-2.5 py-0.5 font-black rounded text-[10.5px] uppercase ${
+                reportStatus === 'Brouillon' ? 'bg-slate-200 text-slate-800 border border-slate-300' :
+                reportStatus === 'Soumis' ? 'bg-blue-100 border border-blue-200 text-blue-800' :
+                reportStatus === 'Validé' ? 'bg-emerald-100 border border-emerald-200 text-emerald-800' :
+                'bg-purple-100 border border-purple-200 text-purple-800'
+              }`}>
+                {reportStatus}
               </span>
-              <span className="text-[10.5px] font-medium text-slate-500">Approuvé par DP</span>
             </div>
-          </button>
-
-          <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
-
-          {/* Step 4 : Verrouillé */}
-          <button
-            onClick={() => handleStatusChange('Verrouillé')}
-            className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
-              reportStatus === 'Verrouillé'
-                ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs'
-                : 'bg-slate-50/60 border-slate-200 text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            <div className={`p-2.5 rounded-xl shrink-0 ${reportStatus === 'Verrouillé' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
-              <Lock size={18} />
+            <div className="text-[10.5px] text-slate-500">
+              Créé par : <strong className="text-slate-800 font-bold">{currentUser?.name || 'Yacouba Mohamed'}</strong>
             </div>
-            <div>
-              <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
-                4. Verrouillé
-                <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1 rounded">Habilité DP/CdG</span>
-              </span>
-              <span className="text-[10.5px] font-medium text-slate-500">Données consolidées</span>
+            <div className="text-[10.5px] text-slate-500 font-mono">
+              Le : <strong>{formattedReportDate} à {creationTime}</strong>
             </div>
-          </button>
+          </div>
         </div>
 
-        {/* Encadré de statut à droite */}
-        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs font-medium space-y-1 text-right shrink-0 min-w-[210px]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-500 font-bold text-[11px]">Statut actuel</span>
-            <span className="px-2.5 py-0.5 bg-blue-100 border border-blue-200 text-blue-800 font-black rounded text-[10.5px] uppercase">
-              {reportStatus}
+        {/* BANNIÈRE CONDITIONNELLE SELON LE STATUT DU WORKFLOW */}
+        {reportStatus === 'Brouillon' && (
+          <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs font-medium text-blue-900 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileText size={16} className="text-blue-600 shrink-0" />
+              <span>
+                <strong>Mode Édition Terrain :</strong> Saisissez les données de production. Le formulaire est éditable par l'équipe chantier.
+              </span>
+            </div>
+            <button
+              onClick={handleSubmitValidation}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition shadow-2xs shrink-0 cursor-pointer"
+            >
+              🚀 Soumettre pour Validation
+            </button>
+          </div>
+        )}
+
+        {reportStatus === 'Soumis' && (
+          <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl text-xs font-medium text-amber-950 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-amber-600 shrink-0" />
+              <span>
+                <strong>⏳ Rapport en attente de revue :</strong> Le formulaire est scellé en <strong>lecture seule</strong> pour le terrain.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowRejectModal(true)}
+                className="px-3 py-1.5 bg-rose-100 text-rose-800 hover:bg-rose-200 font-extrabold rounded-lg text-xs transition cursor-pointer"
+              >
+                ↩️ Demander Correction
+              </button>
+              <button
+                onClick={() => handleStatusChange('Validé')}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs transition shadow-2xs cursor-pointer"
+              >
+                ✅ Valider le Rapport (DP/DT)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {reportStatus === 'Validé' && (
+          <div className="p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl text-xs font-medium text-emerald-950 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>
+                <strong>✅ Rapport Validé :</strong> Approuvé par la Direction Technique. Les quantitatifs sont comptabilisés dans le projet.
+              </span>
+            </div>
+            <button
+              onClick={() => handleStatusChange('Verrouillé')}
+              className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs transition shadow-2xs shrink-0 cursor-pointer"
+            >
+              🔒 Verrouiller (Consolidation CdG)
+            </button>
+          </div>
+        )}
+
+        {reportStatus === 'Verrouillé' && (
+          <div className="p-3 bg-purple-50/90 border border-purple-300 rounded-xl text-xs font-medium text-purple-950 flex items-center gap-2">
+            <Lock size={16} className="text-purple-700 shrink-0" />
+            <span>
+              <strong>🔒 Rapport Verrouillé & Certifié :</strong> Données consolidées définitivement pour l'audit et le Cost Control. Aucune modification terrain possible.
             </span>
           </div>
-          <div className="text-[10.5px] text-slate-500">
-            Créé par : <strong className="text-slate-800 font-bold">{currentUser?.name || 'Amadou Fall'}</strong>
-          </div>
-          <div className="text-[10.5px] text-slate-500 font-mono">
-            Le : <strong>{formattedReportDate} à {creationTime}</strong>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* 3. SECTION INFORMATIONS GÉNÉRALES (INPUTS ET SÉLECTEURS) */}
@@ -826,7 +948,10 @@ export const ProductionModule: React.FC = () => {
                 <select
                   value={currentWbsCode}
                   onChange={e => setCurrentWbsCode(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-xs text-slate-900 focus:border-blue-500 cursor-pointer shadow-2xs"
+                  disabled={!isFormEditable}
+                  className={`w-full p-2.5 border rounded-xl font-bold text-xs shadow-2xs ${
+                    !isFormEditable ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 cursor-pointer'
+                  }`}
                 >
                   <option value="">Sélectionner une activité WBS...</option>
                   {projectWbsNodes.map(act => (
@@ -863,8 +988,11 @@ export const ProductionModule: React.FC = () => {
                     step="any"
                     value={currentTargetQty || ''}
                     placeholder="0"
+                    disabled={!isFormEditable}
                     onChange={e => setCurrentTargetQty(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:border-blue-500"
+                    className={`w-full p-2 border rounded-xl font-mono font-bold text-xs ${
+                      !isFormEditable ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    }`}
                     title="Objectif journalier calculé automatiquement selon le reste à faire et le nombre de jours restants au planning Gantt"
                   />
                 </div>
@@ -878,9 +1006,12 @@ export const ProductionModule: React.FC = () => {
                     step="any"
                     min="0"
                     value={currentRealizedQty}
-                    placeholder="Saisir la quantité..."
+                    placeholder={isFormEditable ? "Saisir la quantité..." : "Formulaire verrouillé"}
+                    disabled={!isFormEditable}
                     onChange={e => setCurrentRealizedQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full p-2 bg-white border-2 border-blue-500 rounded-xl font-mono font-black text-xs text-blue-900 placeholder-slate-400 focus:bg-white focus:outline-none shadow-2xs"
+                    className={`w-full p-2 border-2 rounded-xl font-mono font-black text-xs shadow-2xs ${
+                      !isFormEditable ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'bg-white border-blue-500 text-blue-900 placeholder-slate-400 focus:bg-white focus:outline-none'
+                    }`}
                   />
                 </div>
 
@@ -931,7 +1062,10 @@ export const ProductionModule: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleAddCurrentActivity}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer active:scale-[0.99]"
+                  disabled={!isFormEditable}
+                  className={`w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-xs transition ${
+                    !isFormEditable ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white cursor-pointer active:scale-[0.99]'
+                  }`}
                 >
                   <Plus size={16} /> Enregistrer cette activité et passer à la suivante
                 </button>
@@ -1423,10 +1557,55 @@ export const ProductionModule: React.FC = () => {
             className="bg-[#11192e] hover:bg-slate-800 text-white font-black px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md cursor-pointer transition"
           >
             <span>🚀 Soumettre pour validation</span>
-            <ChevronDown size={14} />
           </button>
         </div>
       </div>
+      {/* MODAL REJET / DEMANDE DE CORRECTION */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-rose-700 font-extrabold text-sm">
+                <AlertTriangle size={18} />
+                <span>Renvoyer le rapport en Brouillon</span>
+              </div>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-extrabold text-slate-800">
+                Motif des corrections demandées au chef de chantier <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={e => setRejectionReason(e.target.value)}
+                placeholder="Ex: La quantité réalisée sur l'excavation est surévaluée de 50 m³, merci d'ajuster d'après le carnet de suivi..."
+                className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 min-h-[100px]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200 transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleRejectReport}
+                className="px-4 py-2 bg-rose-600 text-white font-extrabold rounded-xl text-xs hover:bg-rose-700 transition shadow-2xs cursor-pointer"
+              >
+                Confirmer le Renvoi en Brouillon
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
