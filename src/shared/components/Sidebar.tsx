@@ -135,6 +135,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
   const activeAlertsCount = alerts.filter(a => a.status === 'Actif').length;
 
   // Mode Accordéon : Lorsqu'un grand titre est ouvert, toutes les autres sections se ferment automatiquement
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
   const toggleSection = (title: string) => {
     setOpenSections(prev => {
       const isCurrentlyOpen = prev[title];
