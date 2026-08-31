@@ -123,3 +123,4 @@ Les fichiers compilés et optimisés seront générés dans le dossier `dist/`.
 
 ## 📜 Licence & Propriété
 **GEBAT SA** — Tous droits réservés. Système propriétaire de digitalisation BTP.
+"# Gebat360" 
