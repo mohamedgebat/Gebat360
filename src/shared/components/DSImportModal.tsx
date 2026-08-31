@@ -10,6 +10,7 @@ interface DSImportModalProps {
   projectId: string;
   projectName: string;
   projectCode: string;
+  projectContractAmount?: number;
   isOpen: boolean;
   onClose: () => void;
   existingWbsNodes?: WBSNode[];
@@ -107,6 +108,7 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
   projectId,
   projectName,
   projectCode,
+  projectContractAmount = 0,
   isOpen,
   onClose,
   existingWbsNodes = [],
@@ -138,8 +140,6 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
 
   const [parsedDsActivities, setParsedDsActivities] = useState<ParsedDSActivity[]>([]);
 
-  if (!isOpen) return null;
-
   // Flatten existing WBS nodes (DQE) for matching
   const flatExistingWbs = (() => {
     const list: WBSNode[] = [];
@@ -165,32 +165,73 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
 
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const sheetName = wb.SheetNames[0];
-        const ws = wb.Sheets[sheetName];
-        const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
+        const buffer = evt.target?.result;
+        const wb = XLSX.read(buffer, { type: 'array', cellFormulas: true, cellDates: true });
 
-        if (!data || data.length === 0) {
-          alert('Le fichier sélectionné est vide.');
+        if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+          alert('Le fichier sélectionné est vide ou illisible.');
           return;
         }
 
+        // Auto-select sheet with highest table header keyword score
+        let bestSheetName = wb.SheetNames[0];
+        let maxSheetScore = -1;
+        const tableKeywords = /designation|libelle|description|prix|unit|qte|quantite|pu|montant|debourse|ds|marche|unite|article|code/i;
+
+        wb.SheetNames.forEach(name => {
+          const sheet = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_json<any>(sheet, { header: 1, defval: '' });
+          let sheetScore = 0;
+          rows.slice(0, 25).forEach((r: any) => {
+            if (Array.isArray(r)) {
+              r.forEach(cell => {
+                if (tableKeywords.test(String(cell || ''))) sheetScore++;
+              });
+            }
+          });
+          if (sheetScore > maxSheetScore) {
+            maxSheetScore = sheetScore;
+            bestSheetName = name;
+          }
+        });
+
+        const ws = wb.Sheets[bestSheetName];
+        const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1, raw: true, defval: '' });
+
+        if (!data || data.length === 0) {
+          alert('La feuille sélectionnée ne contient aucune donnée.');
+          return;
+        }
+
+        // Smart Header Detection: Scan top 25 rows to identify the exact table header row
         let headerIndex = 0;
-        for (let i = 0; i < Math.min(data.length, 10); i++) {
-          if (Array.isArray(data[i]) && data[i].some((cell: any) => typeof cell === 'string' && String(cell).trim().length > 0)) {
+        let maxRowScore = -1;
+
+        for (let i = 0; i < Math.min(data.length, 25); i++) {
+          const row = data[i];
+          if (!Array.isArray(row)) continue;
+          let rowScore = 0;
+          row.forEach(cell => {
+            const str = String(cell || '').trim();
+            if (tableKeywords.test(str)) rowScore += 2;
+            else if (str.length > 0) rowScore += 0.2;
+          });
+          if (rowScore > maxRowScore) {
+            maxRowScore = rowScore;
             headerIndex = i;
-            break;
           }
         }
 
-        const fileHeaders = (data[headerIndex] || []).map((h: any, colIdx: number) => {
+        const rawHeaderRow = data[headerIndex] || [];
+        const fileHeaders = rawHeaderRow.map((h: any, colIdx: number) => {
           const str = String(h || '').trim();
           return str.length > 0 ? str : `[Colonne ${colIdx + 1}]`;
         });
         setHeaders(fileHeaders);
 
-        const rowsData = data.slice(headerIndex + 1).filter((r: any) => Array.isArray(r) && r.some((c: any) => c !== undefined && c !== null && String(c).trim() !== ''));
+        const rowsData = data.slice(headerIndex + 1).filter((r: any) =>
+          Array.isArray(r) && r.some((c: any) => c !== undefined && c !== null && String(c).trim() !== '')
+        );
         setRawRows(rowsData);
 
         // Robust auto-detection of column headers
@@ -243,7 +284,7 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
       }
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const processPreview = () => {
@@ -278,15 +319,19 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
       let dsMarketAmount = amtMktIdx >= 0 ? parseCleanNumber(row[amtMktIdx]) : 0;
       if (dsMarketAmount === 0 && qty > 0 && puMkt > 0) dsMarketAmount = Math.round(qty * puMkt);
 
-      // Extract ONLY DS amounts from the DS file!
+      // Extraction précise des montants DS depuis le fichier Excel
       let amtDs = parseCleanNumber(amtDsIdx >= 0 ? row[amtDsIdx] : 0);
       let puDs = parseCleanNumber(puDsIdx >= 0 ? row[puDsIdx] : 0);
       if (amtDs === 0 && puDs > 0 && qty > 0) amtDs = Math.round(qty * puDs);
+      if (puDs === 0 && amtDs > 0 && qty > 0) puDs = Math.round(amtDs / qty);
 
-      // Search matching DQE node to get OFFICIAL MARKET AMOUNT
+      // Skip row if completely empty
+      if (amtDs === 0 && puDs === 0 && qty === 0 && !description) return;
+
+      // Recherche du nœud DQE contractuel correspondant
       const matchedDqeNode = flatExistingWbs.find(w =>
-        (w.priceNo && w.priceNo.trim().toUpperCase() === rawPriceNo.toUpperCase()) ||
-        w.code.trim().toUpperCase() === rawPriceNo.toUpperCase() ||
+        (w.priceNo && rawPriceNo && w.priceNo.trim().toUpperCase() === rawPriceNo.toUpperCase()) ||
+        (w.code && rawPriceNo && w.code.trim().toUpperCase() === rawPriceNo.toUpperCase()) ||
         (w.name && description && description.length > 3 && w.name.toLowerCase().includes(description.toLowerCase()))
       );
 
@@ -294,58 +339,27 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
         ? Math.round(Number(matchedDqeNode.contractAmount || (matchedDqeNode.contractUnitPrice * matchedDqeNode.contractQty) || 0))
         : (dsMarketAmount > 0 ? dsMarketAmount : 0);
 
-      const isParentRow = Boolean(rawPriceNo && (dqeMarketAmount > 0 || /^\d+(\.\d+)*/.test(rawPriceNo)));
+      const priceNo = rawPriceNo || `PX-${itemsMap.length + 1}`;
+      const item: ParsedDSActivity = {
+        id: `ds-act-${itemsMap.length + 1}`,
+        priceNo,
+        description: description || `Activité N°${priceNo}`,
+        unit: unit || 'U',
+        quantity: qty || 1,
+        marketUnitPrice: matchedDqeNode?.contractUnitPrice || puMkt || (qty > 0 ? Math.round(dqeMarketAmount / qty) : 0),
+        dqeMarketAmount,
+        dsMarketAmount,
+        marketAmount: dqeMarketAmount > 0 ? dqeMarketAmount : dsMarketAmount,
+        dsUnitPrice: puDs,
+        dsAmount: amtDs, // Montant DS extrait du fichier Excel
+        theoreticalMargin: 0,
+        marginRate: 0,
+        fileType: fileTypeDetected,
+        matchStatus: matchedDqeNode ? (hasExistingDqe ? 'DQE' : 'SANS_DQE') : 'SANS_DQE',
+        status: 'Conforme'
+      };
 
-      if (isParentRow) {
-        currentParent = {
-          id: `ds-act-${itemsMap.length + 1}`,
-          priceNo: rawPriceNo,
-          description: description || `Activité N°${rawPriceNo}`,
-          unit: unit || 'U',
-          quantity: qty || 1,
-          marketUnitPrice: matchedDqeNode?.contractUnitPrice || puMkt || (qty > 0 ? Math.round(dqeMarketAmount / qty) : 0),
-          dqeMarketAmount,
-          dsMarketAmount,
-          marketAmount: dqeMarketAmount,
-          dsUnitPrice: puDs,
-          dsAmount: amtDs, // Extracted from DS file (will accumulate from sub-resources if 0)
-          theoreticalMargin: 0,
-          marginRate: 0,
-          fileType: fileTypeDetected,
-          matchStatus: hasExistingDqe ? 'DQE' : 'SANS_DQE',
-          status: 'Conforme'
-        };
-
-        itemsMap.push(currentParent);
-      } else if (currentParent && (amtDs > 0 || description)) {
-        // Sub-resource row under currentParent -> Add its DS cost to currentParent
-        currentParent.dsAmount += amtDs;
-        if (currentParent.quantity > 0) {
-          currentParent.dsUnitPrice = Math.round(currentParent.dsAmount / currentParent.quantity);
-        }
-      } else if (!currentParent) {
-        // Standalone DS activity row
-        const priceNo = rawPriceNo || `PX-${itemsMap.length + 1}`;
-        const item: ParsedDSActivity = {
-          id: `ds-act-${itemsMap.length + 1}`,
-          priceNo,
-          description: description || `Prix N°${priceNo}`,
-          unit: unit || 'U',
-          quantity: qty || 1,
-          marketUnitPrice: puMkt,
-          dqeMarketAmount: dsMarketAmount,
-          dsMarketAmount,
-          marketAmount: dsMarketAmount,
-          dsUnitPrice: puDs,
-          dsAmount: amtDs,
-          theoreticalMargin: 0,
-          marginRate: 0,
-          fileType: fileTypeDetected,
-          matchStatus: 'SANS_DQE',
-          status: 'Conforme'
-        };
-        itemsMap.push(item);
-      }
+      itemsMap.push(item);
     });
 
     // Re-calculate margins and match statuses
@@ -358,18 +372,28 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
     setStep('preview');
   };
 
-  // Exact whole integer calculations
+  // Somme exacte et certifiée à 100% calculée à partir des lignes d'activités affichées dans le tableau
   const totalDsSum = Math.round(parsedDsActivities.reduce((s, a) => s + (a.dsAmount || 0), 0));
 
-  const officialDqeMasterTotal = Math.round(
-    flatExistingWbs.filter(w => Number(w.contractAmount || 0) > 0).reduce((s, w) => s + Number(w.contractAmount || 0), 0)
+  // 1. Cumul des activités feuilles WBS (sans doubler les lignes de sous-totaux/lots)
+  const leafWbsNodes = flatExistingWbs.filter(w => !w.children || w.children.length === 0);
+  const officialDqeLeafSum = Math.round(
+    leafWbsNodes.reduce((s, w) => s + Number(w.contractAmount || (w.contractUnitPrice * w.contractQty) || 0), 0)
   );
 
+  // 2. Montant contractuel officiel du projet
+  const pContractAmount = Math.round(projectContractAmount || 0);
+
+  // 3. Montant Marché DQE Master Officiel Exact (pour TOUS les projets, anciens comme nouveaux)
+  const officialDqeMasterTotal = pContractAmount > 0
+    ? pContractAmount
+    : (officialDqeLeafSum > 0 ? officialDqeLeafSum : 0);
+
   const sumParsedMarket = Math.round(parsedDsActivities.reduce((s, a) => s + (a.marketAmount || 0), 0));
-  
-  const totalMarketSum = officialDqeMasterTotal > 1_000_000_000
+
+  const totalMarketSum = officialDqeMasterTotal > 0
     ? officialDqeMasterTotal
-    : (sumParsedMarket > 0 ? sumParsedMarket : (officialDqeMasterTotal > 0 ? officialDqeMasterTotal : totalDsSum));
+    : (sumParsedMarket > 0 ? sumParsedMarket : totalDsSum);
 
   const totalMarginSum = Math.round(totalMarketSum - totalDsSum);
   const globalMarginRate = totalMarketSum > 0 ? ((totalMarginSum / totalMarketSum) * 100).toFixed(1) : '0';
@@ -392,6 +416,8 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
 
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
@@ -715,10 +741,16 @@ export const DSImportModal: React.FC<DSImportModalProps> = ({
                         <td className="p-2 text-right font-mono font-semibold">{act.quantity.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-mono font-black text-blue-900">{act.dsAmount.toLocaleString('fr-FR')} FCFA</td>
                         <td className="p-2 text-right font-mono font-bold text-emerald-800">
-                          {hasExistingDqe ? (act.dqeMarketAmount > 0 ? `${act.dqeMarketAmount.toLocaleString('fr-FR')} FCFA` : '-') : 'N/A (Sans DQE)'}
+                          {act.dqeMarketAmount > 0
+                            ? `${act.dqeMarketAmount.toLocaleString('fr-FR')} FCFA`
+                            : (act.marketUnitPrice > 0 && act.quantity > 0
+                                ? `${Math.round(act.marketUnitPrice * act.quantity).toLocaleString('fr-FR')} FCFA`
+                                : '—')}
                         </td>
                         <td className="p-2 text-right font-mono text-slate-500">
-                          {act.dsMarketAmount > 0 ? `${act.dsMarketAmount.toLocaleString('fr-FR')} FCFA` : 'N/A'}
+                          {act.dsMarketAmount > 0
+                            ? `${act.dsMarketAmount.toLocaleString('fr-FR')} FCFA`
+                            : (act.dqeMarketAmount > 0 ? `${act.dqeMarketAmount.toLocaleString('fr-FR')} FCFA` : '—')}
                         </td>
                         <td className="p-2 text-center whitespace-nowrap">
                           {act.matchStatus === 'ÉCART' ? (

@@ -37,57 +37,21 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
-  // ALERTES RÉELLES CONSOLIDÉES (DU CONTEXTE BDD + ANOMALIES CALCULÉES EN TEMPS RÉEL)
+  // ALERTES RÉELLES CONSOLIDÉES DE LA BASE DE DONNÉES
   const consolidatedAlerts = useMemo(() => {
-    const list: SystemAlert[] = [...alerts];
+    return alerts || [];
+  }, [alerts]);
 
-    // 1. Détection automatique des Demandes d'Achat (DA) en attente > 48h
-    purchaseRequests.forEach(da => {
-      if (da.status === 'EN_ATTENTE_VALIDATION' && !list.some(a => a.id === `ALT-DA-${da.id}`)) {
-        list.push({
-          id: `ALT-DA-${da.id}`,
-          code: da.code,
-          timestamp: da.createdAt || new Date().toISOString(),
-          module: 'Achats',
-          category: 'Achats',
-          severity: 'Majeure',
-          title: `Demande d'Achat ${da.code} en attente de validation par ${da.applicant}`,
-          description: `Demande d'achat de ${da.items?.length || 1} article(s) pour le projet ${da.projectId} en attente de signature.`,
-          project: da.projectId,
-          wbs: da.wbsId || '02.01 Déblai et Achats',
-          impact: `Bloque la commande de matériaux sur le chantier (${(da.estimatedTotalCostFCFA || 2500000).toLocaleString('fr-FR')} FCFA)`,
-          date: da.createdAt ? new Date(da.createdAt).toLocaleString('fr-FR') : 'Date récente',
-          status: 'Actif'
-        });
-      }
-    });
+  const totalOverrunAmount = useMemo(() => {
+    return purchaseRequests
+      .filter(da => da.budgetCheck?.isOverBudget)
+      .reduce((sum, da) => sum + (da.budgetCheck?.overBudgetAmount || 0), 0);
+  }, [purchaseRequests]);
 
-    // 2. Détection automatique des Ruptures et Seuils de Stock Critiques
-    stockItems.forEach(item => {
-      if (item.currentQuantity <= item.minThreshold && !list.some(a => a.id === `ALT-STK-${item.id}`)) {
-        const isDepleted = item.currentQuantity === 0;
-        list.push({
-          id: `ALT-STK-${item.id}`,
-          code: item.code,
-          timestamp: new Date().toISOString(),
-          module: 'Stock',
-          category: 'Stock',
-          severity: isDepleted ? 'Critique' : 'Majeure',
-          title: isDepleted
-            ? `Rupture de stock totale : ${item.designation} (${item.warehouse})`
-            : `Stock sous le seuil critique : ${item.designation} (${item.warehouse})`,
-          description: `Emplacement: ${item.location || 'Dépôt principal'}. Quantité disponible: ${item.currentQuantity} ${item.unit}.`,
-          project: 'P-003 Lycée Technique de Bouaké',
-          wbs: `Entrepôt ${item.warehouse}`,
-          impact: `Reste ${item.currentQuantity} ${item.unit} (Seuil alerte: ${item.minThreshold} ${item.unit})`,
-          date: new Date().toLocaleDateString('fr-FR'),
-          status: 'Actif'
-        });
-      }
-    });
-
-    return list;
-  }, [alerts, purchaseRequests, stockItems]);
+  const criticalStockName = useMemo(() => {
+    const found = stockItems.find(i => Number(i.currentStock || 0) <= Number(i.minQuantity || 0));
+    return found ? found.name : 'Aucune rupture';
+  }, [stockItems]);
 
   // Marquer une alerte comme résolue
   const handleResolveAlert = (id: string, title: string) => {
@@ -192,7 +156,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
           )}
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
-              CENTRE D'ALERTES ET ANOMALIES MÉTIEUR (CÔTE D'IVOIRE)
+              CENTRE D'ALERTES ET ANOMALIES MÉTIER
             </h1>
             <div className="relative">
               <Bell size={22} className="text-red-500 animate-pulse" />
@@ -275,7 +239,9 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">DÉPASSEMENTS BUDGET</span>
             <span className="text-2xl sm:text-3xl font-black text-purple-700 block mt-1">{budgetOverrunCount}</span>
-            <span className="text-[11px] text-purple-600 font-extrabold">Total : +4 280 000 FCFA</span>
+            <span className="text-[11px] text-purple-600 font-extrabold">
+              {totalOverrunAmount > 0 ? `Total : +${totalOverrunAmount.toLocaleString('fr-FR')} FCFA` : 'Aucun dépassement'}
+            </span>
           </div>
           <div className="w-12 h-12 bg-purple-100 text-purple-700 rounded-2xl flex items-center justify-center font-bold shadow-xs">
             <AlertOctagon size={24} />
@@ -287,7 +253,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">RUPTURES DE STOCK</span>
             <span className="text-2xl sm:text-3xl font-black text-amber-600 block mt-1">{stockAlertsCount}</span>
-            <span className="text-[11px] text-amber-700 font-bold">Ciment CPJ 45 Bouaké</span>
+            <span className="text-[11px] text-amber-700 font-bold truncate block max-w-[140px]">{criticalStockName}</span>
           </div>
           <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center font-bold shadow-xs">
             <Clock size={24} />

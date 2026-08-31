@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
+import { hasPermission, hasProjectAccess } from '../../core/permissions';
 import {
   ShoppingBag, Plus, Trash2, CheckCircle2, AlertTriangle, ShieldCheck,
   ArrowLeft, Calendar, FileText, Download, ChevronRight, ChevronDown, Paperclip,
@@ -18,21 +19,36 @@ const formatNumber = (val: number): string => {
   return Math.round(val).toLocaleString('fr-FR').replace(/\s/g, ' ');
 };
 
-export const ProcurementDAModule: React.FC = () => {
+const formatNumberQty = (val: number | undefined | null): string => {
+  if (val === undefined || val === null || isNaN(val)) return '0';
+  const rounded = Math.round(Number(val) * 100) / 100;
+  return rounded.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, ' ');
+};
+
+interface ProcurementDAModuleProps {
+  onNavigateView?: (viewKey: string) => void;
+}
+
+export const ProcurementDAModule: React.FC<ProcurementDAModuleProps> = ({ onNavigateView }) => {
   const { projects = [], wbsMap = {}, purchaseRequests = [], stockItems = [], createDA, addAuditLog, addAlert, currentUser, setActiveTab } = useAppState();
 
+  // Filtrage des projets autorisés par le périmètre RBAC de l'utilisateur
+  const authorizedProjects = useMemo(() => {
+    return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));
+  }, [projects, currentUser]);
+
   // 1. PROJET SÉLECTIONNÉ (STRICTEMENT RÉEL DEPUIS LA BASE)
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || projects[0]?.code || '');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(authorizedProjects[0]?.id || authorizedProjects[0]?.code || '');
   
   useEffect(() => {
-    if (!selectedProjectId && projects.length > 0) {
-      setSelectedProjectId(projects[0]?.id || projects[0]?.code || '');
+    if (!selectedProjectId && authorizedProjects.length > 0) {
+      setSelectedProjectId(authorizedProjects[0]?.id || authorizedProjects[0]?.code || '');
     }
-  }, [projects, selectedProjectId]);
+  }, [authorizedProjects, selectedProjectId]);
 
   const selectedProject = useMemo(() => {
-    return projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0] || null;
-  }, [projects, selectedProjectId]);
+    return authorizedProjects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || authorizedProjects[0] || null;
+  }, [authorizedProjects, selectedProjectId]);
 
   // Toggle Vue Formulaire / Liste des DA enregistrées
   const [viewMode, setViewMode] = useState<'form' | 'list'>('form');
@@ -246,6 +262,16 @@ export const ProcurementDAModule: React.FC = () => {
     }
   };
 
+  const resetForm = () => {
+    setRequestLines([]);
+    setSelectedWbsCode('');
+    setJustification('');
+    setLocationZone('');
+    setAttachedFile(null);
+    setRequesterComment('');
+    setPriority('Moyenne');
+  };
+
   const handleSaveDraft = () => {
     const timeStr = getNowTimeStr();
     setLastSaveTime(timeStr);
@@ -281,6 +307,8 @@ export const ProcurementDAModule: React.FC = () => {
         details: `Demande d'achat ${newDaCode} enregistrée comme Brouillon pour ${formatFCFA(totalEstimatedAmount)}`
       });
     }
+    resetForm();
+    setViewMode('list');
     alert(`✅ Demande d'Achat ${newDaCode} enregistrée comme Brouillon avec succès !`);
   };
 
@@ -321,6 +349,12 @@ export const ProcurementDAModule: React.FC = () => {
       });
     }
 
+    resetForm();
+    if (onNavigateView) {
+      onNavigateView('procurement-validation');
+    } else {
+      setViewMode('list');
+    }
     alert(`🚀 Demande d'Achat ${newDaCode} transmise avec succès au circuit de validation (Chef Travaux ➔ Responsable Achats ➔ DP) !`);
   };
 
@@ -736,9 +770,9 @@ export const ProcurementDAModule: React.FC = () => {
                             />
                             {line.plannedQty > 0 && (
                               <div className="text-[10px] text-slate-500 font-semibold flex items-center justify-between gap-1 pt-0.5">
-                                <span title="Quantité inscrite au Déboursé Sec">Prévu: <b>{line.plannedQty}</b></span>
+                                <span title="Quantité inscrite au Déboursé Sec">Prévu: <b>{formatNumberQty(line.plannedQty)}</b></span>
                                 <span className={`px-1.5 py-0.5 rounded-full font-extrabold text-[9px] ${line.remainingQty > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                  Solde: {line.remainingQty} {line.unit}
+                                  Solde: {formatNumberQty(line.remainingQty)} {line.unit}
                                 </span>
                               </div>
                             )}

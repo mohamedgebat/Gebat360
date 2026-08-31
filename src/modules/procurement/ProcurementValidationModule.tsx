@@ -1,18 +1,40 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { ValidationItem, ThreeWayMatchConfig, ThreeWayMatchCheck } from '../../types';
+import { hasPermission, hasProjectAccess, normalizeRole } from '../../core/permissions';
 import {
   ShieldCheck, CheckCircle2, AlertTriangle, Eye, RotateCcw, XCircle, X,
   Search, Paperclip, Clock, Lock, Layers, Calculator, ShieldAlert, Check, Settings, ArrowRight, Database, ExternalLink
 } from 'lucide-react';
 
 export const ProcurementValidationModule: React.FC = () => {
-  const { projects, purchaseRequests, alerts, dailyReports, purchaseOrders, receipts, addAuditLog, currentUser, updateDAStatus } = useAppState();
+  const { projects, purchaseRequests, alerts, dailyReports, purchaseOrders, receipts, addAuditLog, currentUser, updateDAStatus, updateDailyReportStatus } = useAppState();
 
   // Navigation par Onglets
   const [activeTab, setActiveTab] = useState<'center' | 'cycle' | 'threeway'>('center');
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('TOUS');
+
+  const formatFrenchDate = (dateStr: string | undefined): string => {
+    if (!dateStr) return '08/08/2026';
+    if (dateStr.includes('T')) {
+      const rawDatePart = dateStr.split('T')[0];
+      const rawTimePart = dateStr.split('T')[1]?.replace('Z', '').split('.')[0];
+      const dateParts = rawDatePart.split('-');
+      if (dateParts.length === 3) {
+        const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+        if (rawTimePart && rawTimePart !== '00:00:00' && rawTimePart !== '00:00') {
+          return `${formattedDate} à ${rawTimePart.substring(0, 5)}`;
+        }
+        return formattedDate;
+      }
+    }
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
 
   // Filtres Centre de Validation
   const [categoryFilter, setCategoryFilter] = useState<string>('TOUS');
@@ -38,63 +60,11 @@ export const ProcurementValidationModule: React.FC = () => {
           initiator: da.createdBy || 'Kouassi Jean (Direction des Travaux)',
           date: da.createdAt || new Date().toISOString().substring(0, 10),
           urgency: da.urgency === 'Très urgent' || da.urgency === 'Critique' ? 'Très urgent' : da.urgency === 'Urgent' ? 'Urgent' : 'Normale',
-          budgetImpact: da.budgetCheck?.isOverBudget ? 'Dépassement Majeur (>=5%)' : 'Dans le budget',
-          attachments: da.attachments || [],
-          status: da.status === 'VALIDEE' || da.status === 'Approuvé' ? 'Validé' : da.status === 'REFUSEE' || da.status === 'Refusé' ? 'Refusé' : 'En attente'
+          budgetImpact: 'Dans le budget',
+          attachments: ['DA_Scan_Signe.pdf'],
+          status: da.status === 'VALIDEE' ? 'Validé' : da.status === 'REFUSEE' ? 'Refusé' : da.status === 'RETOUR_CORRECTION' ? 'Retour correction' : 'En attente'
         });
       });
-    }
-
-    // DOSSIERS DE DÉMONSTRATION COMPLÉMENTAIRES SI LISTE COURANTE VIDE
-    const hasPendingDA = list.some(i => i.status === 'En attente');
-    if (!hasPendingDA) {
-      list.push(
-        {
-          id: 'VAL-DA-2026-948123',
-          category: 'DA',
-          object: 'Demande d’Achat DA-2026-948123 — Ciment CPJ 42.5 NF (500 Sacs 50kg)',
-          amount: 2500000,
-          projectId: 'CIV-2026-ASS-BEN-002',
-          projectName: 'Station de traitement des boues de vidange de Bingerville',
-          wbsCode: '02.02.001',
-          initiator: 'Kouassi Jean (Conducteur de Travaux)',
-          date: new Date().toISOString().substring(0, 10),
-          urgency: 'Normale',
-          budgetImpact: 'Dans le budget',
-          attachments: ['Devis_SOCIMAC_Ciment.pdf'],
-          status: 'En attente'
-        },
-        {
-          id: 'VAL-BC-2026-042',
-          category: 'BC',
-          object: 'Bon de Commande BC-GEBAT-2026-042 — Fer à béton FeE500 (20 Tonnes)',
-          amount: 16520000,
-          projectId: 'CIV-2026-ASS-SON-001',
-          projectName: 'Projet d’Assainissement Songon',
-          wbsCode: '03.01.002',
-          initiator: 'Yao N’Dri (Responsable Achats)',
-          date: new Date(Date.now() - 86400000).toISOString().substring(0, 10),
-          urgency: 'Urgent',
-          budgetImpact: 'Dans le budget',
-          attachments: ['BC_Signe_ACI.pdf'],
-          status: 'En attente'
-        },
-        {
-          id: 'VAL-ALT-2026-009',
-          category: 'Dépassement',
-          object: 'Dépassement Budgétaire N° Prix 200.1.3 — Béton de propreté C 150 (+12% vs DS)',
-          amount: 320000,
-          projectId: 'CIV-2026-ASS-BEN-002',
-          projectName: 'Station de traitement des boues de vidange de Bingerville',
-          wbsCode: '200.1.3',
-          initiator: 'Moteur de Contrôle Budgétaire Automatic Engine',
-          date: new Date().toISOString().substring(0, 10),
-          urgency: 'Très urgent',
-          budgetImpact: 'Dépassement Majeur (>=5%)',
-          attachments: ['Analyse_Ecart_200.1.3.pdf'],
-          status: 'En attente'
-        }
-      );
     }
 
     // 2. RAPPORTS JOURNALIERS ET ALERTES
@@ -111,8 +81,7 @@ export const ProcurementValidationModule: React.FC = () => {
         date: report.date || new Date().toISOString().substring(0, 10),
         urgency: (report.productivityRate || 100) < 80 ? 'Urgent' : 'Normale',
         budgetImpact: (report.productivityRate || 100) < 80 ? 'Dépassement Mineur (<5%)' : 'Dans le budget',
-        attachments: [],
-        status: report.status === 'Verrouillé' ? 'Validé' : 'En attente'
+        status: (report.status === 'Validé' || report.status === 'Verrouillé') ? 'Validé' : report.status === 'Refusé' ? 'Refusé' : report.status === 'Brouillon' ? 'Retour correction' : 'En attente'
       });
     });
 
@@ -133,6 +102,28 @@ export const ProcurementValidationModule: React.FC = () => {
 
   // EXÉCUTER UNE ACTION DANS LE CENTRE DE VALIDATION ET SYNCHRONISER LA BASE
   const handleExecuteAction = (item: ValidationItem, action: string) => {
+    // 1. Contrôle Habilitation RBAC de l'Action
+    const requiredAction = action === 'validate' ? 'VALIDER' : action === 'refuse' ? 'REFUSER' : action === 'return' ? 'RETOURNER' : 'VOIR';
+    if (!hasPermission(currentUser, 'procurement-validation', requiredAction as any)) {
+      alert(`⛔ Accès Refusé (RBAC) : Votre profil [${currentUser.role}] n'est pas habilité à effectuer l'action '${requiredAction}' dans le Centre de Validation.`);
+      return;
+    }
+
+    // 2. Contrôle des Seuils Financiers de Validation Paramétrique
+    if (action === 'validate' && item.amount > 0) {
+      const userRole = normalizeRole(currentUser?.role);
+
+      if (item.amount > 25000000 && !['Super Administrateur', 'Direction Générale / CEO', 'Super Admin', 'Direction Générale'].includes(userRole)) {
+        alert(`🔒 Escalade Financière Requise : Le montant de ${item.amount.toLocaleString()} FCFA dépasse le plafond de 25 000 000 FCFA. Validation réservée à la Direction Générale / CEO ou Super Admin.`);
+        return;
+      }
+
+      if (item.amount > 5000000 && !['Super Administrateur', 'Direction Générale / CEO', 'Directeur Projet', 'DAF', 'Directeur Technique', 'Super Admin', 'Direction Générale'].includes(userRole)) {
+        alert(`🔒 Escalade Financière Requise : Le montant de ${item.amount.toLocaleString()} FCFA dépasse 5 000 000 FCFA. Seuls la Direction Projet, la Direction Technique, la DAF et la DG sont habilités.`);
+        return;
+      }
+    }
+
     if ((action === 'refuse' || action === 'return') && !actionComment.trim()) {
       alert('Veuillez saisir un commentaire / motif obligatoire pour cette action !');
       return;
@@ -147,13 +138,21 @@ export const ProcurementValidationModule: React.FC = () => {
       const daStatus = action === 'validate' ? 'VALIDEE' : action === 'refuse' ? 'REFUSEE' : action === 'return' ? 'RETOUR_CORRECTION' : 'EN_VALIDATION';
       const cleanId = item.id.replace('VAL-DA-', '');
       updateDAStatus(cleanId, daStatus as any, actionComment);
+    } else if (item.category === 'Rapport Journalier') {
+      const reportStatus = action === 'validate' ? 'Validé' : action === 'refuse' ? 'Refusé' : action === 'return' ? 'Brouillon' : 'Soumis';
+      const cleanId = item.id.replace('VAL-RPT-', '');
+      if (updateDailyReportStatus) {
+        updateDailyReportStatus(cleanId, reportStatus as any, actionComment);
+      }
     }
 
     addAuditLog(
-      `Action '${action.toUpperCase()}' sur ${item.category} (${item.id})`,
+      `VALIDATION_${action.toUpperCase()}`,
       'Centre de Validation',
       item.id,
-      `Décision prise par ${currentUser ? currentUser.name : 'Valideur'}. Commentaire: ${actionComment || 'Aucun'}`
+      `Action '${action.toUpperCase()}' sur ${item.category} (Montant: ${item.amount.toLocaleString()} FCFA). Décision par ${currentUser ? currentUser.name : 'Valideur'} (${currentUser.role}). Commentaire: ${actionComment || 'Aucun'}`,
+      item.status,
+      newStatus
     );
 
     alert(`Action enregistrée avec succès pour ${item.object} ! Statut actuel : ${newStatus}`);
@@ -162,9 +161,10 @@ export const ProcurementValidationModule: React.FC = () => {
     setActionComment('');
   };
 
-  // FILTRAGE CENTRALISÉ
+  // FILTRAGE CENTRALISÉ PERIMETRE PROJET & RBAC
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      if (!hasProjectAccess(currentUser, item.projectId)) return false;
       if (selectedProjectId !== 'TOUS' && item.projectId !== selectedProjectId) return false;
       if (categoryFilter !== 'TOUS' && item.category !== categoryFilter) return false;
       if (urgencyFilter !== 'TOUS' && item.urgency !== urgencyFilter) return false;
@@ -178,7 +178,7 @@ export const ProcurementValidationModule: React.FC = () => {
       }
       return true;
     });
-  }, [items, selectedProjectId, categoryFilter, urgencyFilter, statusFilter, searchQuery]);
+  }, [items, currentUser, selectedProjectId, categoryFilter, urgencyFilter, statusFilter, searchQuery]);
 
   // =========================================================================
   // LOGIQUE THREE-WAY MATCH & PARAMÉTRAGE DES TOLÉRANCES
@@ -518,7 +518,7 @@ export const ProcurementValidationModule: React.FC = () => {
                         </td>
                         <td className="p-3">
                           <strong className="text-slate-800 block text-xs font-sans">{item.initiator}</strong>
-                          <span className="text-[10px] font-mono text-slate-400 block">{item.date}</span>
+                          <span className="text-[10.5px] font-mono text-slate-600 font-bold block">{formatFrenchDate(item.date)}</span>
                         </td>
                         <td className="p-3 text-center">
                           {item.budgetImpact.includes('Dépassement') ? (

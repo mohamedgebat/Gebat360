@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { hasProjectAccess } from '../../core/permissions';
 import { History, ShieldCheck, Download, Lock, Search, Filter, RefreshCw } from 'lucide-react';
 
 export const AuditTrailModule: React.FC = () => {
-  const { auditLogs } = useAppState();
+  const { auditLogs, currentUser } = useAppState();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedModuleFilter, setSelectedModuleFilter] = useState('TOUS');
 
   const filteredLogs = (auditLogs || []).filter(log => {
+    // Filtrage Périmètre Projet si l'objet ou le détail référence un projet
+    if (log.objectRef && log.objectRef.startsWith('CIV-') && !hasProjectAccess(currentUser, log.objectRef)) {
+      return false;
+    }
+
     const userStr = String(log.user || '').toLowerCase();
     const actionStr = String(log.action || '').toLowerCase();
     const refStr = String(log.objectRef || '').toLowerCase();

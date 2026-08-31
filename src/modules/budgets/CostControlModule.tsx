@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { ContractAmendment, AmendmentStatus } from '../../types';
 import { DataInsight } from '../../shared/components/DataInsight';
+import { hasPermission, hasProjectAccess } from '../../core/permissions';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { REAL_BINGERVILLE_PLANNING_TASKS } from '../../core/database/realBingervillePlanningData';
@@ -14,8 +15,12 @@ import {
 export const CostControlModule: React.FC = () => {
   const { projects, wbsMap, purchaseRequests, stockMovements, dailyReports, addAuditLog, currentUser } = useAppState();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
-  const selectedProject = projects.find(p => p.id === selectedProjectId) || projects[0];
+  const authorizedProjects = useMemo(() => {
+    return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));
+  }, [projects, currentUser]);
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(authorizedProjects[0]?.id || authorizedProjects[0]?.code || '');
+  const selectedProject = authorizedProjects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || authorizedProjects[0];
 
   if (projects.length === 0 || !selectedProject) {
     return (
@@ -43,12 +48,13 @@ export const CostControlModule: React.FC = () => {
   const [inspectorTab, setInspectorTab] = useState<'general' | 'budget' | 'commitments' | 'actuals' | 'consumption' | 'production' | 'forecast' | 'history'>('consumption');
 
   // VALEUR CONTRACTUELLE DE RÉFÉRENCE DE GEBAT SA
-  const contractValueRef = useMemo(() => selectedProject.contractAmount || 18500000000, [selectedProject]);
+  const contractValueRef = useMemo(() => Number(selectedProject.contractAmount || 0), [selectedProject]);
 
   // GESTION DYNAMIQUE DES AVENANTS (PARTIE 5.30 : SIGNÉ, APPROUVÉ_NON_SIGNÉ, EN_NÉGOCIATION, POTENTIEL)
   const [amendments, setAmendments] = useState<ContractAmendment[]>([]);
 
   React.useEffect(() => {
+    const amt = Number(selectedProject.contractAmount || 0);
     setAmendments([
       {
         id: `AV-${selectedProject.code}-001`,
@@ -56,7 +62,7 @@ export const CostControlModule: React.FC = () => {
         projectId: selectedProject.id,
         wbsCode: `${selectedProject.code} / 03`,
         title: `Avenant N°1 — Extension radiers & voiles ${selectedProject.name}`,
-        amount: Math.round((selectedProject.contractAmount || 5000000000) * 0.025),
+        amount: Math.round(amt * 0.025),
         status: 'Signé',
         isIncludedInOfficialMargin: true,
         signedDate: '2026-04-15',
@@ -68,7 +74,7 @@ export const CostControlModule: React.FC = () => {
         projectId: selectedProject.id,
         wbsCode: `${selectedProject.code} / 02`,
         title: `Avenant N°2 — Adaptation géotechnique & blindage`,
-        amount: Math.round((selectedProject.contractAmount || 5000000000) * 0.01),
+        amount: Math.round(amt * 0.01),
         status: 'Approuvé non signé',
         isIncludedInOfficialMargin: false,
         justification: 'Approbation de principe de la Mission de Contrôle.',
@@ -79,7 +85,7 @@ export const CostControlModule: React.FC = () => {
         projectId: selectedProject.id,
         wbsCode: `${selectedProject.code} / 01`,
         title: `Avenant N°3 — Travaux supplémentaires voirie d'accès`,
-        amount: Math.round((selectedProject.contractAmount || 5000000000) * 0.015),
+        amount: Math.round(amt * 0.015),
         status: 'En négociation',
         isIncludedInOfficialMargin: false,
         justification: 'Mémoire réclamation en cours d’examen par l’Ingénieur Conseil.',

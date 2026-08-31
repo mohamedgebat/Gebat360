@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { CostNature, WBSNode, PurchaseRequest, StockMovement, DSResourceItem, DQEItem } from '../../types';
+import { hasPermission, hasProjectAccess } from '../../core/permissions';
 import { DQEImportModal } from '../../shared/components/DQEImportModal';
 import { DataInsight } from '../../shared/components/DataInsight/DataInsight';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
@@ -35,20 +36,12 @@ const formatCleanDateFr = (dStr?: string): string => {
   return dStr;
 };
 
-// Formateur monétaire compact en Mds / M FCFA conforme à l'image de référence media_1787752843706.png
+// Formateur monétaire exact en chiffres complets (sans Mds/M) pour les cartes KPIs
 const formatCompactMds = (amount: number | undefined | null, showFcfa: boolean = false): string => {
   if (amount === undefined || amount === null || isNaN(amount)) return showFcfa ? '0 FCFA' : '0';
-  const absVal = Math.abs(amount);
-  const sign = amount < 0 ? '-' : amount > 0 ? '+' : '';
-
-  if (absVal >= 1_000_000_000) {
-    const formatted = (absVal / 1_000_000_000).toFixed(2).replace('.', ',');
-    return `${sign}${formatted} Mds${showFcfa ? ' FCFA' : ''}`;
-  } else if (absVal >= 1_000_000) {
-    const formatted = (absVal / 1_000_000).toFixed(2).replace('.', ',');
-    return `${sign}${formatted} M${showFcfa ? ' FCFA' : ''}`;
-  }
-  return `${sign}${Math.round(absVal).toLocaleString('fr-FR')}${showFcfa ? ' FCFA' : ''}`;
+  const rounded = Math.round(amount);
+  const formatted = rounded.toLocaleString('fr-FR');
+  return showFcfa ? `${formatted} FCFA` : formatted;
 };
 
 const formatFCFA = (val: number | undefined | null) => {
@@ -86,7 +79,11 @@ interface WbsHierarchyNode {
   children?: WbsHierarchyNode[];
 }
 
-export const WbsModule: React.FC = () => {
+interface WbsModuleProps {
+  onBackToProject?: () => void;
+}
+
+export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
   const {
     projects,
     wbsMap,
@@ -103,11 +100,15 @@ export const WbsModule: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const authorizedProjects = useMemo(() => {
+    return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));
+  }, [projects, currentUser]);
+
   // Projet sélectionné par défaut (dynamique depuis le contexte global)
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(authorizedProjects[0]?.id || authorizedProjects[0]?.code || '');
   const selectedProject = useMemo(() => {
-    return projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0];
-  }, [projects, selectedProjectId]);
+    return authorizedProjects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || authorizedProjects[0];
+  }, [authorizedProjects, selectedProjectId]);
 
   // State DQE Import Modal (Section 2 & 3 du cahier des charges)
   const [showDqeImportModal, setShowDqeImportModal] = useState(false);
@@ -459,7 +460,7 @@ export const WbsModule: React.FC = () => {
     }
 
     const calculatedTotalMarche = Number(selectedProject.contractAmount || 0) || dynamicChildren.reduce((s, c) => s + c.contractAmount, 0);
-    const calculatedTotalBudgetDs = dynamicChildren.reduce((s, c) => s + c.budgetDs, 0) || Number(selectedProject.revisedBudget || selectedProject.initialBudget || Math.round(calculatedTotalMarche * 0.80));
+    const calculatedTotalBudgetDs = Number(selectedProject.revisedBudget || selectedProject.initialBudget || 0) || dynamicChildren.reduce((s, c) => s + c.budgetDs, 0);
     const calculatedCommitted = dynamicChildren.reduce((s, c) => s + c.committed, 0);
     const calculatedActualCost = dynamicChildren.reduce((s, c) => s + c.actualCost, 0);
     const calculatedForecast = dynamicChildren.reduce((s, c) => s + (c.forecast || c.budgetDs), 0);
@@ -741,7 +742,7 @@ export const WbsModule: React.FC = () => {
                 context={{ revisedBudget: treeData.budgetDs, initialBudget: treeData.initialBudget, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
-            <div className="text-lg font-black tracking-tight text-slate-900 font-mono">
+            <div className="text-[13.5px] font-black tracking-tight text-slate-900 font-mono">
               {formatCompactMds(treeData.budgetDs, true)}
             </div>
           </div>
@@ -763,7 +764,7 @@ export const WbsModule: React.FC = () => {
                 context={{ committed: treeData.committed, revisedBudget: treeData.budgetDs, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
-            <div className="text-lg font-black tracking-tight text-slate-900 font-mono">
+            <div className="text-[13.5px] font-black tracking-tight text-slate-900 font-mono">
               {formatCompactMds(treeData.committed, true)}
             </div>
             <div className="text-[11px] font-bold text-emerald-600">
@@ -788,7 +789,7 @@ export const WbsModule: React.FC = () => {
                 context={{ actualCost: treeData.actualCost, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
-            <div className="text-lg font-black tracking-tight text-slate-900 font-mono">
+            <div className="text-[13.5px] font-black tracking-tight text-slate-900 font-mono">
               {formatCompactMds(treeData.actualCost, true)}
             </div>
             <div className="text-[11px] font-bold text-emerald-600">
@@ -841,7 +842,7 @@ export const WbsModule: React.FC = () => {
                 context={{ contractAmount: treeData.contractAmount || (treeData.budgetDs * 1.25), eac: treeData.eac, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
-            <div className="text-lg font-black tracking-tight text-slate-900 font-mono">
+            <div className="text-[13.5px] font-black tracking-tight text-slate-900 font-mono">
               {formatCompactMds((treeData.contractAmount || (treeData.budgetDs * 1.25)) - treeData.eac, true)}
             </div>
             <div className="text-[11px] font-bold text-emerald-600">

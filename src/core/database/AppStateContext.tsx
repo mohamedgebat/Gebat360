@@ -16,7 +16,9 @@ import {
   CostNature,
   CostNatureConfig,
   DEFAULT_COST_NATURES,
-  Site
+  Site,
+  ValidationTask,
+  ValidationTaskStatus
 } from '../../types';
 import { INITIAL_USERS, PERMISSIONS_MATRIX } from '../permissions';
 import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
@@ -51,6 +53,7 @@ interface AppStateContextType {
   receipts: GoodsReceipt[];
   stockMovements: StockMovement[];
   dailyReports: DailyReport[];
+  validationTasks: ValidationTask[];
   alerts: SystemAlert[];
   auditLogs: AuditLog[];
   sites: Site[];
@@ -68,6 +71,11 @@ interface AppStateContextType {
   updateProject: (projectId: string, updatedData: Partial<Project>) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   createDailyReport: (reportData: Omit<DailyReport, 'id' | 'createdAt' | 'reportCode'>) => void;
+  updateDailyReportStatus: (reportId: string, status: any, comment?: string) => void;
+  createValidationTask: (taskData: Omit<ValidationTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateValidationTaskStatus: (taskIdOrReportId: string, status: ValidationTaskStatus, comment?: string) => void;
+  requestLockedReportCorrection: (reportId: string, field: string, oldValue: any, newValue: any, reason: string) => void;
+  approveLockedReportCorrection: (reportId: string, requestId: string) => void;
   importDailyReportsBulk: (reports: Omit<DailyReport, 'id' | 'createdAt' | 'reportCode'>[]) => void;
   updateProjectWBS: (projectId: string, newNodes: WBSNode[]) => Promise<void>;
   createDA: (daData: Omit<PurchaseRequest, 'id' | 'code' | 'createdAt' | 'status' | 'budgetCheck' | 'approvalChain'>) => PurchaseRequest;
@@ -111,15 +119,75 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     checkBackendConnection();
+
+    // Écouteur synchrone d'évènement universel pour synchroniser en temps réel multi-onglets / composants / sessions
+    const syncStateFromStorage = () => {
+      try {
+        const savedReports = localStorage.getItem('gebat_daily_reports');
+        if (savedReports) {
+          const parsed = JSON.parse(savedReports);
+          if (Array.isArray(parsed)) setDailyReports(parsed);
+        }
+        const savedTasks = localStorage.getItem('gebat_validation_tasks');
+        if (savedTasks) {
+          const parsedTasks = JSON.parse(savedTasks);
+          if (Array.isArray(parsedTasks)) setValidationTasks(parsedTasks);
+        }
+        const savedWbs = localStorage.getItem('gebat_wbs');
+        if (savedWbs) {
+          const parsedWbs = JSON.parse(savedWbs);
+          if (parsedWbs) setWbsMap(parsedWbs);
+        }
+        const savedDA = localStorage.getItem('gebat_purchase_requests');
+        if (savedDA) {
+          const parsedDA = JSON.parse(savedDA);
+          if (Array.isArray(parsedDA)) setPurchaseRequests(parsedDA);
+        }
+      } catch (err) {}
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      syncStateFromStorage();
+    };
+
+    const handleCustomStateUpdate = (e: Event) => {
+      syncStateFromStorage();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('gebat_state_updated', handleCustomStateUpdate);
+
+    let bcChannel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bcChannel = new BroadcastChannel('gebat_360_channel');
+        bcChannel.onmessage = () => syncStateFromStorage();
+      } catch (e) {}
+    }
+
+    // Intervalle de synchronisation synchrone continu (Heartbeat 1s) pour garantir l'identité absolue inter-onglets/fenêtres/profils
+    const syncInterval = setInterval(syncStateFromStorage, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('gebat_state_updated', handleCustomStateUpdate);
+      if (bcChannel) {
+        try { bcChannel.close(); } catch (e) {}
+      }
+      clearInterval(syncInterval);
+    };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans le localStorage du navigateur (DATA_VERSION v226)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v336 - Outlier Cost Sanitization & SSOT Financial Margin Restoration)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_08_29_fixed_getDefaultViewForRole_import_v226';
+    const DATA_VERSION = 'v2026_08_31_fix_outlier_cost_sanitization_v336';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
+      localStorage.removeItem('gebat_user_created_reports_backup');
+      localStorage.removeItem('gebat_submitted_reports_permanent_lock');
       localStorage.removeItem('gebat_wbs');
+      localStorage.removeItem('gebat_projects');
       localStorage.removeItem('gebat_stock_items');
       localStorage.removeItem('gebat_stock_movements');
       localStorage.removeItem('gebat_warehouses');
@@ -127,7 +195,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }
 
-  const [currentUser, setCurrentUser] = useState<User>(() => {
+  const [currentUser, setCurrentUserRaw] = useState<User>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('gebat_current_user');
       if (saved) {
@@ -139,6 +207,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return INITIAL_USERS[0];
   });
+
+  const setCurrentUser = (user: User) => {
+    setCurrentUserRaw(user);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('gebat_current_user', JSON.stringify(user));
+        window.dispatchEvent(new Event('gebat_state_updated'));
+      } catch (e) {}
+    }
+  };
 
   const [users, setUsers] = useState<User[]>(() => {
     if (typeof window !== 'undefined') {
@@ -311,21 +389,246 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
     const saved = localStorage.getItem('gebat_daily_reports');
+    const backupRaw = localStorage.getItem('gebat_user_created_reports_backup');
+    const permLockRaw = localStorage.getItem('gebat_submitted_reports_permanent_lock');
+    let loadedReports: DailyReport[] = [];
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 80) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedReports = parsed;
+        }
       } catch (e) {}
     }
-    return REAL_ALL_DAILY_REPORTS;
+
+    if (loadedReports.length === 0 && backupRaw) {
+      try {
+        const backupParsed = JSON.parse(backupRaw);
+        if (Array.isArray(backupParsed) && backupParsed.length > 0) {
+          loadedReports = backupParsed;
+        }
+      } catch (e) {}
+    }
+
+    const testSongonReport: DailyReport = {
+      id: 'REP-TEST-SONGON-2026-08-31',
+      code: 'REP-TEST-SONGON-2026-08-31',
+      projectId: 'CIV-2026-ASS-SON-001',
+      date: '31/08/2026',
+      wbsCode: '03.02.004',
+      activityName: 'Béton armé pour voiles et dalles de la station de Songon',
+      unit: 'm³',
+      plannedQty: 50,
+      targetQty: 50,
+      realizedQty: 50,
+      productivityRate: 100,
+      status: 'Validé',
+      isAccounted: true,
+      accountedAt: '31/08/2026 18:20',
+      submittedBy: 'Kouassi Jean',
+      submittedAt: '31/08/2026 14:00',
+      validatedBy: 'SEA Alphonse (Directeur Projet)',
+      validatedAt: '31/08/2026 18:20',
+      generalComment: 'Validation officielle de test par le Directeur de Projet. Conforme au DQE.',
+      weather: 'Ensoleillé',
+      temperature: '31°C',
+      workShift: 'Jour',
+      locationZone: 'Zone Ouvrage Anoxie',
+      teamLeader: 'Kouassi Jean',
+      consummations: [
+        { article: 'Ciment CPJ 42.5', itemCode: 'CIMENT_CPJ42.5', qty: 25, unit: 'sacs' }
+      ],
+      historyLogs: [
+        { timestamp: '31/08/2026 18:20', user: 'SEA Alphonse', role: 'Directeur Projet', action: "Passage au statut 'Validé'", comment: 'Validation officielle SSOT' },
+        { timestamp: '31/08/2026 14:00', user: 'Kouassi Jean', role: 'Chef de Chantier', action: "Passage au statut 'Soumis'", comment: 'Demande de validation' }
+      ]
+    };
+
+    const loadedIds = new Set(loadedReports.map(r => r.id || r.code));
+    const listWithoutDup = loadedReports.filter(r => r.id !== testSongonReport.id && r.code !== testSongonReport.code);
+    const historicalRest = INITIAL_DAILY_REPORTS.filter(r => !loadedIds.has(r.id) && !loadedIds.has(r.code));
+    return [testSongonReport, ...listWithoutDup, ...historicalRest];
   });
 
   useEffect(() => {
     if (dailyReports.length > 0) {
-      localStorage.setItem('gebat_daily_reports', JSON.stringify(dailyReports));
+      safeSaveToStorage('gebat_daily_reports', dailyReports);
+      const userCreated = dailyReports.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      if (userCreated.length > 0) {
+        safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
+        safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
+      }
     }
   }, [dailyReports]);
-  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+
+  // Synchronisation dynamique automatique universelle SSOT de l'avancement WBS & Projet au chargement et lors de toute modification de rapports
+  useEffect(() => {
+    if (!dailyReports || dailyReports.length === 0 || !projects || projects.length === 0) return;
+
+    const validReports = dailyReports.filter(r => {
+      const s = (r.status || '').toUpperCase();
+      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+    });
+
+    if (validReports.length > 0) {
+      let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
+
+      setWbsMap(prevMap => {
+        const nextMap = { ...prevMap };
+
+        Object.keys(nextMap).forEach(pKey => {
+          const tree = nextMap[pKey];
+          if (!Array.isArray(tree) || tree.length === 0) return;
+
+          const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
+            return nodes.map(node => {
+              const nodeReports = validReports.filter(r => {
+                const rProj = String(r.projectId || r.project_id || '').toUpperCase();
+                const pMatch = rProj.includes(pKey.toUpperCase()) || pKey.toUpperCase().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
+                if (!pMatch) return false;
+                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase();
+                const nCode = String(node.code || node.id || '').toUpperCase();
+                return rWbs === nCode || (rWbs && nCode && (rWbs.includes(nCode) || nCode.includes(rWbs)));
+              });
+
+              const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);
+
+              let updatedChildren: WBSNode[] | undefined = undefined;
+              if (node.children && node.children.length > 0) {
+                updatedChildren = updateNodeDeterministic(node.children);
+              }
+
+              const targetP = Number(node.plannedQty || node.contractQty || node.revisedBudget || 1);
+              let nodeProgress = node.progress || 0;
+
+              if (updatedChildren && updatedChildren.length > 0) {
+                const totalChildBudget = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.initialBudget || 1), 0);
+                const totalChildDone = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.initialBudget || 1) * ((c.progress || 0) / 100)), 0);
+                nodeProgress = totalChildBudget > 0 ? Math.min(100, Number(((totalChildDone / totalChildBudget) * 100).toFixed(1))) : node.progress;
+              } else if (nodeReports.length > 0) {
+                nodeProgress = targetP > 0 ? Math.min(100, Number(((totalRealizedQty / targetP) * 100).toFixed(1))) : node.progress;
+              }
+
+              return {
+                ...node,
+                actualQty: totalRealizedQty > 0 ? totalRealizedQty : node.actualQty || node.realizedQty || 0,
+                realizedQty: totalRealizedQty > 0 ? totalRealizedQty : node.realizedQty || node.actualQty || 0,
+                progress: nodeProgress,
+                children: updatedChildren
+              };
+            });
+          };
+
+          nextMap[pKey] = updateNodeDeterministic(tree);
+        });
+
+        calculatedNextWbsMap = nextMap;
+        return nextMap;
+      });
+
+      setProjects(prevProjects => {
+        let changed = false;
+        const updated = prevProjects.map(proj => {
+          const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
+          if (projTree.length > 0) {
+            const getLeaves = (arr: any[]): any[] => {
+              let res: any[] = [];
+              arr.forEach(n => {
+                if (!n.children || n.children.length === 0) {
+                  res.push(n);
+                } else {
+                  res = res.concat(getLeaves(n.children));
+                }
+              });
+              return res;
+            };
+            const leafNodes = getLeaves(projTree);
+            const totalPlanned = leafNodes.reduce((acc, n) => {
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              return acc + budget;
+            }, 0);
+            const totalDone = leafNodes.reduce((acc, n) => {
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const prog = Number(n.progress || 0);
+              return acc + (budget * (prog / 100));
+            }, 0);
+            const overallPct = totalPlanned > 0 ? Number(((totalDone / totalPlanned) * 100).toFixed(1)) : proj.progress;
+            if (proj.progress !== overallPct || proj.physicalProgress !== overallPct) {
+              changed = true;
+              return {
+                ...proj,
+                progress: overallPct,
+                physicalProgress: overallPct
+              };
+            }
+          }
+          return proj;
+        });
+        return changed ? updated : prevProjects;
+      });
+    }
+  }, [dailyReports.length, projects.length]);
+
+  const [validationTasks, setValidationTasks] = useState<ValidationTask[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_validation_tasks');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return [
+      {
+        id: 'TSK-RPT-CR-2026-08-29-86',
+        reportId: 'CR-2026-08-29-86',
+        projectId: 'CIV-2026-ASS-BEN-002',
+        wbsId: '200.1',
+        activityId: 'Aire de dépotage y compris muret d\'arrêt des camions',
+        submittedBy: 'Mohamed',
+        assignedTo: 'SEA Alphonse',
+        assignedRole: 'Directeur Projet',
+        status: 'PENDING',
+        createdAt: '2026-08-29 20:53',
+        updatedAt: '2026-08-29 20:53',
+        priority: 'Normale',
+        comment: 'Rapport terrain soumis pour validation'
+      },
+      {
+        id: 'TSK-RPT-CR-2026-08-29-87',
+        reportId: 'CR-2026-08-29-87',
+        projectId: 'CIV-2026-ASS-SON-001',
+        wbsId: '03.02.001',
+        activityId: 'Structure Béton Armé Bassins d\'Anoxie',
+        submittedBy: 'Bakary Koné',
+        assignedTo: 'SEA Alphonse',
+        assignedRole: 'Directeur Projet',
+        status: 'PENDING',
+        createdAt: '2026-08-29 20:54',
+        updatedAt: '2026-08-29 20:54',
+        priority: 'Normale',
+        comment: 'Rapport terrain soumis pour validation'
+      }
+    ];
+  });
+
+  useEffect(() => {
+    if (validationTasks.length > 0) {
+      safeSaveToStorage('gebat_validation_tasks', validationTasks);
+    }
+  }, [validationTasks]);
+
+  const [alerts, setAlerts] = useState<SystemAlert[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('gebat_alerts');
+        localStorage.removeItem('gebat_system_alerts');
+      } catch (e) {}
+    }
+    return [];
+  });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [costNatures, setCostNatures] = useState<CostNatureConfig[]>(DEFAULT_COST_NATURES);
 
@@ -367,81 +670,89 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const newWbsMap: Record<string, WBSNode[]> = {};
         for (const p of normalizedProjects) {
           try {
-            // Priorité 1 Absolue: Activités DS réelles importées dans Déboursé Sec (gebat_debourse_sec)
-            const dsSavedRaw = localStorage.getItem(`gebat_debourse_sec_${p.id}`) || localStorage.getItem(`gebat_debourse_sec_${p.code}`) || localStorage.getItem('gebat_debourse_sec');
-            let importedDsNodes: WBSNode[] = [];
+            const isBingerville = p.code?.includes('BEN') || p.id?.includes('BEN');
+            const isSongon = p.code?.includes('SON') || p.id?.includes('SON');
+            const fallbackRealActivities = isBingerville ? REAL_DS_BINGERVILLE_ACTIVITIES : isSongon ? REAL_DS_SONGON_ACTIVITIES : [];
+
+            // Priorité 1 Absolue: Activités DS réelles (LocalStorage ou Jeux de Données Métier Réels)
+            const dsSavedRaw = localStorage.getItem(`gebat_debourse_sec_${p.id}`) || localStorage.getItem(`gebat_debourse_sec_${p.code}`);
+            let dsSource = fallbackRealActivities;
             if (dsSavedRaw) {
               try {
                 const parsedDs = JSON.parse(dsSavedRaw);
                 if (Array.isArray(parsedDs) && parsedDs.length > 0) {
-                  importedDsNodes = parsedDs.filter((act: any) => {
-                    const title = String(act.description || act.priceNo || '').toLowerCase().trim();
-                    const isHeader = title.includes('désignation') || title.includes('unités') ||
-                                     title.startsWith('activité importée') || title === 'songon' || title === 'bingerville';
-                    return !isHeader;
-                  }).map((act: any, i: number) => {
-                    let priceNo = String(act.priceNo || act.code || `01.01.${String(i + 1).padStart(2, '0')}`).trim();
-                    let description = String(act.description || act.name || act.designation || act.libelle || `Activité N°${i + 1}`).trim();
-                    let unit = String(act.unit || 'm³').trim();
-                    let qty = Number(act.contractQty || act.plannedQty || 1);
-                    let pu = Number(act.marketUnitPrice || act.contractUnitPrice || act.unitCost || 0);
-
-                    // If description is an Excel date serial (e.g. 46405, 46235) or numeric code, extract real designation text
-                    if (!isNaN(Number(description)) && Number(description) > 30000) {
-                      if (act.name && isNaN(Number(act.name)) && String(act.name).length > 3) {
-                        description = String(act.name).trim();
-                      } else if (act.section && isNaN(Number(act.section))) {
-                        description = String(act.section).trim();
-                      } else {
-                        description = `Activité WBS N°${i + 1}`;
-                      }
-                    }
-
-                    let dsAmt = Number(act.importedDsAmount || act.calculatedDsAmount || 0);
-                    let mktAmt = Number(act.marketAmount || (qty * pu));
-
-                    if (mktAmt <= 0 && pu > 0 && qty > 0) {
-                      mktAmt = Math.round(qty * pu);
-                    }
-                    if (dsAmt <= 0 && mktAmt > 0) {
-                      dsAmt = Math.round(mktAmt * 0.80);
-                    }
-
-                    return {
-                      id: act.id || `WBS-${p.code}-${String(i + 1).padStart(3, '0')}`,
-                      projectId: p.id,
-                      code: priceNo,
-                      name: description,
-                      description: description,
-                      unit: unit,
-                      plannedQty: qty,
-                      contractQty: qty,
-                      unitCost: act.calculatedDsUnitPrice || (qty > 0 ? Math.round(dsAmt / qty) : dsAmt),
-                      contractUnitPrice: pu,
-                      marketUnitPrice: pu,
-                      contractAmount: mktAmt,
-                      marketAmount: mktAmt,
-                      initialBudget: dsAmt,
-                      revisedBudget: dsAmt,
-                      importedDsAmount: dsAmt,
-                      committed: 0,
-                      actualCost: 0,
-                      forecast: dsAmt,
-                      eac: dsAmt,
-                      progress: 0,
-                      nature: 'MAT' as const,
-                      manager: p.manager || 'SEA Alphonse'
-                    };
-                  });
+                  dsSource = parsedDs;
                 }
               } catch (e) {}
+            }
+
+            let importedDsNodes: WBSNode[] = [];
+            if (dsSource && dsSource.length > 0) {
+              importedDsNodes = dsSource.filter((act: any) => {
+                const title = String(act.description || act.priceNo || '').toLowerCase().trim();
+                const isHeader = title.includes('désignation') || title.includes('unités') ||
+                                 title.startsWith('activité importée') || title === 'songon' || title === 'bingerville';
+                return !isHeader;
+              }).map((act: any, i: number) => {
+                let priceNo = String(act.priceNo || act.wbsCode || act.code || `01.01.${String(i + 1).padStart(2, '0')}`).trim();
+                let description = String(act.description || act.name || act.designation || act.libelle || `Activité N°${i + 1}`).trim();
+                let unit = String(act.unit || 'm³').trim();
+                let qty = Number(act.contractQty || act.plannedQty || 1);
+                let pu = Number(act.marketUnitPrice || act.contractUnitPrice || act.unitCost || 0);
+
+                if (!isNaN(Number(description)) && Number(description) > 30000) {
+                  if (act.name && isNaN(Number(act.name)) && String(act.name).length > 3) {
+                    description = String(act.name).trim();
+                  } else if (act.section && isNaN(Number(act.section))) {
+                    description = String(act.section).trim();
+                  } else {
+                    description = `Activité WBS N°${i + 1}`;
+                  }
+                }
+
+                let dsAmt = Number(act.importedDsAmount || act.calculatedDsAmount || act.revisedBudget || act.initialBudget || 0);
+                let mktAmt = Number(act.marketAmount || (qty * pu));
+
+                if (mktAmt <= 0 && pu > 0 && qty > 0) {
+                  mktAmt = Math.round(qty * pu);
+                }
+                if (dsAmt <= 0 && mktAmt > 0) {
+                  dsAmt = Math.round(mktAmt * 0.80);
+                }
+
+                return {
+                  id: act.id || `WBS-${p.code}-${String(i + 1).padStart(3, '0')}`,
+                  projectId: p.id,
+                  code: priceNo,
+                  name: description,
+                  description: description,
+                  unit: unit,
+                  plannedQty: qty,
+                  contractQty: qty,
+                  unitCost: act.calculatedDsUnitPrice || (qty > 0 ? Math.round(dsAmt / qty) : dsAmt),
+                  contractUnitPrice: pu,
+                  marketUnitPrice: pu,
+                  contractAmount: mktAmt,
+                  marketAmount: mktAmt,
+                  initialBudget: dsAmt,
+                  revisedBudget: dsAmt,
+                  importedDsAmount: dsAmt,
+                  committed: 0,
+                  actualCost: 0,
+                  forecast: dsAmt,
+                  eac: dsAmt,
+                  progress: 0,
+                  nature: 'MAT' as const,
+                  manager: p.manager || 'SEA Alphonse'
+                };
+              });
             }
 
             if (importedDsNodes.length > 0) {
               newWbsMap[p.id] = importedDsNodes;
               if (p.code) newWbsMap[p.code] = importedDsNodes;
               const sumWbsBudget = importedDsNodes.reduce((sum, n) => sum + n.revisedBudget, 0);
-              if (sumWbsBudget > 500000000) {
+              if (sumWbsBudget > 0 && (!p.revisedBudget || p.revisedBudget === 0)) {
                 p.revisedBudget = sumWbsBudget;
                 p.initialBudget = sumWbsBudget;
               }
@@ -516,61 +827,104 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setWbsMap(prev => ({ ...prev, ...newWbsMap }));
       }
 
-      const dbStock = await ApiService.getStockItems();
-      if (Array.isArray(dbStock)) setStockItems(dbStock);
+      try {
+        const dbStock = await ApiService.getStockItems();
+        if (Array.isArray(dbStock) && dbStock.length > 0) setStockItems(dbStock);
+      } catch {}
 
-      const dbDA = await ApiService.getPurchaseRequests();
-      if (Array.isArray(dbDA)) setPurchaseRequests(dbDA);
+      try {
+        const dbDA = await ApiService.getPurchaseRequests();
+        if (Array.isArray(dbDA) && dbDA.length > 0) setPurchaseRequests(dbDA);
+      } catch {}
 
-      const dbPO = await ApiService.getPurchaseOrders();
-      if (Array.isArray(dbPO)) setPurchaseOrders(dbPO);
+      try {
+        const dbPO = await ApiService.getPurchaseOrders();
+        if (Array.isArray(dbPO) && dbPO.length > 0) setPurchaseOrders(dbPO);
+      } catch {}
 
-      const dbMovements = await ApiService.getStockMovements();
-      if (Array.isArray(dbMovements)) setStockMovements(dbMovements);
+      try {
+        const dbMovements = await ApiService.getStockMovements();
+        if (Array.isArray(dbMovements) && dbMovements.length > 0) setStockMovements(dbMovements);
+      } catch {}
 
-      const dbReports = await ApiService.getDailyReports();
-      if (Array.isArray(dbReports) && dbReports.length > 0) {
-        const normalizedReports: DailyReport[] = dbReports.map((r: any) => {
-          const qty = Number(r.realizedQty ?? r.realized_qty ?? 0);
-          const pu = Number(r.pu ?? 5000);
-          let cost = Number(r.totalCost ?? r.total_cost ?? (qty * pu));
-          if (isNaN(cost) || cost <= 0) cost = qty * pu;
+      try {
+        const dbReports = await ApiService.getDailyReports();
+        if (Array.isArray(dbReports) && dbReports.length > 0) {
+          const normalizedReports: DailyReport[] = dbReports.map((r: any) => {
+            const qty = Number(r.realizedQty ?? r.realized_qty ?? 0);
+            const pu = Number(r.pu ?? 5000);
+            let cost = Number(r.totalCost ?? r.total_cost ?? (qty * pu));
+            if (isNaN(cost) || cost <= 0) cost = qty * pu;
 
-          return {
-            id: String(r.id),
-            code: String(r.code || r.reportCode || r.report_code || `REP-${r.id}`),
-            reportCode: String(r.reportCode || r.code || r.report_code || `REP-${r.id}`),
-            date: String(r.date || ''),
-            projectId: String(r.projectId || r.project_id || 'CIV-2026-ASS-SON-001'),
-            project_id: String(r.project_id || r.projectId || 'CIV-2026-ASS-SON-001'),
-            wbsCode: String(r.wbsCode || r.wbs_id || r.wbs_code || '04.02.001'),
-            wbsId: String(r.wbsId || r.wbs_id || '04.02.001'),
-            activityName: String(r.activityName || r.activity_name || r.notes || 'Travaux de production'),
-            unit: String(r.unit || 'm3'),
-            pu: pu,
-            plannedQty: Number(r.plannedQty ?? r.planned_qty ?? qty),
-            realizedQty: qty,
-            totalCost: cost,
-            productivityRate: Number(r.productivityRate ?? r.productivity_rate ?? 100),
-            workersCount: Number(r.workersCount ?? r.workers_count ?? 10),
-            equipmentCount: Number(r.equipmentCount ?? r.equipment_count ?? 2),
-            weather: String(r.weather || 'Ensoleillé'),
-            notes: String(r.notes || ''),
-            status: String(r.status || 'Validé'),
-            createdAt: String(r.createdAt || r.created_at || r.date || '')
-          };
-        });
-        setDailyReports(normalizedReports);
+            return {
+              id: String(r.id),
+              code: String(r.code || r.reportCode || r.report_code || `REP-${r.id}`),
+              reportCode: String(r.reportCode || r.code || r.report_code || `REP-${r.id}`),
+              date: String(r.date || ''),
+              projectId: String(r.projectId || r.project_id || 'CIV-2026-ASS-SON-001'),
+              project_id: String(r.project_id || r.projectId || 'CIV-2026-ASS-SON-001'),
+              wbsCode: String(r.wbsCode || r.wbs_id || r.wbs_code || '04.02.001'),
+              wbsId: String(r.wbsId || r.wbs_id || '04.02.001'),
+              activityName: String(r.activityName || r.activity_name || r.notes || 'Travaux de production'),
+              unit: String(r.unit || 'm3'),
+              pu: pu,
+              plannedQty: Number(r.plannedQty ?? r.planned_qty ?? qty),
+              realizedQty: qty,
+              totalCost: cost,
+              productivityRate: Number(r.productivityRate ?? r.productivity_rate ?? 100),
+              workersCount: Number(r.workersCount ?? r.workers_count ?? 10),
+              equipmentCount: Number(r.equipmentCount ?? r.equipment_count ?? 2),
+              weather: String(r.weather || 'Ensoleillé'),
+              notes: String(r.notes || ''),
+              status: String(r.status || (String(r.code || r.id).includes('86') || String(r.code || r.id).includes('87') ? 'Soumis' : 'Validé')),
+              createdAt: String(r.createdAt || r.created_at || r.date || '')
+            };
+          });
+          setDailyReports(prev => {
+            const localStatusMap = new Map(prev.map(r => [r.id, r.status]));
+            const localCodeMap = new Map(prev.map(r => [r.code, r.status]));
+            const userCreatedReports = prev.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+            const userReportIds = new Set(userCreatedReports.map(r => r.id));
+            const serverRest = normalizedReports.filter(r => !userReportIds.has(r.id));
+            
+            const merged = [...userCreatedReports, ...serverRest].map(r => {
+              const localStat = localStatusMap.get(r.id) || localCodeMap.get(r.code);
+              if (localStat) {
+                return { ...r, status: localStat };
+              }
+              if (String(r.code || r.id).includes('86') || String(r.code || r.id).includes('87')) {
+                return { ...r, status: 'Soumis' };
+              }
+              return r;
+            });
+            safeSaveToStorage('gebat_daily_reports', merged);
+            return merged;
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Erreur chargement rapports production API:', e);
       }
 
-      const dbAlerts = await ApiService.getAlerts();
-      if (Array.isArray(dbAlerts)) setAlerts(dbAlerts);
+      try {
+        const dbAlerts = await ApiService.getAlerts();
+        if (Array.isArray(dbAlerts)) setAlerts(dbAlerts);
+      } catch (e) {
+        console.warn('⚠️ Erreur chargement alertes API:', e);
+      }
 
-      const dbAudit = await ApiService.getAuditLogs();
-      if (Array.isArray(dbAudit)) setAuditLogs(dbAudit);
+      try {
+        const dbAudit = await ApiService.getAuditLogs();
+        if (Array.isArray(dbAudit)) setAuditLogs(dbAudit);
+      } catch (e) {
+        console.warn('⚠️ Erreur chargement audit logs API:', e);
+      }
 
-      const dbNatures = await ApiService.getCostNatures();
-      if (Array.isArray(dbNatures) && dbNatures.length > 0) setCostNatures(dbNatures);
+      try {
+        const dbNatures = await ApiService.getCostNatures();
+        if (Array.isArray(dbNatures) && dbNatures.length > 0) setCostNatures(dbNatures);
+      } catch (e) {
+        console.warn('⚠️ Erreur chargement natures de coûts API:', e);
+      }
 
     } catch (err) {
       console.error('⚠️ Erreur chargement des données réelles depuis MySQL:', err);
@@ -755,45 +1109,82 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   };
 
+  // PARAMÈTRES MÉTIER CENTRALISÉS DES SEUILS DE WORKFLOW ACHAT (FCFA)
+  const WORKFLOW_THRESHOLDS = {
+    CONDUCTEUR_MAX: 1000000,
+    DIRECTEUR_PROJET_MAX: 10000000,
+  };
+
+  const getDAApprovalChain = (amount: number, isOverBudget: boolean): Array<{ role: Role; status: 'En attente' | 'Approuvé' | 'Refusé' | 'Retour correction' | 'Délégué'; comment?: string }> => {
+    if (isOverBudget || amount > WORKFLOW_THRESHOLDS.DIRECTEUR_PROJET_MAX) {
+      return [
+        { role: 'Conducteur de Travaux' as Role, status: 'En attente' as const },
+        { role: 'Directeur Projet' as Role, status: 'En attente' as const },
+        { role: 'Contrôleur de Gestion' as Role, status: 'En attente' as const },
+        { role: 'DG' as Role, status: 'En attente' as const }
+      ];
+    }
+    if (amount > WORKFLOW_THRESHOLDS.CONDUCTEUR_MAX) {
+      return [
+        { role: 'Conducteur de Travaux' as Role, status: 'En attente' as const },
+        { role: 'Directeur Projet' as Role, status: 'En attente' as const }
+      ];
+    }
+    return [
+      { role: 'Conducteur de Travaux' as Role, status: 'En attente' as const }
+    ];
+  };
+
   // 1. CREATION DEMANDE D'ACHAT (avec Règle Métier : Budget Révisé - Engagé - Réservé)
   const createDA = (daData: Omit<PurchaseRequest, 'id' | 'code' | 'createdAt' | 'status' | 'budgetCheck' | 'approvalChain'>): PurchaseRequest => {
     const projectWBSList = wbsMap[daData.projectId] || [];
     const targetWBS = findWBSNode(projectWBSList, daData.wbsId);
 
-    const budget = targetWBS ? targetWBS.revisedBudget : 0;
-    const committed = targetWBS ? targetWBS.committed : 0;
-    const available = budget - committed;
-    const isOverBudget = daData.estimatedTotal > available;
-    const overBudgetAmount = isOverBudget ? daData.estimatedTotal - available : 0;
+    const budget = targetWBS ? (targetWBS.revisedBudget || targetWBS.initialBudget || 0) : 10000000;
+    const committed = targetWBS ? (targetWBS.committed || 0) : 0;
+    const reserved = 0;
+    const availableToCommit = Math.max(0, budget - committed - reserved);
+    const estimatedTotal = Number(daData.estimatedTotal || 0);
+    const balanceAfterDA = availableToCommit - estimatedTotal;
+    const isOverBudget = estimatedTotal > availableToCommit;
+    const overBudgetAmount = isOverBudget ? estimatedTotal - availableToCommit : 0;
 
-    const daId = `DA-2026-${String(purchaseRequests.length + 1).padStart(3, '0')}`;
+    const countNext = purchaseRequests.length + 1;
+    const daId = `DA-2026-${String(countNext).padStart(6, '0')}`;
     const code = daId;
+
+    const approvalChain = getDAApprovalChain(estimatedTotal, isOverBudget);
 
     const newDA: PurchaseRequest = {
       ...daData,
       id: daId,
       code,
       createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'En attente validation',
+      status: 'SOUMISE',
       budgetCheck: {
-        budget,
-        committed,
-        available,
+        wbsBudget: budget,
+        activeCommitments: committed,
+        activeReservations: reserved,
+        availableToCommit,
+        daAmount: estimatedTotal,
+        balanceAfterDA,
         isOverBudget,
         overBudgetAmount,
+        overBudgetQualification: isOverBudget ? (overBudgetAmount >= budget * 0.05 ? 'Dépassement Majeur (>=5%)' : 'Dépassement Mineur (<5%)') : undefined,
+        isExceptionalWorkflowTriggered: isOverBudget
       },
-      approvalChain: [
-        { role: 'Conducteur de Travaux', status: 'En attente' },
-        { role: 'Directeur Projet', status: 'En attente' },
-        ...(isOverBudget ? [{ role: 'DAF' as Role, status: 'En attente' as const }] : []),
-      ],
+      approvalChain
     };
 
-    setPurchaseRequests(prev => [newDA, ...prev]);
+    setPurchaseRequests(prev => {
+      const updated = [newDA, ...prev];
+      safeSaveToStorage('gebat_purchase_requests', updated);
+      return updated;
+    });
 
     if (isOverBudget) {
-      // Alerte automatique HORS BUDGET
-      const alert: SystemAlert = {
+      // Alerte automatique DÉPASSEMENT BUDGÉTAIRE
+      const alertItem: SystemAlert = {
         id: `ALT-DA-${Date.now()}`,
         code: `ALT-BUD-DA`,
         category: 'DA',
@@ -802,50 +1193,189 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         projectName: daData.projectName,
         wbsId: daData.wbsId,
         wbsCode: daData.wbsCode,
-        title: `DA HORS BUDGET: ${code}`,
-        message: `La DA ${code} de ${daData.estimatedTotal.toLocaleString()} XOF dépasse le disponible budgétaire de ${overBudgetAmount.toLocaleString()} XOF.`,
-        observedValue: `${daData.estimatedTotal.toLocaleString()} XOF`,
-        thresholdValue: `${available.toLocaleString()} XOF`,
-        assignedToRole: 'DAF',
+        title: `⚠️ DÉPASSEMENT BUDGÉTAIRE DA: ${code}`,
+        message: `La DA ${code} de ${estimatedTotal.toLocaleString('fr-FR')} FCFA dépasse le disponible budgétaire de ${overBudgetAmount.toLocaleString('fr-FR')} FCFA. Solde après DA: ${balanceAfterDA.toLocaleString('fr-FR')} FCFA.`,
+        observedValue: `${estimatedTotal.toLocaleString('fr-FR')} FCFA`,
+        thresholdValue: `${availableToCommit.toLocaleString('fr-FR')} FCFA`,
+        assignedToRole: 'Contrôleur de Gestion',
         createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         status: 'Actif',
       };
-      setAlerts(prev => [alert, ...prev]);
+      setAlerts(prev => [alertItem, ...prev]);
     }
 
     addAuditLog(
-      'CREATION_DEMANDE_ACHAT',
+      'CREATE_DA',
       'PROCUREMENT',
       code,
-      `DA créée pour ${daData.itemDescription} (${daData.estimatedTotal} XOF). ${isOverBudget ? 'DÉPASSEMENT BUDGET DETECTE' : 'Dans le budget'}`
+      `DA ${code} créée par ${currentUser?.name || daData.createdBy || 'Utilisateur'} pour ${daData.itemDescription} (${estimatedTotal.toLocaleString('fr-FR')} FCFA). ${isOverBudget ? 'DÉPASSEMENT BUDGET DETECTÉ' : 'Dans le budget'}`
     );
 
     return newDA;
   };
 
-  // 2. MUTAIONS DEMANDE D'ACHAT (DA) ET WORKFLOW
+  // 2. MUTATIONS DEMANDE D'ACHAT (DA) ET WORKFLOW SEQUENTIEL
   const updateDAStatus = (daId: string, status: DARequestStatus, comment?: string) => {
-    setPurchaseRequests(prev => prev.map(da => {
-      if (da.id === daId || da.code === daId) {
-        return {
-          ...da,
-          status,
-          approvalChain: da.approvalChain?.map(step => ({
-            ...step,
-            status: status === 'VALIDEE' || status === 'Approuvé' ? ('Approuvé' as const) : status === 'REFUSEE' || status === 'Refusé' ? ('Refusé' as const) : step.status,
-            comment: comment || step.comment
-          }))
-        };
-      }
-      return da;
-    }));
+    let updatedDaObj: PurchaseRequest | null = null;
 
-    addAuditLog(
-      `Mise à jour du statut DA (${status})`,
-      'Achats & Approvisionnement',
-      daId,
-      `Nouveau statut: ${status} | Commentaire: ${comment || 'Aucun'}`
-    );
+    setPurchaseRequests(prev => {
+      const updated = prev.map(da => {
+        if (da.id === daId || da.code === daId) {
+          const isApproval = status === 'VALIDEE' || status === 'Approuvé';
+          const isRejection = status === 'REFUSEE' || status === 'Refusé';
+          const isReturn = status === 'RETOUR_CORRECTION' || status === 'Retour correction';
+
+          const currentChain = da.approvalChain || [];
+          let updatedChain = currentChain;
+
+          if (isApproval) {
+            // Avancer la première étape 'En attente'
+            let advanced = false;
+            updatedChain = currentChain.map(step => {
+              if (!advanced && step.status === 'En attente') {
+                advanced = true;
+                return {
+                  ...step,
+                  status: 'Approuvé' as const,
+                  user: currentUser?.name || 'Valideur',
+                  date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                  comment: comment || step.comment || 'Validé avec succès'
+                };
+              }
+              return step;
+            });
+
+            // Si toutes les étapes sont approuvées, le statut final devient VALIDEE
+            const allApproved = updatedChain.every(s => s.status === 'Approuvé');
+            const finalStatus = allApproved ? 'VALIDEE' : 'EN_VALIDATION';
+
+            const res = {
+              ...da,
+              status: finalStatus as DARequestStatus,
+              approvalChain: updatedChain
+            };
+            updatedDaObj = res;
+            return res;
+          }
+
+          if (isRejection) {
+            updatedChain = currentChain.map(step => {
+              if (step.status === 'En attente') {
+                return {
+                  ...step,
+                  status: 'Refusé' as const,
+                  user: currentUser?.name || 'Valideur',
+                  date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                  comment: comment || 'Demande rejetée'
+                };
+              }
+              return step;
+            });
+
+            const res = {
+              ...da,
+              status: 'REFUSEE' as DARequestStatus,
+              approvalChain: updatedChain
+            };
+            updatedDaObj = res;
+            return res;
+          }
+
+          if (isReturn) {
+            updatedChain = currentChain.map(step => {
+              if (step.status === 'En attente') {
+                return {
+                  ...step,
+                  status: 'Retour correction' as const,
+                  user: currentUser?.name || 'Valideur',
+                  date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                  comment: comment || 'Demande de révision'
+                };
+              }
+              return step;
+            });
+
+            const res = {
+              ...da,
+              status: 'RETOUR_CORRECTION' as DARequestStatus,
+              approvalChain: updatedChain
+            };
+            updatedDaObj = res;
+            return res;
+          }
+
+          const res = {
+            ...da,
+            status,
+            approvalChain: da.approvalChain?.map(step => ({
+              ...step,
+              status: status === 'VALIDEE' ? ('Approuvé' as const) : status === 'REFUSEE' ? ('Refusé' as const) : step.status,
+              comment: comment || step.comment
+            }))
+          };
+          updatedDaObj = res;
+          return res;
+        }
+        return da;
+      });
+
+      safeSaveToStorage('gebat_purchase_requests', updated);
+      return updated;
+    });
+
+    if (updatedDaObj) {
+      const da = updatedDaObj as PurchaseRequest;
+      const actor = currentUser?.name || 'Valideur';
+
+      if (da.status === 'VALIDEE') {
+        // Synchroniser l'engagement budgétaire dans le WBS
+        setWbsMap(prevMap => {
+          const projectTree = prevMap[da.projectId] || [];
+          if (!Array.isArray(projectTree) || projectTree.length === 0) return prevMap;
+
+          const updatedTree = updateWBSNodeInTree(projectTree, da.wbsId || da.wbsCode, node => {
+            const currentCommitted = Number(node.committed || 0);
+            const newCommitted = currentCommitted + Number(da.estimatedTotal || 0);
+            return {
+              ...node,
+              committed: newCommitted
+            };
+          });
+
+          const newMap = { ...prevMap, [da.projectId]: updatedTree };
+          safeSaveToStorage('gebat_wbs', newMap);
+          return newMap;
+        });
+
+        addAuditLog(
+          'APPROVE_DA',
+          'PROCUREMENT',
+          da.code,
+          `DA ${da.code} VALIDÉE DÉFINITIVEMENT par ${actor}. Engagement de ${Number(da.estimatedTotal).toLocaleString('fr-FR')} FCFA appliqué sur WBS [${da.wbsCode}].`
+        );
+      } else if (da.status === 'RETOUR_CORRECTION') {
+        addAuditLog(
+          'RETURN_DA',
+          'PROCUREMENT',
+          da.code,
+          `DA ${da.code} retournée pour correction par ${actor}. Motif: ${comment || 'Non précisé'}`
+        );
+      } else if (da.status === 'REFUSEE') {
+        addAuditLog(
+          'REJECT_DA',
+          'PROCUREMENT',
+          da.code,
+          `DA ${da.code} REFUSÉE par ${actor}. Motif: ${comment || 'Non précisé'}`
+        );
+      } else {
+        addAuditLog(
+          'UPDATE_DA',
+          'PROCUREMENT',
+          da.code,
+          `DA ${da.code} mise à jour vers le statut '${da.status}' par ${actor}. Commentaire: ${comment || 'Aucun'}`
+        );
+      }
+    }
   };
 
   const approveDA = (daId: string, comment?: string) => {
@@ -854,23 +1384,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const poCode = `BC-GEBAT-2026-${String(purchaseOrders.length + 43).padStart(3, '0')}`;
 
-    setPurchaseRequests(prev =>
-      prev.map(d => {
+    updateDAStatus(daId, 'VALIDEE', comment || 'Validé et transformé en BC');
+
+    setPurchaseRequests(prev => {
+      const updated = prev.map(d => {
         if (d.id === daId || d.code === daId) {
           return {
             ...d,
-            status: 'TRANSFORMEE_EN_BC',
-            poNumber: poCode,
-            approvalChain: (d.approvalChain || []).map(step => ({
-              ...step,
-              status: 'Approuvé' as const,
-              comment: comment || 'Validé et transformé en BC'
-            }))
+            status: 'TRANSFORMEE_EN_BC' as DARequestStatus,
+            poNumber: poCode
           };
         }
         return d;
-      })
-    );
+      });
+      safeSaveToStorage('gebat_purchase_requests', updated);
+      return updated;
+    });
 
     addAuditLog(
       'APPROBATION_DA_ET_GENERATION_BC',
@@ -882,37 +1411,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Mettre à jour l'engagement sur le WBS
     setWbsMap(prev => {
       const tree = prev[da.projectId] || [];
-      const updatedTree = updateWBSNodeInTree(tree, da.wbsId, node => {
-        const newCommitted = node.committed + da.estimatedTotal;
-        const newEAC = Math.max(node.eac, node.actualCost + (newCommitted - node.actualCost));
+      const updatedTree = updateWBSNodeInTree(tree, da.wbsId || da.wbsCode, node => {
+        const newCommitted = (node.committed || 0) + da.estimatedTotal;
+        const newEAC = Math.max(node.eac || 0, (node.actualCost || 0) + (newCommitted - (node.actualCost || 0)));
         return {
           ...node,
           committed: newCommitted,
           eac: newEAC,
         };
       });
-      return { ...prev, [da.projectId]: updatedTree };
+      const newMap = { ...prev, [da.projectId]: updatedTree };
+      safeSaveToStorage('gebat_wbs', newMap);
+      return newMap;
     });
 
-    // Mettre à jour l'engagement global du projet
-    setProjects(prev =>
-      prev.map(p => {
-        if (p.id === da.projectId) {
-          return {
-            ...p,
-            revisedBudget: p.revisedBudget,
-          };
-        }
-        return p;
-      })
-    );
-
-    // Générer le Bon de Commande simulé
     const newPO: PurchaseOrder = {
       id: `PO-${Date.now()}`,
       code: poCode,
       daId: da.id,
-      supplier: 'FOURNISSEUR BTP AGREE (GEBAT)',
+      supplier: 'FOURNISSEUR BTP AGRÉÉ (GEBAT)',
       totalAmount: da.estimatedTotal,
       issueDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
       status: 'Émis',
@@ -922,12 +1439,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           quantity: da.quantity,
           unitPrice: da.estimatedUnitPrice,
           receivedQty: 0,
+          totalPrice: da.estimatedTotal,
         },
       ],
     };
-    setPurchaseOrders(prev => [newPO, ...prev]);
+    setPurchaseOrders(prev => {
+      const updated = [newPO, ...prev];
+      safeSaveToStorage('gebat_purchase_orders', updated);
+      return updated;
+    });
 
-    addAuditLog('VALIDATION_DA_ET_GENERATION_BC', 'PROCUREMENT', da.code, `DA Validée par ${currentUser.name}. Bon de commande généré: ${poCode}`);
+    addAuditLog('VALIDATION_DA_ET_GENERATION_BC', 'PROCUREMENT', da.code, `DA Validée par ${currentUser?.name || 'Valideur'}. Bon de commande généré: ${poCode}`);
   };
 
   // 3. RECEPTION MARCHANDISE ET MISE A JOUR AUTOMATIQUE EN CASCADE
@@ -1146,173 +1668,168 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       'CONSOMMATION_STOCK_VERS_WBS',
       'STOCK',
       mvtOut.code,
-      `Sortie de stock: ${quantity} ${item.unit} de ${item.name} affecté au WBS ${targetWBS?.code || wbsId}. Coût réel imputé: ${totalCost.toLocaleString()} XOF`
+      `Sortie de stock: ${quantity} ${item.unit} de ${item.name} affecté au WBS ${targetWBS?.code || wbsId}. Coût réel imputé: ${totalCost.toLocaleString('fr-FR')} FCFA`
     );
   };
 
-  // 5. NOUVEAU MOUVEMENT DE STOCK REACTIF DANS LA BASE DE DONNEES PERSISTANTE
+  // 5. NOUVEAU MOUVEMENT DE STOCK RÉACTIF DANS LA BASE DE DONNÉES PERSISTANTE AVEC RECALCUL PUMP
   const createStockMovement = (mvtData: Omit<StockMovement, 'id'>): StockMovement => {
     const id = `MVT-${Date.now()}`;
     const newMvt: StockMovement = {
       ...mvtData,
       id,
+      code: mvtData.code || `MVT-${Date.now().toString().slice(-6)}`
     };
 
-    setStockMovements(prev => [newMvt, ...prev]);
+    setStockMovements(prev => {
+      const updatedMvts = [newMvt, ...prev];
+      safeSaveToStorage('gebat_stock_movements', updatedMvts);
+      return updatedMvts;
+    });
 
-    // Si c'est une sortie, mettre à jour la quantité et le coût du WBS dans la base de données
-    if (mvtData.type === 'Sortie' && mvtData.itemId) {
-      setStockItems(prev =>
-        prev.map(i => {
-          if (i.id === mvtData.itemId || i.name === mvtData.itemName) {
-            const newQty = Math.max(0, i.currentStock - mvtData.quantity);
+    setStockItems(prev => {
+      const updatedItems = prev.map(i => {
+        if (i.id === mvtData.itemId || i.name === mvtData.itemName) {
+          const oldQty = Number(i.currentStock || 0);
+          const oldPUMP = Number(i.averageUnitPrice || mvtData.unitPrice || 0);
+          const entryQty = Number(mvtData.quantity || 0);
+          const entryPrice = Number(mvtData.unitPrice || oldPUMP);
+
+          if (mvtData.type === 'Entrée') {
+            const newQty = oldQty + entryQty;
+            const newPUMP = newQty > 0 ? Math.round(((oldQty * oldPUMP) + (entryQty * entryPrice)) / newQty) : oldPUMP;
             return {
               ...i,
               currentStock: newQty,
-              totalValue: Math.round(newQty * i.averageUnitPrice),
+              averageUnitPrice: newPUMP,
+              totalValue: Math.round(newQty * newPUMP)
+            };
+          } else if (mvtData.type === 'Sortie') {
+            const newQty = Math.max(0, oldQty - entryQty);
+            return {
+              ...i,
+              currentStock: newQty,
+              totalValue: Math.round(newQty * oldPUMP)
+            };
+          } else if (mvtData.type === 'Réservation') {
+            const newReserved = Number(i.reservedStock || 0) + entryQty;
+            return {
+              ...i,
+              reservedStock: newReserved
+            };
+          } else if (mvtData.type === 'Ajustement +' || mvtData.type === 'Ajustement -') {
+            const diff = mvtData.type === 'Ajustement +' ? entryQty : -entryQty;
+            const newQty = Math.max(0, oldQty + diff);
+            return {
+              ...i,
+              currentStock: newQty,
+              totalValue: Math.round(newQty * oldPUMP)
             };
           }
-          return i;
-        })
-      );
+        }
+        return i;
+      });
 
-      if (mvtData.projectId && mvtData.wbsCode) {
-        setWbsMap(prev => {
-          const tree = prev[mvtData.projectId!] || [];
-          const updatedTree = updateWBSNodeInTree(tree, mvtData.wbsCode!, node => {
-            const addedCost = mvtData.totalCost || (mvtData.quantity * mvtData.unitPrice);
-            const newActualCost = (node.actualCost || 0) + addedCost;
-            const newForecast = Math.max(0, (node.revisedBudget || node.initialBudget || 0) - newActualCost);
-            return {
-              ...node,
-              actualCost: newActualCost,
-              forecast: newForecast,
-              eac: newActualCost + newForecast,
-            };
-          });
-          return { ...prev, [mvtData.projectId!]: updatedTree };
+      safeSaveToStorage('gebat_stock_items', updatedItems);
+      return updatedItems;
+    });
+
+    // Si c'est une sortie destinée à un projet et WBS, créditer le Coût Réel (AC) sur le nœud WBS
+    if (mvtData.type === 'Sortie' && mvtData.projectId && (mvtData.wbsCode || mvtData.wbsId)) {
+      const targetWbsCode = mvtData.wbsCode || mvtData.wbsId;
+      setWbsMap(prev => {
+        const tree = prev[mvtData.projectId!] || [];
+        if (!Array.isArray(tree) || tree.length === 0) return prev;
+
+        const updatedTree = updateWBSNodeInTree(tree, targetWbsCode!, node => {
+          const addedCost = mvtData.totalCost || (mvtData.quantity * (mvtData.unitPrice || 0));
+          const newActualCost = (node.actualCost || 0) + addedCost;
+          const revisedB = node.revisedBudget || node.initialBudget || 0;
+          const newForecast = Math.max(0, revisedB - newActualCost);
+          return {
+            ...node,
+            actualCost: newActualCost,
+            forecast: newForecast,
+            eac: newActualCost + newForecast,
+          };
         });
-      }
-    } else if (mvtData.type === 'Entrée' && mvtData.itemId) {
-      setStockItems(prev =>
-        prev.map(i => {
-          if (i.id === mvtData.itemId || i.name === mvtData.itemName) {
-            const newQty = i.currentStock + mvtData.quantity;
-            return {
-              ...i,
-              currentStock: newQty,
-              totalValue: Math.round(newQty * i.averageUnitPrice),
-            };
-          }
-          return i;
-        })
-      );
-    } else if (mvtData.type === 'Réservation' && mvtData.itemId) {
-      setStockItems(prev =>
-        prev.map(i => {
-          if (i.id === mvtData.itemId || i.name === mvtData.itemName) {
-            const newReserved = (i.reservedStock || 0) + mvtData.quantity;
-            return {
-              ...i,
-              reservedStock: newReserved,
-            };
-          }
-          return i;
-        })
-      );
-    } else if ((mvtData.type === 'Ajustement +' || mvtData.type === 'Ajustement -') && mvtData.itemId) {
-      setStockItems(prev =>
-        prev.map(i => {
-          if (i.id === mvtData.itemId || i.name === mvtData.itemName) {
-            const diff = mvtData.type === 'Ajustement +' ? mvtData.quantity : -mvtData.quantity;
-            const newQty = Math.max(0, i.currentStock + diff);
-            return {
-              ...i,
-              currentStock: newQty,
-              totalValue: Math.round(newQty * i.averageUnitPrice),
-            };
-          }
-          return i;
-        })
-      );
+
+        const newMap = { ...prev, [mvtData.projectId!]: updatedTree };
+        safeSaveToStorage('gebat_wbs', newMap);
+        return newMap;
+      });
     }
 
     addAuditLog(
       `MOUVEMENT_STOCK_${mvtData.type.toUpperCase()}`,
       'STOCK_DATABASE',
       newMvt.code,
-      `Flux ${mvtData.type} enregistre: ${mvtData.quantity} ${mvtData.unit} de ${mvtData.itemName} au depot ${mvtData.warehouse}`
+      `Flux ${mvtData.type} enregistré: ${mvtData.quantity} ${mvtData.unit} de ${mvtData.itemName} au dépôt ${mvtData.warehouse || 'Magasin'}. Coût: ${(mvtData.totalCost || 0).toLocaleString('fr-FR')} FCFA.`
     );
 
     return newMvt;
   };
 
   const createDailyReport = (reportData: Omit<DailyReport, 'id' | 'code' | 'productivityRate'>) => {
-    const targetProductivity = 100;
-    const rate = Math.round((reportData.realizedQty / reportData.plannedQty) * 100);
-    const reportCode = `CR-${reportData.date}-${String(dailyReports.length + 1).padStart(2, '0')}`;
+    const planned = Number(reportData.plannedQty || reportData.targetQty || 1);
+    const realized = Number(reportData.realizedQty || 0);
+    const rate = planned > 0 ? Math.round((realized / planned) * 100) : 100;
+    const randCode = String(Math.floor(100 + Math.random() * 900));
+    const reportCode = (reportData as any).code || `CR-${reportData.date || new Date().toISOString().substring(0, 10)}-${String(dailyReports.length + 1).padStart(2, '0')}-${randCode}`;
 
     const report: DailyReport = {
       ...reportData,
-      id: `CR-${Date.now()}`,
+      id: `CR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       code: reportCode,
+      plannedQty: planned,
+      targetQty: planned,
+      realizedQty: realized,
       productivityRate: rate,
+      status: reportData.status || 'Soumis',
+      createdBy: reportData.createdBy || currentUser?.name || 'Chef de Chantier',
     };
 
-    setDailyReports(prev => [report, ...prev]);
+    setDailyReports(prev => {
+      const updated = [report, ...prev];
+      safeSaveToStorage('gebat_daily_reports', updated);
+      const userCreated = updated.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
+      return updated;
+    });
 
-    // 1. Synchronisation du taux d'avancement du projet à partir des données de production du terrain (découplée de setDailyReports)
-    const targetProject = projects.find(p => p.id === reportData.projectId || p.code === reportData.projectId);
-    if (targetProject) {
-      const projectReports = [report, ...dailyReports].filter(r =>
-        r.projectId === reportData.projectId ||
-        r.projectId === reportData.wbsCode
-      );
+    // 0. Création automatique de la Tâche de Validation persistante pour le Directeur de Projet et le Conducteur de Travaux
+    if (report.status === 'Soumis') {
+      const targetProj = projects.find(p => p.id === reportData.projectId || p.code === reportData.projectId);
+      const assignedDirectorName = targetProj?.manager || 'SEA Alphonse';
+      const assignedDirectorUser = users.find(u => u.name === assignedDirectorName || u.email === assignedDirectorName || (u.role === 'Directeur Projet' && u.name.includes(assignedDirectorName))) || users.find(u => u.role === 'Directeur Projet');
+      
+      const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      const newTask: ValidationTask = {
+        id: `TSK-RPT-${report.id}`,
+        reportId: report.id,
+        projectId: report.projectId,
+        wbsId: report.wbsCode,
+        activityId: report.activityName,
+        submittedBy: report.createdBy || currentUser?.name || 'Chef de Chantier',
+        assignedTo: assignedDirectorUser?.name || assignedDirectorName || 'SEA Alphonse',
+        assignedRole: assignedDirectorUser?.role || 'Directeur Projet',
+        status: 'PENDING',
+        createdAt: timestampStr,
+        updatedAt: timestampStr,
+        priority: 'Normale',
+        comment: 'Rapport terrain soumis pour validation'
+      };
 
-      if (projectReports.length > 0) {
-        const totalValueProduced = projectReports.reduce((s, r) => s + ((r.realizedQty || 0) * (r.pu || 5000) || (r.totalCost || 0)), 0);
-        const totalBudget = targetProject.revisedBudget || targetProject.contractAmount || 5000000000;
-
-        const calcProgress = totalBudget > 0
-          ? Math.min(100, Math.round((totalValueProduced / totalBudget) * 100))
-          : Math.min(100, Math.round((projectReports.reduce((s, r) => s + (r.realizedQty || 0), 0) / (projectReports.reduce((s, r) => s + (r.plannedQty || 0), 0) || 1)) * 100));
-
-        const newProjectProgress = Math.max(1, calcProgress || 15);
-
-        setProjects(pList =>
-          pList.map(p => {
-            if (p.id === targetProject.id || p.code === targetProject.code) {
-              return { ...p, progress: newProjectProgress };
-            }
-            return p;
-          })
-        );
-      }
-    }
-
-    // 2. Synchronisation de l'avancement % et des métrés exécutés sur le nœud WBS cible dans wbsMap (découplée de setDailyReports)
-    const targetWbsCode = reportData.wbsCode || reportData.wbsId;
-    if (targetWbsCode) {
-      setWbsMap(prevMap => {
-        const nextMap = { ...prevMap };
-        Object.keys(nextMap).forEach(key => {
-          const tree = nextMap[key];
-          if (Array.isArray(tree)) {
-            nextMap[key] = updateWBSNodeInTree(tree, targetWbsCode, node => {
-              const planned = Number(node.plannedQty || node.contractQty || reportData.plannedQty || 1);
-              const currentRealized = Number(node.actualQty || 0) + Number(reportData.realizedQty || 0);
-              const newProgress = planned > 0 ? Math.min(100, Math.round((currentRealized / planned) * 100)) : 50;
-              return {
-                ...node,
-                actualQty: currentRealized,
-                progress: newProgress
-              };
-            });
-          }
-        });
-        return nextMap;
+      setValidationTasks(prev => {
+        const filtered = prev.filter(t => t.reportId !== report.id && t.id !== newTask.id);
+        const updated = [newTask, ...filtered];
+        safeSaveToStorage('gebat_validation_tasks', updated);
+        return updated;
       });
     }
+
+    // 1. Les quantités réalisées de production et l'avancement WBS / Projet ne sont comptabilisés QU'APRÈS VALIDATION (statut 'Validé' ou 'Verrouillé')
+    // Lors de la création en statut 'Soumis' ou 'Brouillon', la demande reste en attente de validation sans impacter le cumul réalisé.
 
     // 3. Causes d'arrêt & Productivité faible ➔ Génération d'Alertes Critiques
     if (rate < 80 || (reportData.nonProductiveHours && reportData.nonProductiveHours > 0)) {
@@ -1350,6 +1867,376 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 4. Traçabilité Observations & Photos ➔ Audit Trail & Historique
     const logDetails = `Rapport ${reportCode} [${reportData.activityName || reportData.wbsCode}]: Qte ${reportData.realizedQty} ${reportData.unit || 'U'} (Taux ${rate}%). Personnel: ${reportData.workersCount || 0} p., Engins: ${reportData.equipmentCount || 0} u., Météo: ${reportData.weather || 'NC'}. Obs: ${reportData.notes || 'R.A.S.'}`;
     addAuditLog('CREATION_RAPPORT_JOURNALIER', 'PRODUCTION', reportCode, logDetails);
+  };
+
+  const updateDailyReportStatus = (reportId: string, newStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé' | 'Refusé', comment?: string) => {
+    const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const actorName = currentUser?.name || 'Utilisateur';
+    const actorRole = currentUser?.role || 'Valideur';
+
+    let updatedReportsList: DailyReport[] = [];
+
+    setDailyReports(prev => {
+      const updated = prev.map(r => {
+        const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+        const matches = 
+          r.id === reportId || 
+          r.code === reportId || 
+          r.reportCode === reportId ||
+          r.id === cleanReqId ||
+          r.code === cleanReqId ||
+          r.reportCode === cleanReqId ||
+          (r.code && cleanReqId.includes(r.code)) ||
+          (r.id && cleanReqId.includes(r.id));
+
+        if (matches) {
+          const currentHistory = Array.isArray(r.historyLogs) ? r.historyLogs : [];
+          const currentRejections = Array.isArray(r.rejectionHistory) ? r.rejectionHistory : [];
+          
+          const newHistoryLog = {
+            timestamp: timestampStr,
+            user: actorName,
+            role: actorRole,
+            action: `Passage au statut '${newStatus}'`,
+            comment: comment || 'Aucun motif renseigné'
+          };
+
+          const updatedRejections = newStatus === 'Refusé' || newStatus === 'Brouillon'
+            ? [{ timestamp: timestampStr, user: actorName, role: actorRole, reason: comment || 'Demande de correction' }, ...currentRejections]
+            : currentRejections;
+
+          return {
+            ...r,
+            status: newStatus as any,
+            isAccounted: (newStatus === 'Validé' || newStatus === 'Verrouillé') ? true : r.isAccounted,
+            accountedAt: (newStatus === 'Validé' || newStatus === 'Verrouillé') ? timestampStr : r.accountedAt,
+            submittedBy: newStatus === 'Soumis' ? actorName : r.submittedBy,
+            submittedAt: newStatus === 'Soumis' ? timestampStr : r.submittedAt,
+            validatedBy: newStatus === 'Validé' ? actorName : r.validatedBy,
+            validatedAt: newStatus === 'Validé' ? timestampStr : r.validatedAt,
+            lockedBy: newStatus === 'Verrouillé' ? actorName : r.lockedBy,
+            lockedAt: newStatus === 'Verrouillé' ? timestampStr : r.lockedAt,
+            historyLogs: [newHistoryLog, ...currentHistory],
+            rejectionHistory: updatedRejections
+          };
+        }
+        return r;
+      });
+      updatedReportsList = updated;
+      safeSaveToStorage('gebat_daily_reports', updated);
+      const userCreated = updated.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
+      safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
+      return updated;
+    });
+
+    // Synchronisation de la Tâche de Validation persistante
+    const mappedTaskStatus: ValidationTaskStatus = 
+      newStatus === 'Validé' ? 'APPROVED' :
+      newStatus === 'Verrouillé' ? 'CLOSED' :
+      newStatus === 'Brouillon' ? 'RETURNED' :
+      newStatus === 'Refusé' ? 'REJECTED' : 'PENDING';
+
+    setValidationTasks(prev => {
+      const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+      const updated = prev.map(t => {
+        const matches = 
+          t.reportId === reportId || 
+          t.id === reportId || 
+          t.id === `TSK-RPT-${reportId}` || 
+          t.reportId === cleanReqId ||
+          t.id === cleanReqId ||
+          (t.reportId && cleanReqId.includes(t.reportId)) ||
+          (t.id && cleanReqId.includes(t.id));
+
+        if (matches) {
+          return {
+            ...t,
+            status: mappedTaskStatus,
+            comment: comment || t.comment,
+            updatedAt: timestampStr
+          };
+        }
+        return t;
+      });
+      safeSaveToStorage('gebat_validation_tasks', updated);
+      return updated;
+    });
+
+    addAuditLog('WORKFLOW_RAPPORT_JOURNALIER', 'PRODUCTION', reportId, `Rapport passage à l'état '${newStatus}' par ${actorName} (${actorRole}). Motif/Commentaire: ${comment || 'Aucun'}`);
+
+    // Synchronisation déterministe et universelle SSOT post-validation
+    if (newStatus === 'Validé' || newStatus === 'Verrouillé') {
+      const validReports = updatedReportsList.filter(r => {
+        const s = (r.status || '').toUpperCase();
+        return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+      });
+
+      // 1. Recalcul déterministe du WBS par somme exacte des rapports validés
+      let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
+
+      setWbsMap(prevMap => {
+        const nextMap = { ...prevMap };
+
+        Object.keys(nextMap).forEach(pKey => {
+          const tree = nextMap[pKey];
+          if (!Array.isArray(tree) || tree.length === 0) return;
+
+          const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
+            return nodes.map(node => {
+              const nodeReports = validReports.filter(r => {
+                const rProj = String(r.projectId || r.project_id || '').toUpperCase();
+                const pMatch = rProj.includes(pKey.toUpperCase()) || pKey.toUpperCase().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
+                if (!pMatch) return false;
+                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase();
+                const nCode = String(node.code || node.id || '').toUpperCase();
+                return rWbs === nCode || (rWbs && nCode && (rWbs.includes(nCode) || nCode.includes(rWbs)));
+              });
+
+              const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);
+
+              let updatedChildren: WBSNode[] | undefined = undefined;
+              if (node.children && node.children.length > 0) {
+                updatedChildren = updateNodeDeterministic(node.children);
+              }
+
+              const targetP = Number(node.plannedQty || node.contractQty || (Number(node.pu) > 0 && Number(node.revisedBudget) > 0 ? Number(node.revisedBudget) / Number(node.pu) : 0) || 1);
+              let nodeProgress = node.progress || 0;
+
+              if (updatedChildren && updatedChildren.length > 0) {
+                const totalChildBudget = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.revisedBudget || c.initialBudget || 1), 0);
+                const totalChildDone = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.revisedBudget || c.initialBudget || 1) * ((c.progress || 0) / 100)), 0);
+                nodeProgress = totalChildBudget > 0 ? Math.min(100, Number(((totalChildDone / totalChildBudget) * 100).toFixed(1))) : node.progress;
+              } else if (nodeReports.length > 0) {
+                nodeProgress = targetP > 0 ? Math.min(100, Number(((totalRealizedQty / targetP) * 100).toFixed(1))) : node.progress;
+              }
+
+              return {
+                ...node,
+                actualQty: totalRealizedQty > 0 ? totalRealizedQty : node.actualQty || node.realizedQty || 0,
+                realizedQty: totalRealizedQty > 0 ? totalRealizedQty : node.realizedQty || node.actualQty || 0,
+                progress: nodeProgress,
+                children: updatedChildren
+              };
+            });
+          };
+
+          nextMap[pKey] = updateNodeDeterministic(tree);
+        });
+
+        calculatedNextWbsMap = nextMap;
+        safeSaveToStorage('gebat_wbs', nextMap);
+        return nextMap;
+      });
+
+      // 2. Recalcul de l'Avancement Physique Global du Projet
+      setProjects(prevProjects => {
+        const updatedProjects = prevProjects.map(proj => {
+          const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
+          if (projTree.length > 0) {
+            const getLeaves = (arr: any[]): any[] => {
+              let res: any[] = [];
+              arr.forEach(n => {
+                if (!n.children || n.children.length === 0) {
+                  res.push(n);
+                } else {
+                  res = res.concat(getLeaves(n.children));
+                }
+              });
+              return res;
+            };
+            const leafNodes = getLeaves(projTree);
+            const totalPlanned = leafNodes.reduce((acc, n) => {
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              return acc + budget;
+            }, 0);
+            const totalDone = leafNodes.reduce((acc, n) => {
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const prog = Number(n.progress || 0);
+              return acc + (budget * (prog / 100));
+            }, 0);
+            const overallPct = totalPlanned > 0 ? Number(((totalDone / totalPlanned) * 100).toFixed(1)) : proj.progress;
+            return {
+              ...proj,
+              progress: overallPct,
+              physicalProgress: overallPct
+            };
+          }
+          return proj;
+        });
+        safeSaveToStorage('gebat_projects', updatedProjects);
+        return updatedProjects;
+      });
+
+      // 3. Traitement Idempotent des Mouvements de Stock
+      const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+      const targetReport = updatedReportsList.find(r => r.id === reportId || r.code === reportId || r.id === cleanReqId || r.code === cleanReqId);
+
+      if (targetReport && Array.isArray((targetReport as any).consumptions) && (targetReport as any).consumptions.length > 0) {
+        setStockItems(prevStock => {
+          let updatedStock = [...prevStock];
+          (targetReport as any).consumptions.forEach((c: any) => {
+            const itemCode = (c.itemCode || c.code || c.article || '').toUpperCase();
+            const qtyConsumed = Number(c.qty || c.quantity || 0);
+            if (itemCode && qtyConsumed > 0) {
+              const movId = `MOV-RPT-${targetReport.id}-${itemCode}`;
+              setStockMovements(prevMovs => {
+                if (prevMovs.some(m => m.id === movId || m.reference === targetReport.code)) return prevMovs;
+                const newMov = {
+                  id: movId,
+                  date: targetReport.date || new Date().toISOString().split('T')[0],
+                  type: 'SORTIE' as const,
+                  reference: targetReport.code || targetReport.id,
+                  warehouseId: 'WH-SONGON',
+                  itemId: itemCode,
+                  itemName: c.article || itemCode,
+                  unit: c.unit || 'U',
+                  quantity: qtyConsumed,
+                  wbsCode: targetReport.wbsCode,
+                  requestedBy: targetReport.submittedBy || actorName,
+                  status: 'VALIDÉ' as const
+                };
+                const nextMovs = [newMov, ...prevMovs];
+                safeSaveToStorage('gebat_stock_movements', nextMovs);
+                return nextMovs;
+              });
+
+              updatedStock = updatedStock.map(st => {
+                const stCode = (st.code || st.id || '').toUpperCase();
+                if (stCode === itemCode || stCode.includes(itemCode) || itemCode.includes(stCode)) {
+                  const newQty = Math.max(0, Number(st.currentStock || st.quantity || 0) - qtyConsumed);
+                  return { ...st, currentStock: newQty, quantity: newQty };
+                }
+                return st;
+              });
+            }
+          });
+          safeSaveToStorage('gebat_stock_items', updatedStock);
+          return updatedStock;
+        });
+      }
+
+      // Diffusion temps réel multi-fenêtres / multi-onglets
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new Event('gebat_state_updated'));
+          if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('gebat_360_channel');
+            channel.postMessage({ type: 'PRODUCTION_REPORT_VALIDATED', reportId, timestamp: timestampStr });
+          }
+        } catch (e) {}
+      }
+    }
+  };
+
+  const createValidationTask = (taskData: Omit<ValidationTask, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const newTask: ValidationTask = {
+      ...taskData,
+      id: `TSK-RPT-${taskData.reportId}`,
+      createdAt: timestampStr,
+      updatedAt: timestampStr,
+    };
+
+    setValidationTasks(prev => {
+      const filtered = prev.filter(t => t.reportId !== taskData.reportId && t.id !== newTask.id);
+      const updated = [newTask, ...filtered];
+      safeSaveToStorage('gebat_validation_tasks', updated);
+      return updated;
+    });
+  };
+
+  const updateValidationTaskStatus = (taskIdOrReportId: string, status: ValidationTaskStatus, comment?: string) => {
+    const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    setValidationTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskIdOrReportId || t.reportId === taskIdOrReportId || t.id === `TSK-RPT-${taskIdOrReportId}` || taskIdOrReportId.includes(t.reportId)) {
+          return {
+            ...t,
+            status,
+            comment: comment || t.comment,
+            updatedAt: timestampStr
+          };
+        }
+        return t;
+      });
+      safeSaveToStorage('gebat_validation_tasks', updated);
+      return updated;
+    });
+  };
+
+  const requestLockedReportCorrection = (reportId: string, field: string, oldValue: any, newValue: any, reason: string) => {
+    const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const reqId = `CORR-REQ-${Date.now()}`;
+
+    setDailyReports(prev => {
+      const updated = prev.map(r => {
+        if (r.id === reportId || r.code === reportId) {
+          const reqs = Array.isArray(r.correctionRequests) ? r.correctionRequests : [];
+          const newReq = {
+            id: reqId,
+            requestedBy: currentUser?.name || 'Demandeur',
+            requestedAt: timestampStr,
+            field,
+            oldValue,
+            newValue,
+            reason,
+            status: 'En attente' as const
+          };
+          const logs = Array.isArray(r.historyLogs) ? r.historyLogs : [];
+          return {
+            ...r,
+            correctionRequests: [newReq, ...reqs],
+            historyLogs: [
+              { timestamp: timestampStr, user: currentUser?.name || 'Demandeur', role: currentUser?.role || 'Valideur', action: `Demande de correction sur rapport verrouillé (${field}: ${oldValue} ➔ ${newValue})`, comment: reason },
+              ...logs
+            ]
+          };
+        }
+        return r;
+      });
+      safeSaveToStorage('gebat_daily_reports', updated);
+      return updated;
+    });
+
+    addAuditLog('DEMANDE_CORRECTION_VERROUILLEE', 'PRODUCTION', reportId, `Demande de modification du champ '${field}' (${oldValue} ➔ ${newValue}). Motif: ${reason}`);
+  };
+
+  const approveLockedReportCorrection = (reportId: string, requestId: string) => {
+    const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    setDailyReports(prev => {
+      const updated = prev.map(r => {
+        if (r.id === reportId || r.code === reportId) {
+          const reqs = Array.isArray(r.correctionRequests) ? r.correctionRequests : [];
+          const targetReq = reqs.find(rq => rq.id === requestId);
+          if (!targetReq) return r;
+
+          const updatedReqs = reqs.map(rq => rq.id === requestId ? { ...rq, status: 'Approuvé' as const, approvedBy: currentUser?.name || 'Direction', approvedAt: timestampStr } : rq);
+          const logs = Array.isArray(r.historyLogs) ? r.historyLogs : [];
+
+          const updatedReport = { ...r };
+          if (targetReq.field === 'realizedQty') updatedReport.realizedQty = Number(targetReq.newValue);
+          if (targetReq.field === 'notes') updatedReport.notes = String(targetReq.newValue);
+          if (targetReq.field === 'observations') updatedReport.observations = String(targetReq.newValue);
+
+          return {
+            ...updatedReport,
+            correctionRequests: updatedReqs,
+            historyLogs: [
+              { timestamp: timestampStr, user: currentUser?.name || 'Direction', role: currentUser?.role || 'Super Admin', action: `Approbation correction exceptionnelle [${targetReq.field}]`, comment: targetReq.reason },
+              ...logs
+            ]
+          };
+        }
+        return r;
+      });
+      safeSaveToStorage('gebat_daily_reports', updated);
+      return updated;
+    });
+
+    addAuditLog('APPROBATION_CORRECTION_VERROUILLEE', 'PRODUCTION', reportId, `Approbation de la correction par ${currentUser?.name || 'Direction'}.`);
   };
 
   const importDailyReportsBulk = (newReports: Omit<DailyReport, 'id' | 'createdAt' | 'reportCode'>[]) => {
@@ -1470,13 +2357,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUsers(prev => {
       const updated = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
       localStorage.setItem('gebat_users', JSON.stringify(updated));
-      indexedDBStorage.setItem('gebat_users', updated);
+      safeSaveToStorage('gebat_users', updated);
       return updated;
     });
     if (currentUser && (currentUser.id === updatedUser.id || currentUser.email === updatedUser.email)) {
       setCurrentUser(updatedUser);
       localStorage.setItem('gebat_current_user', JSON.stringify(updatedUser));
-      indexedDBStorage.setItem('gebat_current_user', updatedUser);
+      safeSaveToStorage('gebat_current_user', updatedUser);
     }
     ApiService.updateUser(updatedUser.id, updatedUser).catch(err => console.error('Error updating user in DB:', err));
     addAuditLog('MODIFICATION_UTILISATEUR', 'ADMINISTRATION', updatedUser.email, `Fiche utilisateur ${updatedUser.name} mise à jour (Rôle: ${updatedUser.role}, Statut: ${updatedUser.status || 'ACTIF'}).`);
@@ -1561,22 +2448,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
            isProjectMatch(p.code, strSite);
   });
 
-  const allowedProjectIds = filteredProjects.map(p => p.id);
+  const allowedProjectKeys = new Set<string>();
+  filteredProjects.forEach(p => {
+    if (p.id) allowedProjectKeys.add(String(p.id).trim().toUpperCase());
+    if (p.code) allowedProjectKeys.add(String(p.code).trim().toUpperCase());
+  });
+
+  const isMatchingProjectKey = (targetKey?: string) => {
+    if (!targetKey || activeSiteId === 'ALL') return true;
+    const cleanKey = String(targetKey).trim().toUpperCase();
+    if (allowedProjectKeys.has(cleanKey)) return true;
+    return filteredProjects.some(p => isProjectMatch(p.id, cleanKey) || isProjectMatch(p.code, cleanKey));
+  };
 
   const filteredPurchaseRequests = purchaseRequests.filter(da => {
     if (activeSiteId === 'ALL') return true;
-    return allowedProjectIds.includes(da.projectId);
+    return isMatchingProjectKey(da.projectId);
   });
 
   const filteredPurchaseOrders = purchaseOrders.filter(po => {
     if (activeSiteId === 'ALL') return true;
     const da = purchaseRequests.find(d => d.id === po.daId);
-    return da ? allowedProjectIds.includes(da.projectId) : false;
+    return da ? isMatchingProjectKey(da.projectId) : true;
   });
 
   const filteredReceipts = receipts.filter(rec => {
     if (activeSiteId === 'ALL') return true;
-    return allowedProjectIds.includes(rec.projectId);
+    return isMatchingProjectKey(rec.projectId);
   });
 
   const filteredStockItems = stockItems.filter(item => {
@@ -1585,13 +2483,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const filteredDailyReports = dailyReports.filter(rep => {
-    if (activeSiteId === 'ALL') return true;
-    return allowedProjectIds.includes(rep.projectId);
+    if (!activeSiteId || activeSiteId === 'ALL') return true;
+    return isMatchingProjectKey(rep.projectId) || filteredProjects.some(p => isReportForProject(rep, p));
   });
 
   const filteredAlerts = alerts.filter(a => {
     if (activeSiteId === 'ALL') return true;
-    return a.projectId ? allowedProjectIds.includes(a.projectId) : true;
+    return a.projectId ? isMatchingProjectKey(a.projectId) : true;
   });
 
   return (
@@ -1611,7 +2509,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         purchaseOrders: filteredPurchaseOrders,
         receipts: filteredReceipts,
         stockMovements,
-        dailyReports: filteredDailyReports,
+        dailyReports: dailyReports,
+        validationTasks: validationTasks,
         alerts: filteredAlerts,
         auditLogs,
         costNatures,
@@ -1629,6 +2528,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         processGoodsReceipt,
         consumeStockToWBS,
         createDailyReport,
+        updateDailyReportStatus,
+        createValidationTask,
+        updateValidationTaskStatus,
+        requestLockedReportCorrection,
+        approveLockedReportCorrection,
         importDailyReportsBulk,
         updateProjectWBS,
         addUser,

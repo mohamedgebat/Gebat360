@@ -7,6 +7,33 @@ import {
   CheckCircle2, FileText, Calendar, Building2, Layers, AlertTriangle, ShieldCheck, RefreshCw, X
 } from 'lucide-react';
 
+const formatFrenchDate = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  const str = String(dateStr).trim();
+
+  if (str.includes('T')) {
+    const parts = str.split('T');
+    const dPart = parts[0];
+    const tPart = parts[1]?.replace('Z', '').split('.')[0];
+
+    const dSplit = dPart.split('-');
+    if (dSplit.length === 3) {
+      const formattedDate = `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+      if (tPart && tPart !== '00:00:00' && tPart !== '00:00') {
+        return `${formattedDate} à ${tPart.substring(0, 5)}`;
+      }
+      return formattedDate;
+    }
+  }
+
+  const dSplit = str.split('-');
+  if (dSplit.length === 3) {
+    return `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+  }
+
+  return str;
+};
+
 export const MouvementWbsModule: React.FC = () => {
   const { projects, wbsMap, stockItems, stockMovements, createStockMovement, processGoodsReceipt, purchaseOrders, addAuditLog, currentUser } = useAppState();
 
@@ -226,7 +253,7 @@ export const MouvementWbsModule: React.FC = () => {
               {filteredMovements.map(m => (
                 <tr key={m.id} className="hover:bg-slate-50">
                   <td className="p-3 font-mono font-bold text-blue-700">{m.code}</td>
-                  <td className="p-3 font-mono text-slate-500">{m.date}</td>
+                  <td className="p-3 font-mono text-slate-500">{formatFrenchDate(m.date)}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
                       m.type === 'Entrée' ? 'bg-emerald-100 text-emerald-800' :

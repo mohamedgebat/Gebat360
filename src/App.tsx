@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { AppStateProvider, useAppState } from './core/database/AppStateContext';
 import { ApiService } from './services/api';
 import { Sidebar, isMenuItemAllowed, getDefaultViewForRole, BLOCKED_ITEM_IDS } from './shared/components/Sidebar';
+import { hasPermission, hasProjectAccess } from './core/permissions';
+import { ShieldAlert } from 'lucide-react';
 import { Header } from './shared/components/Header';
 import { DashboardGeneral } from './modules/dashboard/DashboardGeneral';
 import { DashboardKpi } from './modules/dashboard/DashboardKpi';
@@ -153,6 +155,41 @@ const MainApp: React.FC = () => {
   };
 
   const renderContent = () => {
+    // Écran de protection RBAC si l'accès au module est refusé
+    if (currentUser && !isMenuItemAllowed(currentUser, currentView)) {
+      const defaultPage = getDefaultViewForRole(currentUser.role);
+      return (
+        <div className="bg-white p-8 rounded-3xl border border-rose-200 shadow-xl max-w-2xl mx-auto my-12 text-center space-y-5">
+          <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <ShieldAlert size={32} />
+          </div>
+          <div className="space-y-2">
+            <span className="px-3 py-1 bg-rose-100 text-rose-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+              Accès Refusé — Habilitation Insuffisante (RBAC)
+            </span>
+            <h2 className="text-xl font-black text-slate-900">
+              Module '{getTitle()}' non autorisé pour votre profil
+            </h2>
+            <p className="text-xs text-slate-600 font-medium max-w-md mx-auto">
+              Votre compte <strong className="text-slate-900">{currentUser.name}</strong> (Profil: <strong className="text-blue-700">{currentUser.role}</strong>, Société: <strong className="text-slate-900">{currentUser.company || 'GEBAT SA'}</strong>) ne dispose pas des privilèges nécessaires pour accéder à ce module.
+            </p>
+          </div>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left text-xs font-mono space-y-1">
+            <div className="text-slate-500 font-sans font-bold mb-1">Règles de sécurité appliquées :</div>
+            <div>• Périmètre Société : <strong>{currentUser.company || 'GEBAT SA'}</strong></div>
+            <div>• Projets autorisés : <strong>{currentUser.projectIds?.join(', ') || 'Tous les projets du périmètre'}</strong></div>
+            <div>• Action requise : <strong>VOIR ({currentView})</strong></div>
+          </div>
+          <button
+            onClick={() => setCurrentView(defaultPage)}
+            className="px-6 py-3 bg-[#11192e] text-white font-extrabold rounded-2xl text-xs hover:bg-slate-800 transition shadow-lg inline-flex items-center gap-2 cursor-pointer"
+          >
+            <span>Retour à ma page dédiée ({defaultPage})</span>
+          </button>
+        </div>
+      );
+    }
+
     if (selectedProjectId && (currentView === 'vue-projet-360' || currentView === 'projects-360')) {
       return (
         <ProjectDetails360
@@ -244,9 +281,11 @@ const MainApp: React.FC = () => {
 
       case 'procurement-da':
       case 'procurement-receptions':
-        return <ProcurementDAModule />;
+        return <ProcurementDAModule onNavigateView={view => setCurrentView(view)} />;
 
       case 'procurement-validation':
+        return <ProcurementValidationModule />;
+
       case 'admin-workflows':
         return <WorkflowsEngineModule />;
 

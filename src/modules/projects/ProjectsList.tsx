@@ -9,10 +9,8 @@ interface ProjectsListProps {
 }
 
 function fmt(n: number): string {
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + ' Mrd FCFA';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' M FCFA';
-  if (n >= 1e3) return (n / 1e3).toFixed(0) + ' K FCFA';
-  return n.toLocaleString('fr-FR') + ' FCFA';
+  if (n === undefined || n === null || isNaN(n)) return '0 FCFA';
+  return Math.round(n).toLocaleString('fr-FR') + ' FCFA';
 }
 
 function fmtPct(n: number): string { return n.toFixed(1) + '%'; }
@@ -230,12 +228,10 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onSelectProject, onN
                   const allWbsNodes = flattenWBS(wbs);
                   
                   const realCommittedDS = allWbsNodes.reduce((sum, n) => sum + (n.committed || 0), 0);
-                  const realActualCost = allWbsNodes.reduce((sum, n) => sum + (n.actualCost || 0), 0);
-                  const calculatedEAC = realActualCost + allWbsNodes.reduce((sum, n) => sum + (n.forecast || 0), 0) || p.revisedBudget;
-                  
-                  const calculatedMarginPct = p.revisedBudget > 0 
-                    ? Number((((p.revisedBudget - calculatedEAC) / p.revisedBudget) * 100).toFixed(1)) 
-                    : 14.5;
+                  const contractAmt = Number(p.contractAmount || 0);
+                  const revisedBudget = Number(p.revisedBudget || p.initialBudget || 0);
+                  const eacMargin = Math.max(0, contractAmt - revisedBudget);
+                  const calculatedMarginPct = contractAmt > 0 ? Number(((eacMargin / contractAmt) * 100).toFixed(1)) : 0;
 
                   return (
                     <tr key={p.id} className="hover:bg-slate-50 transition">

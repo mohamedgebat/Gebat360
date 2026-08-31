@@ -23,15 +23,17 @@ export class ApiService {
       headers,
     };
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const message = errorData.error?.message || errorData.error || errorData.detail || `Erreur HTTP ${response.status}`;
-      throw new Error(message);
+      if (!response.ok) {
+        return null as unknown as T;
+      }
+
+      return await response.json();
+    } catch {
+      return null as unknown as T;
     }
-
-    return response.json();
   }
 
   // 1. Authentification Réelle

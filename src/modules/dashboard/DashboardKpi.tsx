@@ -35,14 +35,13 @@ export const DashboardKpi: React.FC<DashboardKpiProps> = ({ onBackToProject }) =
   const projectWbsNodes = activeProject ? (wbsMap[activeProject.id] || wbsMap[activeProject.code] || []) : [];
 
   const contractAmount = Number(activeProject?.contractAmount || 0);
-  const revisedBudget = Number(activeProject?.revisedBudget || activeProject?.initialBudget || Math.round(contractAmount * 0.82));
+  const revisedBudget = Number(activeProject?.revisedBudget || activeProject?.initialBudget || 0);
   const totalActualCost = projectWbsNodes.reduce((sum, n) => sum + (n.actualCost || 0), 0);
   const progressPct = Number(activeProject?.progress || 0).toFixed(1);
 
   const fmtMds = (val: number) => {
-    if (val >= 1e9) return `${(val / 1e9).toFixed(2)} Mds FCFA`;
-    if (val >= 1e6) return `${(val / 1e6).toFixed(0)} M FCFA`;
-    return `${val.toLocaleString('fr-FR')} FCFA`;
+    if (val === undefined || val === null || isNaN(val)) return '0 FCFA';
+    return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
   };
 
   const [periode] = useState('Juin 2026');

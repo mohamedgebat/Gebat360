@@ -21,10 +21,18 @@ export const isProjectMatch = (idOrCode1?: string, idOrCode2?: string): boolean 
 
 export const isReportForProject = (report: any, project: any): boolean => {
   if (!report || !project) return false;
-  if (isProjectMatch(report.projectId, project.id)) return true;
-  if (isProjectMatch(report.projectId, project.code)) return true;
-  if (isProjectMatch(report.wbsCode, project.id)) return true;
-  if (isProjectMatch(report.wbsCode, project.code)) return true;
-  if (report.projectName && project.name && isProjectMatch(report.projectName, project.name)) return true;
+
+  const targetId = typeof project === 'string' ? project : (project.id || project.code || '');
+  const targetCode = typeof project === 'object' ? (project.code || project.id || '') : project;
+  const targetName = typeof project === 'object' ? (project.name || '') : '';
+
+  const rProjId = report.projectId || report.project_id || '';
+  const rWbs = report.wbsCode || report.wbsId || '';
+  const rName = report.projectName || '';
+
+  if (isProjectMatch(rProjId, targetId) || isProjectMatch(rProjId, targetCode)) return true;
+  if (isProjectMatch(rWbs, targetId) || isProjectMatch(rWbs, targetCode)) return true;
+  if (targetName && rName && isProjectMatch(rName, targetName)) return true;
+
   return false;
 };

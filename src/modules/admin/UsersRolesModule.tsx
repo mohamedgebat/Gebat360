@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { ApiService } from '../../services/api';
-import { PERMISSIONS_MATRIX } from '../../core/permissions';
-import { User, Role, DelegationRule } from '../../types';
+import { PERMISSIONS_MATRIX, MODULE_ACTIONS_MATRIX, hasPermission } from '../../core/permissions';
+import { User, Role, DelegationRule, PermissionAction } from '../../types';
 import {
   Users, UserCheck, ShieldCheck, Lock, Building2, Layers, Plus, Edit3, Trash2, CheckCircle2,
   AlertCircle, Search, Filter, Key, Check, X, ShieldAlert, ArrowRight, Camera, Eye, EyeOff,
   RefreshCw, Phone, Hash, Shield, Mail, FileText, Calendar, UserX, UserPlus, UserCheck2, Clock,
-  ArrowLeft, Save
+  ArrowLeft, Save, Sliders
 } from 'lucide-react';
 
 export const UsersRolesModule: React.FC = () => {
@@ -15,6 +15,17 @@ export const UsersRolesModule: React.FC = () => {
 
   // ÉTAT DE NAVIGATION DE LA PAGE : 'list' (Vue Annuaire) ou 'create_form' (Pleine Page Nouveau Formulaire)
   const [viewMode, setViewMode] = useState<'list' | 'create_form'>('list');
+
+  // ONGLETS GOUVERNANCE RBAC
+  const [activeGovernanceTab, setActiveGovernanceTab] = useState<'annuaire' | 'matrice' | 'seuils'>('annuaire');
+
+  // SEUILS PARAMÉTRIQUES DE VALIDATION FINANCIÈRE DA & BUDGET
+  const [daThresholds, setDaThresholds] = useState([
+    { id: 'th-1', label: 'Niveau 1 — Saisie Terrain & Petit Matériel', min: 0, max: 500000, roles: ['Chef de Chantier', 'Conducteur de Travaux'] },
+    { id: 'th-2', label: 'Niveau 2 — Approbation Directeur de Projet', min: 500000, max: 5000000, roles: ['Directeur Projet'] },
+    { id: 'th-3', label: 'Niveau 3 — Approbation Direction Technique & DAF', min: 5000000, max: 25000000, roles: ['Directeur Technique', 'DAF'] },
+    { id: 'th-4', label: 'Niveau 4 — Arbitrage Direction Générale (DG / CEO)', min: 25000000, max: 1000000000, roles: ['Direction Générale', 'Super Admin'] },
+  ]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('TOUS');
@@ -659,47 +670,247 @@ export const UsersRolesModule: React.FC = () => {
         </div>
       </div>
 
-      {/* BARRE DE FILTRES ET BOUTON BASCULEMENT PLEINE PAGE FORMULAIRE */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-        <div className="flex flex-wrap items-center gap-3 flex-1">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher nom, email, matricule..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500">Rôle :</span>
-            <select
-              value={selectedRoleFilter}
-              onChange={e => setSelectedRoleFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-lg px-2.5 py-1.5 cursor-pointer"
-            >
-              <option value="TOUS">Tous les Rôles ({users.length})</option>
-              <option value="Super Admin">Super Admin</option>
-              <option value="Direction Générale">Direction Générale</option>
-              <option value="Directeur Projet">Directeur Projet</option>
-              <option value="Conducteur de Travaux">Conducteur de Travaux</option>
-              <option value="Chef de Chantier">Chef de Chantier</option>
-              <option value="Cost Controller">Cost Controller</option>
-              <option value="Achats">Achats</option>
-              <option value="Magasinier">Magasinier</option>
-            </select>
-          </div>
-        </div>
+      {/* BARRE DE NAVIGATION ET D'ONGLETS DE GOUVERNANCE */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 border-b border-slate-200">
+        <button
+          onClick={() => setActiveGovernanceTab('annuaire')}
+          className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition cursor-pointer shrink-0 ${
+            activeGovernanceTab === 'annuaire'
+              ? 'bg-[#11192e] text-white shadow-sm'
+              : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+          }`}
+        >
+          <Users size={16} /> 📋 Annuaire des Utilisateurs ({users.length})
+        </button>
 
         <button
-          onClick={() => setViewMode('create_form')}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+          onClick={() => setActiveGovernanceTab('matrice')}
+          className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition cursor-pointer shrink-0 ${
+            activeGovernanceTab === 'matrice'
+              ? 'bg-[#11192e] text-white shadow-sm'
+              : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+          }`}
         >
-          <Plus size={16} /> Page Nouvel Utilisateur
+          <ShieldCheck size={16} /> 🛡️ Matrice des Habilitations (7 Actions x 8 Rôles)
+        </button>
+
+        <button
+          onClick={() => setActiveGovernanceTab('seuils')}
+          className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition cursor-pointer shrink-0 ${
+            activeGovernanceTab === 'seuils'
+              ? 'bg-[#11192e] text-white shadow-sm'
+              : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+          }`}
+        >
+          <Sliders size={16} /> ⚡ Seuils de Validation & Workflows
         </button>
       </div>
+
+      {/* 2. ONGLET MATRICE DES PERMISSIONS (7 ACTIONS x 8 RÔLES) */}
+      {activeGovernanceTab === 'matrice' && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <ShieldCheck size={18} className="text-blue-600" /> Matrice Officielle des Habilitations Métier GEBAT 360°
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Cartographie des 7 niveaux d'action (<strong className="text-slate-800 font-bold">VOIR, CRÉER, MODIFIER, SOUMETTRE, VALIDER, REFUSER, ADMINISTRER</strong>) par rôle sur les modules ERP.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-sans border-collapse">
+              <thead>
+                <tr className="bg-[#11192e] text-white text-[10.5px] uppercase font-black tracking-wider">
+                  <th className="p-3.5 border border-slate-700">Module Fonctionnel ERP</th>
+                  {[
+                    'Directeur Projet',
+                    'Conducteur de Travaux',
+                    'Chef de Chantier',
+                    'Cost Controller',
+                    'Achats',
+                    'Magasinier',
+                    'Direction Générale',
+                    'Super Admin'
+                  ].map(roleName => (
+                    <th key={roleName} className="p-3.5 border border-slate-700 text-center min-w-[130px]">
+                      {roleName}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {[
+                  { key: 'dashboard-portfolio', name: 'Portefeuille & Projets 360°' },
+                  { key: 'btp-production', name: 'Rapports de Production Terrain' },
+                  { key: 'btp-wbs', name: 'Structure WBS Chantier' },
+                  { key: 'btp-debourse', name: 'Déboursé Sec & Budget DQE' },
+                  { key: 'btp-cost-control', name: 'Cost Control & Forecast/EAC' },
+                  { key: 'procurement-da', name: 'Demandes d\'Achat (DA)' },
+                  { key: 'stock-list', name: 'Stock Magasin & Imputation WBS' },
+                  { key: 'admin-users', name: 'Administration Utilisateurs & Rôles' },
+                ].map((mod, idx) => (
+                  <tr key={mod.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                    <td className="p-3 font-extrabold text-slate-900 border border-slate-200 bg-slate-100/50">
+                      {mod.name}
+                    </td>
+                    {[
+                      'Directeur Projet',
+                      'Conducteur de Travaux',
+                      'Chef de Chantier',
+                      'Cost Controller',
+                      'Achats',
+                      'Magasinier',
+                      'Direction Générale',
+                      'Super Admin'
+                    ].map(r => {
+                      const tempUser: User = { id: 'test', name: 'Test', email: '', role: r as Role, avatar: 'T' };
+                      const canVoir = hasPermission(tempUser, mod.key, 'VOIR');
+                      const canCreer = hasPermission(tempUser, mod.key, 'CRÉER');
+                      const canModifier = hasPermission(tempUser, mod.key, 'MODIFIER');
+                      const canSoumettre = hasPermission(tempUser, mod.key, 'SOUMETTRE');
+                      const canValider = hasPermission(tempUser, mod.key, 'VALIDER');
+                      const canRefuser = hasPermission(tempUser, mod.key, 'REFUSER');
+                      const canAdmin = hasPermission(tempUser, mod.key, 'ADMINISTRER');
+
+                      return (
+                        <td key={r} className="p-2 border border-slate-200 text-center align-top">
+                          <div className="flex flex-wrap items-center justify-center gap-1">
+                            {canVoir && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-900 font-extrabold rounded text-[9px]" title="VOIR">👁️ Voir</span>}
+                            {canCreer && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-900 font-extrabold rounded text-[9px]" title="CRÉER">➕ Créer</span>}
+                            {canModifier && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold rounded text-[9px]" title="MODIFIER">✏️ Modif</span>}
+                            {canSoumettre && <span className="px-1.5 py-0.5 bg-sky-100 text-sky-900 font-extrabold rounded text-[9px]" title="SOUMETTRE">🚀 Soum</span>}
+                            {canValider && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-900 font-extrabold rounded text-[9px]" title="VALIDER">✅ Valid</span>}
+                            {canRefuser && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-900 font-extrabold rounded text-[9px]" title="REFUSER">↩️ Refus</span>}
+                            {canAdmin && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 font-extrabold rounded text-[9px]" title="ADMINISTRER">🔒 Admin</span>}
+                            {!canVoir && <span className="text-[10px] text-slate-300 font-extrabold">⛔ Interdit</span>}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 3. ONGLET SEUILS DE VALIDATION & WORKFLOWS PARAMÉTRIQUES */}
+      {activeGovernanceTab === 'seuils' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+              <div>
+                <h2 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <Sliders size={18} className="text-amber-600" /> Seuils Paramétriques de Validation Financière
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Règles d'escalade budgétaire pour les Demandes d'Achat (DA) et révisions de Forecast/EAC.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {daThresholds.map((th, index) => (
+                <div key={th.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-xs text-slate-900">{th.label}</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-mono font-bold text-[10px]">
+                      Plafond : {th.max >= 1000000000 ? 'Sans Limite' : `${(th.max / 1000000).toFixed(1)} M FCFA`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Montant Min (FCFA)</label>
+                      <input
+                        type="number"
+                        value={th.min}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          setDaThresholds(prev => prev.map(t => t.id === th.id ? { ...t, min: val } : t));
+                        }}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Montant Max (FCFA)</label>
+                      <input
+                        type="number"
+                        value={th.max}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          setDaThresholds(prev => prev.map(t => t.id === th.id ? { ...t, max: val } : t));
+                        }}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1">Rôles Habilités pour Approbation</label>
+                    <div className="flex flex-wrap gap-1">
+                      {th.roles.map(r => (
+                        <span key={r} className="px-2 py-0.5 bg-emerald-100 text-emerald-900 font-extrabold rounded-md text-[10.5px]">
+                          ✅ {r}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. ONGLET ANNUAIRE & LISTE UTILISATEURS */}
+      {activeGovernanceTab === 'annuaire' && (
+        <>
+          {/* BARRE DE FILTRES ET BOUTON BASCULEMENT PLEINE PAGE FORMULAIRE */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher nom, email, matricule..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-500">Rôle :</span>
+                <select
+                  value={selectedRoleFilter}
+                  onChange={e => setSelectedRoleFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-lg px-2.5 py-1.5 cursor-pointer"
+                >
+                  <option value="TOUS">Tous les Rôles ({users.length})</option>
+                  <option value="Super Admin">Super Admin</option>
+                  <option value="Direction Générale">Direction Générale</option>
+                  <option value="Directeur Projet">Directeur Projet</option>
+                  <option value="Conducteur de Travaux">Conducteur de Travaux</option>
+                  <option value="Chef de Chantier">Chef de Chantier</option>
+                  <option value="Cost Controller">Cost Controller</option>
+                  <option value="Achats">Achats</option>
+                  <option value="Magasinier">Magasinier</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setViewMode('create_form')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+            >
+              <Plus size={16} /> Page Nouvel Utilisateur
+            </button>
+          </div>
 
       {/* GRILLE CENTRALE DE GESTION : LISTE ET INSPECTEUR PERMISSIONS */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -983,27 +1194,56 @@ export const UsersRolesModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* MATRICE DES ACTIONS AUTORISÉES */}
+              {/* MATRICE D'ACTIONS EXPLICITE (7 ACTIONS) */}
               <div className="space-y-2">
-                <span className="text-[10px] font-extrabold text-slate-900 uppercase tracking-wider block border-b pb-1">
-                  DROITS ET HABILITATIONS SUR LES MODULES :
+                <span className="text-[10px] font-extrabold text-slate-900 uppercase tracking-wider block border-b pb-1 flex justify-between items-center">
+                  <span>DROITS SUR LES MODULES (7 ACTIONS)</span>
+                  <span className="text-[9px] font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    Rôle : {selectedUser.role}
+                  </span>
                 </span>
 
-                {(() => {
-                  const perm = PERMISSIONS_MATRIX[selectedUser.role] || PERMISSIONS_MATRIX['Conducteur de Travaux'];
-                  return (
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Création de Projet & Trame WBS</span>{perm.canCreateProject ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Saisie & Modification Budget DQE</span>{perm.canEditBudget ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Validation Budgétaire & Dépassement</span>{perm.canApproveBudget ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Emission de Demande d'Achat (DA)</span>{perm.canCreateDA ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Validation DA & Seuil Autorisé</span>{perm.canApproveDA ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Émission Bon de Commande (BC)</span>{perm.canIssuePO ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Imputation & Sortie de Stock WBS</span>{perm.canIssueStock ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                      <div className="flex justify-between p-2 rounded hover:bg-slate-50"><span className="text-slate-700 font-medium">Saisie Rapport de Production</span>{perm.canCreateDailyReport ? <CheckCircle2 size={16} className="text-emerald-600" /> : <X size={16} className="text-slate-300" />}</div>
-                    </div>
-                  );
-                })()}
+                <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                  {[
+                    { key: 'dashboard-portfolio', label: 'Portefeuille Projets' },
+                    { key: 'btp-production', label: 'Rapports de Production' },
+                    { key: 'btp-wbs', label: 'Structure WBS' },
+                    { key: 'btp-debourse', label: 'Déboursé Sec & Budget' },
+                    { key: 'btp-cost-control', label: 'Cost Control & Forecast/EAC' },
+                    { key: 'procurement-da', label: 'Demandes d\'Achat (DA)' },
+                    { key: 'stock-list', label: 'Stock Magasin & Imputation WBS' },
+                    { key: 'admin-users', label: 'Administration Utilisateurs & Rôles' },
+                  ].map(mod => {
+                    const canVoir = hasPermission(selectedUser, mod.key, 'VOIR');
+                    const canCreer = hasPermission(selectedUser, mod.key, 'CRÉER');
+                    const canModifier = hasPermission(selectedUser, mod.key, 'MODIFIER');
+                    const canSoumettre = hasPermission(selectedUser, mod.key, 'SOUMETTRE');
+                    const canValider = hasPermission(selectedUser, mod.key, 'VALIDER');
+                    const canRefuser = hasPermission(selectedUser, mod.key, 'REFUSER');
+                    const canAdmin = hasPermission(selectedUser, mod.key, 'ADMINISTRER');
+
+                    return (
+                      <div key={mod.key} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between font-extrabold text-slate-900 text-xs">
+                          <span>{mod.label}</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-mono ${canVoir ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
+                            {canVoir ? 'ACCÈS AUTORISÉ' : 'ACCÈS INTERDIT'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canVoir ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-400'}`}>👁️ VOIR</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canCreer ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-400'}`}>➕ CRÉER</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canModifier ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>✏️ MODIFIER</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canSoumettre ? 'bg-sky-100 text-sky-900' : 'bg-slate-100 text-slate-400'}`}>🚀 SOUMETTRE</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canValider ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-400'}`}>✅ VALIDER</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canRefuser ? 'bg-rose-100 text-rose-900' : 'bg-slate-100 text-slate-400'}`}>↩️ REFUSER</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-extrabold ${canAdmin ? 'bg-purple-100 text-purple-900' : 'bg-slate-100 text-slate-400'}`}>🔒 ADMIN</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </>
           ) : (
@@ -1012,8 +1252,9 @@ export const UsersRolesModule: React.FC = () => {
             </div>
           )}
         </div>
-
       </div>
+      </>
+      )}
 
       {/* MODAL 0 : MODIFICATION COMPLÈTE DES INFORMATIONS DU COMPTE UTILISATEUR */}
       {showEditAccountModal && selectedUser && (

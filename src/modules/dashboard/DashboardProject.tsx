@@ -257,8 +257,8 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">BUDGET CONSOMMÉ</span>
-            <span className="text-base font-black text-slate-900 mt-0.5 block font-mono">
-              {(totalActualCost / 1000000000).toFixed(2)} Mds FCFA
+            <span className="text-xs font-black text-slate-900 mt-0.5 block font-mono">
+              {Math.round(totalActualCost).toLocaleString('fr-FR')} FCFA
             </span>
             <span className="text-[10px] text-emerald-600 font-bold">
               {((totalActualCost / totalRevisedBudget) * 100).toFixed(1)}% <span className="text-slate-400 font-normal">du budget alloué</span>
@@ -273,8 +273,8 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">COÛT RÉEL À DATE</span>
-            <span className="text-base font-black text-slate-900 mt-0.5 block font-mono">
-              {(totalActualCost / 1000000000).toFixed(2)} Mds FCFA
+            <span className="text-xs font-black text-slate-900 mt-0.5 block font-mono">
+              {Math.round(totalActualCost).toLocaleString('fr-FR')} FCFA
             </span>
             <span className="text-[10px] text-emerald-600 font-bold">
               {((totalActualCost / totalRevisedBudget) * 100).toFixed(1)}% <span className="text-slate-400 font-normal">du budget alloué</span>

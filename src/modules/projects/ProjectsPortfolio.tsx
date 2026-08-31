@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 import { Project, ProjectStatus, RiskLevel } from '../../types';
 import {
   Briefcase, Coins, TrendingUp, PieChart, Percent, AlertTriangle, Info,
@@ -112,11 +113,10 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
     const budgetRestantPct = totalBudgetDS > 0 ? ((budgetRestantAEngagerValue / totalBudgetDS) * 100).toFixed(1) : '100.0';
     const delayedPct = totalProjectsCount > 0 ? ((delayedProjectsCount / totalProjectsCount) * 100).toFixed(1) : '0.0';
 
-    // Fonction de formatage uniforme en Mds / M FCFA
+    // Fonction de formatage uniforme en chiffres exacts sans abréviation ni arrondi
     const formatAmount = (val: number) => {
-      if (val >= 1000000000) return `${(val / 1000000000).toFixed(2)} Mds FCFA`;
-      if (val >= 1000000) return `${(val / 1000000).toFixed(2)} M FCFA`;
-      return `${val.toLocaleString()} FCFA`;
+      if (val === undefined || val === null || isNaN(val)) return '0 FCFA';
+      return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
     };
 
     return {
@@ -375,7 +375,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
                 MONTANT MARCHÉ <Info size={12} className="text-slate-400 cursor-pointer" title="Cumul du montant contractuel des marchés" />
               </span>
-              <div className="text-lg font-black tracking-tight text-slate-900 mt-1 font-mono">
+              <div className="text-[13.5px] font-black tracking-tight text-slate-900 mt-1 font-mono leading-tight">
                 {portfolioKpis.contractAmountStr}
               </div>
             </div>
@@ -395,7 +395,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
                 BUDGET (DS) <Info size={12} className="text-slate-400 cursor-pointer" title="Cumul des budgets Déboursé Sec (DS)" />
               </span>
-              <div className="text-lg font-black tracking-tight text-slate-900 mt-1 font-mono">
+              <div className="text-[13.5px] font-black tracking-tight text-slate-900 mt-1 font-mono leading-tight">
                 {portfolioKpis.budgetDsStr}
               </div>
             </div>
@@ -415,7 +415,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
                 MARGE (EAC) <Info size={12} className="text-slate-400 cursor-pointer" title="Marge estimée à l'atterrissage (EAC)" />
               </span>
-              <div className="text-lg font-black tracking-tight text-slate-900 mt-1 font-mono">
+              <div className="text-[13.5px] font-black tracking-tight text-slate-900 mt-1 font-mono leading-tight">
                 {portfolioKpis.marginAmountStr}
               </div>
             </div>
@@ -577,9 +577,12 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredProjects.map(p => {
-                  const budget = p.revisedBudget || p.initialBudget || 0;
-                  const contract = p.contractAmount || 0;
-                  const marginPct = contract > 0 ? (((contract - budget) / contract) * 100).toFixed(1) : '0.0';
+                  const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+                  const pSummary = getProjectFinancialSummary(p, pNodes, [], [], dailyReports);
+                  const budget = pSummary.revisedBudget;
+                  const contract = pSummary.contractAmount;
+                  const marginPct = pSummary.eacMarginPct.toFixed(1);
+                  const progVal = pSummary.progressPct.toFixed(1);
 
                   return (
                     <tr
@@ -600,16 +603,16 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
                       <td className="p-3 text-slate-500 font-mono text-[11px] truncate max-w-[120px]">{p.location}</td>
                       <td className="p-3 font-bold text-slate-800">{p.manager || 'SEA Alphonse'}</td>
                       <td className="p-3 text-right font-mono font-bold text-slate-900">
-                        {p.contractAmount ? `${(p.contractAmount / 1000000).toFixed(0)} M FCFA` : '—'}
+                        {contract ? `${Math.round(contract).toLocaleString('fr-FR')} FCFA` : '—'}
                       </td>
-                      <td className="p-3 text-right font-mono text-slate-700">
-                        {`${(budget / 1000000).toFixed(0)} M FCFA`}
+                      <td className="p-3 text-right font-mono text-slate-700 font-bold">
+                        {`${Math.round(budget).toLocaleString('fr-FR')} FCFA`}
                       </td>
                       <td className="p-3 text-center font-mono font-bold text-blue-900">
                         <div className="w-16 mx-auto bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
-                          <div className="bg-blue-600 h-full rounded-full" style={{ width: `${p.progress || 0}%` }} />
+                          <div className="bg-blue-600 h-full rounded-full" style={{ width: `${progVal}%` }} />
                         </div>
-                        <span className="text-[10px]">{p.progress || 0}%</span>
+                        <span className="text-[10px]">{progVal}%</span>
                       </td>
                       <td className="p-3 text-center font-mono text-[10px]">
                         <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
@@ -691,7 +694,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
                   <div>Localisation : <strong className="text-slate-800">{p.location}</strong></div>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t font-mono text-xs">
-                  <span>Montant : <strong>{p.contractAmount ? `${(p.contractAmount / 1000000).toFixed(0)} M FCFA` : '—'}</strong></span>
+                  <span>Montant : <strong>{p.contractAmount ? `${Math.round(p.contractAmount).toLocaleString('fr-FR')} FCFA` : '—'}</strong></span>
                   <span className="text-blue-600 font-bold">Avancement : {p.progress}%</span>
                 </div>
               </div>

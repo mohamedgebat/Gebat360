@@ -70,19 +70,17 @@ export const CeoCommandCenter: React.FC = () => {
               ? REAL_DS_SONGON_ACTIVITIES 
               : []);
 
-      const contractValue = Number(p.contractAmount || (isBingerville ? 3428000000 : isSongon ? 1412416250 : 0));
-      const budget = wbsNodes.length > 0 
-        ? wbsNodes.reduce((sum, n) => sum + (Number(n.revisedBudget || n.budgetDs || n.initialBudget) || 0), 0)
-        : Number(p.revisedBudget || p.initialBudget || (isBingerville ? 1890812405 : isSongon ? 778028406 : Math.round(contractValue * 0.82)));
+      const contractValue = Number(p.contractAmount || 0);
+      const budget = Number(p.revisedBudget || p.initialBudget || 0);
 
       const realActualCost = wbsNodes.reduce((sum, n) => sum + (Number(n.actualCost) || 0), 0);
       const realCommitted = realActualCost > 0 ? realActualCost : Number(wbsNodes.reduce((sum, n) => sum + (Number(n.committed) || 0), 0));
-      const realEAC = budget > 0 ? budget : contractValue * 0.85;
+      const realEAC = budget > 0 ? budget : contractValue;
 
-      const progress = Number(p.progress || (isBingerville ? 13.0 : isSongon ? 3.1 : 0));
+      const progress = Number(p.progress || 0);
 
-      const initialMarginPct = contractValue > 0 ? parseFloat((((contractValue - budget) / contractValue) * 100).toFixed(1)) : 5.0;
-      const eacMarginPct = contractValue > 0 ? parseFloat((((contractValue - realEAC) / contractValue) * 100).toFixed(1)) : 5.0;
+      const initialMarginPct = contractValue > 0 ? parseFloat((((contractValue - budget) / contractValue) * 100).toFixed(1)) : 0;
+      const eacMarginPct = contractValue > 0 ? parseFloat((((contractValue - realEAC) / contractValue) * 100).toFixed(1)) : 0;
       const invoiced = Math.round(contractValue * (progress / 100));
       const collected = Math.round(invoiced * 0.85);
 

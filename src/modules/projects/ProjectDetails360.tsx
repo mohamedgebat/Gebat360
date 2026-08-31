@@ -41,6 +41,33 @@ import {
   FileCheck
 } from 'lucide-react';
 
+const formatFrenchDate = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  const str = String(dateStr).trim();
+
+  if (str.includes('T')) {
+    const parts = str.split('T');
+    const dPart = parts[0];
+    const tPart = parts[1]?.replace('Z', '').split('.')[0];
+
+    const dSplit = dPart.split('-');
+    if (dSplit.length === 3) {
+      const formattedDate = `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+      if (tPart && tPart !== '00:00:00' && tPart !== '00:00') {
+        return `${formattedDate} à ${tPart.substring(0, 5)}`;
+      }
+      return formattedDate;
+    }
+  }
+
+  const dSplit = str.split('-');
+  if (dSplit.length === 3) {
+    return `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+  }
+
+  return str;
+};
+
 interface ProjectDetails360Props {
   projectId: string;
   onBack: () => void;
@@ -83,7 +110,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
   const projectReports = useMemo(() => {
     if (!project) return [];
-    return dailyReports.filter(r => isReportForProject(r, project.id) || isReportForProject(r, project.code));
+    return dailyReports.filter(r => isReportForProject(r, project));
   }, [project, dailyReports]);
 
   const projectLogs = useMemo(() => {
@@ -109,15 +136,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     );
   }
 
-  // Calculs financiers 100% dynamiques issus de la BDD
+  // Calculs financiers 100% dynamiques issus de la BDD (SSOT)
   const contractAmount = Number(project.contractAmount || 0);
-  const initialBudget = Number(project.initialBudget || 0);
-
-  // 1. Calcul exact du Déboursé Sec Révisé à partir du WBS / Déboursé
-  const revisedBudget = useMemo(() => {
-    const sumWbs = projectWbsNodes.reduce((acc, node) => acc + (Number(node.calculatedDsAmount || node.importedDsAmount || node.revisedBudget || node.initialBudget || node.marketAmount) || 0), 0);
-    return sumWbs > 0 ? sumWbs : Number(project.revisedBudget || initialBudget || Math.round(contractAmount * 0.85));
-  }, [projectWbsNodes, project, initialBudget, contractAmount]);
+  const initialBudget = Number(project.initialBudget || project.revisedBudget || 0);
+  const revisedBudget = Number(project.revisedBudget || project.initialBudget || 0);
 
   // 2. Calculs exacts par nature (MO, MAT, MTL, ST, FGC) à partir des ressources Déboursé Sec
   const realNatureTotals = useMemo(() => {
@@ -279,12 +301,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return Number(project.progress || 13.0).toFixed(1);
   }, [contractAmount, totalProductionVal, project]);
 
-  // Formateur monétaire en Mds / M FCFA (exact comme media_1787742322311.png)
+  // Formateur monétaire exact en chiffres complets (sans Mds/M)
   const fmtMds = (val: number) => {
     if (!val || isNaN(val)) return '0 FCFA';
-    if (val >= 1e9) return `${(val / 1e9).toFixed(2).replace('.', ',')} Mds FCFA`;
-    if (val >= 1e6) return `${(val / 1e6).toFixed(2).replace('.', ',')} M FCFA`;
-    return `${val.toLocaleString('fr-FR')} FCFA`;
+    return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
   };
 
   const fmtShort = (val: number) => {
@@ -1244,8 +1264,8 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                 {projectReports.length > 0 ? (
                   projectReports.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono font-bold text-blue-700">{r.reportCode || r.id}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{r.date}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-blue-700">{r.reportCode || r.code || r.id}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{formatFrenchDate(r.date)}</td>
                       <td className="py-2.5 px-3 text-slate-700">{r.createdBy || project.manager}</td>
                       <td className="py-2.5 px-3 text-slate-600">{r.weather || 'Ensoleillé'}</td>
                       <td className="py-2.5 px-3 text-center font-bold text-blue-900">{r.workforceCount || 18} ouvriers</td>

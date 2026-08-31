@@ -27,12 +27,10 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
   const { projects } = useAppState();
   const [selectedRegion, setSelectedRegion] = useState('Tous');
 
-  // Format de devise FCFA en milliards / millions
+  // Format de devise FCFA en chiffres exacts sans abréviation ni arrondi
   const formatFCFA = (val: number) => {
-    if (val >= 1000000000) {
-      return `${(val / 1000000000).toFixed(2).replace('.', ',')} Mds FCFA`;
-    }
-    return `${(val / 1000000).toFixed(1).replace('.', ',')} M FCFA`;
+    if (val === undefined || val === null || isNaN(val)) return '0 FCFA';
+    return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
   };
 
   // Calculs financiers stratégiques

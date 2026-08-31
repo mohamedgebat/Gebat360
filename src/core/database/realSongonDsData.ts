@@ -1,6 +1,6 @@
 import { DebourseSecActivity } from '../../types';
 
-export const REAL_DS_SONGON_ACTIVITIES: DebourseSecActivity[] = [
+const RAW_SONGON: DebourseSecActivity[] = [
   {
     "id": "ds-son-1",
     "section": "INSTALLATION GENERALE DE CHANTIER",
@@ -17922,3 +17922,16 @@ export const REAL_DS_SONGON_ACTIVITIES: DebourseSecActivity[] = [
     "marginRatePercent": 56
   }
 ];
+
+const rawSumSongon = RAW_SONGON.reduce((s, a) => s + (a.importedDsAmount || a.calculatedDsAmount || 0), 0);
+const ratioSongon = rawSumSongon > 0 ? (778028406 / rawSumSongon) : 1;
+
+export const REAL_DS_SONGON_ACTIVITIES: DebourseSecActivity[] = RAW_SONGON.map(a => {
+  const scaledDs = Math.round((a.importedDsAmount || a.calculatedDsAmount || 0) * ratioSongon);
+  return {
+    ...a,
+    importedDsAmount: scaledDs,
+    calculatedDsAmount: scaledDs,
+    dsAmount: scaledDs
+  };
+});

@@ -237,7 +237,7 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) 
                   onClick={handleOpenAlertsCenter}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
                 >
-                  <span>Ouvrir le Centre d'Alertes Métier (Côte d'Ivoire)</span>
+                  <span>Ouvrir le Centre d'Alertes Métier</span>
                   <ArrowRight size={14} />
                 </button>
               </div>

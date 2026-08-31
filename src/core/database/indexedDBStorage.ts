@@ -73,6 +73,13 @@ export const indexedDBStorage = {
   }
 };
 
+let broadcastChan: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    broadcastChan = new BroadcastChannel('gebat_360_channel');
+  } catch (e) {}
+}
+
 /**
  * Fonction de secours universelle pour sauvegarder sans risque de QuotaExceededError
  */
@@ -83,7 +90,6 @@ export const safeSaveToStorage = (key: string, data: any): void => {
   } catch (err: any) {
     if (err?.name === 'QuotaExceededError' || err?.code === 22 || String(err).includes('quota')) {
       console.warn(`⚠️ Quota LocalStorage dépassé (5Mo). Passage automatique sur IndexedDB pour [${key}]...`);
-      // Nettoyage partiel de anciennes clés de secours volumineuses
       try {
         localStorage.removeItem('gebat_debourse_sec');
       } catch (e) {}
@@ -94,4 +100,14 @@ export const safeSaveToStorage = (key: string, data: any): void => {
 
   // Toujours doubler la sauvegarde dans IndexedDB pour garantir 100% de résilience
   indexedDBStorage.setItem(key, data);
+
+  // Dispatch d'un évènement synchrone universel & BroadcastChannel pour notifier instantanément toutes les fenêtres et profils
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('gebat_state_updated', { detail: { key, data } }));
+      if (broadcastChan) {
+        broadcastChan.postMessage({ key, timestamp: Date.now() });
+      }
+    } catch (e) {}
+  }
 };

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { hasPermission } from '../../core/permissions';
+import { User } from '../../types';
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,6 +28,8 @@ import {
   Tag,
   Calendar,
   Lock,
+  PieChart,
+  Crown,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,18 +39,18 @@ interface SidebarProps {
   setCollapsed: (collapsed: boolean) => void;
 }
 
-// CONSTANTES DE BLOCAGE TEMPORAIRE DEMANDÉ PAR L'UTILISATEUR (TOUS LES MODULES DEBLOQUÉS)
+// MODULES ET FONCTIONNALITÉS BLOQUÉS TEMPORAIREMENT (RÈGLES SYSTÈME)
 export const IS_PROCUREMENT_BLOCKED = false;
 export const IS_STOCK_BLOCKED = false;
 export const IS_KPI_BLOCKED = false;
 
-export const BLOCKED_SECTION_TITLES = [
+export const BLOCKED_SECTION_TITLES: string[] = [
   ...(IS_PROCUREMENT_BLOCKED ? ['ACHATS & APPROVISIONNEMENT'] : []),
   ...(IS_STOCK_BLOCKED ? ['STOCK & LOGISTIQUE'] : []),
   ...(IS_KPI_BLOCKED ? ['DASHBOARDS & KPI'] : []),
 ];
 
-export const BLOCKED_ITEM_IDS = [
+export const BLOCKED_ITEM_IDS: string[] = [
   ...(IS_PROCUREMENT_BLOCKED ? ['procurement-da', 'procurement-validation'] : []),
   ...(IS_STOCK_BLOCKED ? ['stock-list', 'stock-movements'] : []),
   ...(IS_KPI_BLOCKED ? ['btp-cost-control', 'ceo-command-center'] : []),
@@ -70,15 +74,20 @@ export function getDefaultViewForRole(role: string | undefined): string {
 }
 
 // Helper RBAC : Habilitation stricte des pages et menus selon le rôle
-export function isMenuItemAllowed(role: string | undefined, itemId: string): boolean {
+export function isMenuItemAllowed(role: string | undefined | User, itemId: string): boolean {
   if (!role) return true;
-  const r = role.toUpperCase().replace(/\s+/g, '_');
+  const userObj: User = typeof role === 'object' ? role : ({ id: 'temp', name: 'User', email: '', role: role as any, avatar: 'U' } as User);
+  const r = (userObj.role || '').toUpperCase().replace(/\s+/g, '_');
 
-  // Super Admin, Admin, Direction Générale, Directeur Technique : Accès complet
-  if ([
-    'SUPER_ADMIN', 'SUPER_ADMINISTRATEUR', 'ADMIN', 'ADMINISTRATION',
-    'DIRECTION', 'DIRECTION_GENERALE', 'DIRECTEUR_TECHNIQUE'
-  ].includes(r)) {
+  const isAdmin = ['SUPER_ADMIN', 'SUPER_ADMINISTRATEUR', 'ADMIN', 'ADMINISTRATION'].includes(r);
+
+  // RÈGLE STRICTE : La section ADMINISTRATION et ses sous-menus sont STRICTEMENT RÉSERVÉS au profil Admin
+  if (['admin-users', 'admin-settings', 'admin-audit', 'analytics-performance', 'analytics-alerts'].includes(itemId) || itemId.startsWith('admin-')) {
+    return isAdmin;
+  }
+
+  // Super Admin / Administrateur : Accès complet à tous les modules
+  if (isAdmin) {
     return true;
   }
 
@@ -87,69 +96,19 @@ export function isMenuItemAllowed(role: string | undefined, itemId: string): boo
     return true;
   }
 
-  // Directeur de Projet (DP)
-  if (r.includes('DIRECTEUR_PROJET') || r === 'DP') {
-    return !['admin-users', 'admin-settings', 'admin-audit', 'ceo-command-center'].includes(itemId);
-  }
-
-  // Conducteur de Travaux
-  if (r.includes('CONDUCTEUR')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
-      'btp-wbs', 'btp-planning', 'btp-production', 'procurement-da',
-      'stock-list', 'stock-movements', 'analytics-alerts'
-    ].includes(itemId);
-  }
-
-  // Chef de Chantier
-  if (r.includes('CHEF_CHANTIER')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'btp-wbs',
-      'btp-production', 'procurement-da', 'stock-list'
-    ].includes(itemId);
-  }
-
-  // Cost Controller / Contrôleur de Gestion
-  if (r.includes('COST') || r.includes('CONTROLEUR')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
-      'btp-wbs', 'btp-debourse', 'btp-cost-control', 'procurement-da',
-      'procurement-validation', 'admin-workflows', 'analytics-performance', 'analytics-alerts'
-    ].includes(itemId);
-  }
-
-  // Achats / Acheteur
-  if (r.includes('ACHAT') || r.includes('ACHETEUR')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'procurement-da',
-      'procurement-validation', 'admin-workflows', 'stock-list', 'stock-movements'
-    ].includes(itemId);
-  }
-
-  // Magasinier
-  if (r.includes('MAGASINIER')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'stock-list',
-      'stock-movements', 'procurement-da'
-    ].includes(itemId);
-  }
-
-  // DAF / Comptable
-  if (r.includes('DAF') || r.includes('COMPTABL')) {
-    return [
-      'dashboard-portfolio', 'dashboard-alerts', 'projects-list', 'vue-projet-360',
-      'btp-debourse', 'btp-cost-control', 'procurement-da',
-      'procurement-validation', 'admin-workflows', 'analytics-performance'
-    ].includes(itemId);
-  }
-
-  return true;
+  return hasPermission(userObj, itemId, 'VOIR');
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, collapsed, setCollapsed }) => {
-  const { alerts, currentUser } = useAppState();
+  const { alerts, purchaseRequests = [], dailyReports = [], currentUser } = useAppState();
 
   const activeAlertsCount = alerts.filter(a => a.status === 'Actif').length;
+  const pendingDACount = purchaseRequests.filter(da => da.status === 'EN_ATTENTE_VALIDATION' || da.status === 'En attente validation' || da.status === 'En attente').length;
+  const pendingReportsCount = dailyReports.filter(r => {
+    const s = (r.status || '').toUpperCase();
+    return s.includes('SOUMIS') || s.includes('ATTENTE') || s.includes('PENDING');
+  }).length;
+  const totalValidationBadge = pendingDACount + pendingReportsCount;
 
   // Mode Accordéon : Lorsqu'un grand titre est ouvert, toutes les autres sections se ferment automatiquement
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -170,7 +129,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
       label: 'Tableau de bord',
       icon: LayoutDashboard,
       items: [
-        { id: 'dashboard-portfolio', label: 'Dashboard Général', icon: FolderKanban },
+        { id: 'dashboard-portfolio', label: 'Tableau de Bord Général', icon: FolderKanban },
         { id: 'dashboard-alerts', label: 'Alertes', icon: Bell, badge: activeAlertsCount },
       ],
     },
@@ -192,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
         { id: 'btp-wbs', label: 'WBS & Activités', icon: Layers },
         { id: 'btp-debourse', label: 'Déboursé Sec (DS)', icon: DollarSign },
         { id: 'btp-planning', label: 'Planning Gantt', icon: Calendar },
-        { id: 'btp-production', label: 'Production', icon: HardHat },
+        { id: 'btp-production', label: 'Production', icon: HardHat, badge: pendingReportsCount },
       ],
     },
     {
@@ -200,8 +159,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
       label: 'Achats & Approvisionnement',
       icon: ShoppingBag,
       items: [
-        { id: 'procurement-da', label: "Demandes d'achat", icon: ShoppingBag },
-        { id: 'procurement-validation', label: 'Centre de validation', icon: ShieldCheck },
+        { id: 'procurement-da', label: "Demandes d'achat", icon: ShoppingBag, badge: pendingDACount },
+        { id: 'procurement-validation', label: 'Centre de validation', icon: ShieldCheck, badge: totalValidationBadge },
       ],
     },
     {

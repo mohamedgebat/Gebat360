@@ -128,8 +128,6 @@ export const DQEImportModal: React.FC<DQEImportModalProps> = ({
   // Parsed and validated DQE Items
   const [parsedItems, setParsedItems] = useState<ExtendedDQEItem[]>([]);
 
-  if (!isOpen) return null;
-
   // Flatten existing WBS nodes for matching
   const flatExistingWbs = (() => {
     const list: WBSNode[] = [];
@@ -505,6 +503,8 @@ export const DQEImportModal: React.FC<DQEImportModalProps> = ({
   const unmatchedCount = parsedItems.filter(i => i.matchingStatus === 'NON MATCHÉ').length;
   const duplicateCount = parsedItems.filter(i => i.matchingStatus === 'DOUBLON').length;
   const discrepancyCount = parsedItems.filter(i => i.hasDiscrepancy).length;
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">

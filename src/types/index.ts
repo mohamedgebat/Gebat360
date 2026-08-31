@@ -1,14 +1,51 @@
 export type Role = 
+  | 'Super Administrateur'
   | 'Super Admin'
+  | 'Direction Générale / CEO'
   | 'Direction Générale'
-  | 'DAF'
-  | 'Directeur Technique'
   | 'Directeur Projet'
   | 'Conducteur de Travaux'
   | 'Chef de Chantier'
   | 'Cost Controller'
+  | 'Responsable Achats'
   | 'Achats'
-  | 'Magasinier';
+  | 'Magasinier Chantier'
+  | 'Magasinier'
+  | 'DAF'
+  | 'Directeur Technique';
+
+export type PermissionAction = 
+  | 'VOIR' | 'VIEW' 
+  | 'CRÉER' | 'CREATE' 
+  | 'MODIFIER' | 'EDIT' 
+  | 'SUPPRIMER' | 'DELETE' 
+  | 'SOUMETTRE' | 'SUBMIT' 
+  | 'VALIDER' | 'VALIDATE' 
+  | 'REFUSER' | 'REJECT' 
+  | 'RETOURNER' | 'RETURN' 
+  | 'COMMENTER' | 'COMMENT' 
+  | 'EXPORTER' | 'EXPORT' 
+  | 'IMPORTER' | 'IMPORT' 
+  | 'APPROUVER' | 'APPROVE' 
+  | 'ADMINISTRER' | 'ADMIN';
+
+export interface ModulePermission {
+  voir: boolean;
+  creer: boolean;
+  modifier: boolean;
+  supprimer?: boolean;
+  soumettre: boolean;
+  valider: boolean;
+  refuser: boolean;
+  retourner?: boolean;
+  commenter?: boolean;
+  exporter?: boolean;
+  importer?: boolean;
+  approuver?: boolean;
+  administrer: boolean;
+}
+
+export type ActionPermissionMatrix = Record<string, ModulePermission>;
 
 export interface DelegationRule {
   delegateUserId: string;
@@ -53,7 +90,9 @@ export interface User {
   defaultPassword?: string;
   mustChangePassword?: boolean;
   projectIds?: string[];
+  wbsCodes?: string[];
   siteIds?: number[];
+  customPermissions?: Record<string, Partial<Record<PermissionAction, boolean>>>;
   status?: 'ACTIF' | 'INACTIF';
   delegation?: DelegationRule;
   createdAt?: string;
@@ -545,36 +584,72 @@ export interface StockConsumptionWBSCheck {
 
 export type NonProductiveCategory = 'Attente matière' | 'Panne' | 'Météo' | 'Instructions' | 'Absence' | 'Autres';
 
+export interface DailyReportHistoryLog {
+  timestamp: string;
+  user: string;
+  role: Role;
+  action: string;
+  comment?: string;
+}
+
+export interface DailyReportRejection {
+  timestamp: string;
+  user: string;
+  role: Role;
+  reason: string;
+}
+
+export interface DailyReportCorrectionRequest {
+  id: string;
+  requestedBy: string;
+  requestedAt: string;
+  field: string;
+  oldValue: any;
+  newValue: any;
+  reason: string;
+  status: 'En attente' | 'Approuvé' | 'Rejeté';
+  approvedBy?: string;
+  approvedAt?: string;
+}
+
+export interface DailyReportValidationChecklist {
+  checkedProduction: boolean;
+  checkedConsumptions: boolean;
+  checkedAnomalies: boolean;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
 export interface DailyReport {
   id: string;
   code: string; // CR-2026-08-18-01
   date: string;
   projectId: string;
   projectName: string;
-  wbsId: string;
+  wbsId?: string;
   wbsCode: string;
   activityName: string;
-  weather: 'Ensoleillé' | 'Pluie' | 'Nuageux' | 'Orage';
+  weather?: 'Ensoleillé' | 'Pluie' | 'Nuageux' | 'Orage' | string;
+  temperature?: string;
+  workShift?: string;
+  locationZone?: string;
+  generalComment?: string;
+  teamLeader?: string;
   plannedQty: number;
+  targetQty?: number;
   realizedQty: number;
   unit: string;
-  workersCount: number;
-  hoursWorked: number; // Temps pertinent
-  nonProductiveHours: number;
+  advancePct?: number;
+  cumulDate?: number;
+  totalPlanned?: number;
+  workersCount?: number;
+  hoursWorked?: number; // Temps pertinent
+  nonProductiveHours?: number;
   nonProductiveCategory?: NonProductiveCategory;
-  equipmentCount: number;
-  equipmentHours: number;
-  
-  // CONNEXION DÉBOURSÉ SEC (DS) & PRODUCTIVITÉ THÉORIQUE VS RÉELLE
-  dsTargetYield?: number;         // Rendement objectif prévu au DS (ex: 5 m3/jour)
-  dsTargetUnitPrice?: number;     // Coût unitaire théorique DS (ex: 83 000 FCFA/m3)
-  dsTargetTotalCost?: number;     // Coût théorique prévu = Quantité Réalisée * PU DS
-  realizedUnitCost?: number;      // Coût réel unitaire constaté
-  realizedTotalCost?: number;     // Coût réel total constaté
-  yieldVariancePercent?: number;  // Écart de Rendement % = ((Rendement Réel - Rendement DS) / Rendement DS) * 100
-  costVariance?: number;          // Écart Financier = Coût Réel - Coût Théorique DS
-
-  consumptions?: { article: string; unit: string; planned: number; consumed: number }[];
+  equipmentCount?: number;
+  equipmentHours?: number;
+  personnel?: { category: string; effectif: number; hNormales: number; hSup: number }[];
+  consummations?: { article: string; unit: string; planned: number; consumed: number; theoreticalPrice?: number }[];
   deliveries?: { supplier: string; article: string; qty: number; unit: string }[];
   subcontractors?: { name: string; task: string; workers: number; status: string }[];
   qhseNotes?: string;
@@ -582,9 +657,20 @@ export interface DailyReport {
   problems?: string;
   stopReason?: string;
   notes?: string;
+  observations?: string;
   status: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé';
   createdBy: string;
+  submittedBy?: string;
+  submittedAt?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+  lockedBy?: string;
+  lockedAt?: string;
   productivityRate: number; // Taux = (Rendement Réel / Rendement Objectif) * 100
+  historyLogs?: DailyReportHistoryLog[];
+  rejectionHistory?: DailyReportRejection[];
+  correctionRequests?: DailyReportCorrectionRequest[];
+  validationChecklist?: DailyReportValidationChecklist;
 }
 
 export type AlertSeverity = 'Information' | 'Mineure' | 'Moyenne' | 'Majeure' | 'Critique';
@@ -687,4 +773,27 @@ export interface DSVersionHistory {
   status: string;
   justification: string;
   totalAmount: number;
+}
+
+// ==================================================
+// WORKFLOW & TÂCHES DE VALIDATION PERSISTANTES
+// ==================================================
+
+export type ValidationTaskStatus = 'PENDING' | 'IN_REVIEW' | 'RETURNED' | 'APPROVED' | 'REJECTED' | 'CLOSED';
+
+export interface ValidationTask {
+  id: string;
+  reportId: string;
+  projectId: string;
+  wbsId?: string;
+  activityId?: string;
+  submittedBy: string;
+  assignedTo: string;
+  assignedRole: Role;
+  status: ValidationTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  priority?: 'Normale' | 'Urgent' | 'Haute';
+  comment?: string;
+  dueDate?: string;
 }

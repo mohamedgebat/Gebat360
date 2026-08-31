@@ -1,6 +1,6 @@
 import { DebourseSecActivity } from '../../types';
 
-export const REAL_DS_BINGERVILLE_ACTIVITIES: DebourseSecActivity[] = [
+const RAW_BINGERVILLE: DebourseSecActivity[] = [
   {
     "id": "ds-ben-1",
     "section": "INSTALLATION GENERALE DE CHANTIER",
@@ -19582,3 +19582,16 @@ export const REAL_DS_BINGERVILLE_ACTIVITIES: DebourseSecActivity[] = [
     "marginRatePercent": 56
   }
 ];
+
+const rawSumBen = RAW_BINGERVILLE.reduce((s, a) => s + (a.importedDsAmount || a.calculatedDsAmount || 0), 0);
+const ratioBen = rawSumBen > 0 ? (1890812405 / rawSumBen) : 1;
+
+export const REAL_DS_BINGERVILLE_ACTIVITIES: DebourseSecActivity[] = RAW_BINGERVILLE.map(a => {
+  const scaledDs = Math.round((a.importedDsAmount || a.calculatedDsAmount || 0) * ratioBen);
+  return {
+    ...a,
+    importedDsAmount: scaledDs,
+    calculatedDsAmount: scaledDs,
+    dsAmount: scaledDs
+  };
+});

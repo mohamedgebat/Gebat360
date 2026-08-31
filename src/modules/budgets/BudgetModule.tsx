@@ -47,8 +47,8 @@ export const BudgetModule: React.FC = () => {
   const budgetVersions = useMemo<BudgetVersionItem[]>(() => {
     if (!selectedProject) return [];
     
-    const initialContract = selectedProject.contractAmount || 5464882068;
-    const currentRevisedBudget = selectedProject.revisedBudget || initialContract;
+    const initialContract = Number(selectedProject.contractAmount || 0);
+    const currentRevisedBudget = Number(selectedProject.revisedBudget || selectedProject.initialBudget || initialContract);
     const initialEstimateV0 = Math.round(initialContract * 0.88); // Déboursé sec initial estimé à 88% du marché
 
     return [

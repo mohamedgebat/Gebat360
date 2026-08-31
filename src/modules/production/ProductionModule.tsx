@@ -7,10 +7,11 @@ import {
   FileText, Clock, Lock, ArrowRight, UserCheck, Calculator, TrendingUp, Camera, Paperclip,
   Check, X, Truck, Package, HardHat, AlertCircle, FileSpreadsheet, Eye, Upload, Download, Search,
   ChevronRight, ChevronLeft, ArrowLeft, ChevronDown, RefreshCw, Layers, Building2, User, FileCheck,
-  Send, HelpCircle, Bell
+  Send, HelpCircle, Bell, Printer
 } from 'lucide-react';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
+import { hasProjectAccess } from '../../core/permissions';
 
 const formatQty = (val: number | undefined | null): string => {
   if (val === undefined || val === null || isNaN(val)) return '0,00';
@@ -18,10 +19,48 @@ const formatQty = (val: number | undefined | null): string => {
   return rounded.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-export const ProductionModule: React.FC = () => {
-  const { projects, createDailyReport, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], selectedProjectId, setSelectedProjectId, setActiveTab } = useAppState();
+const formatFrenchDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return '08/08/2026';
 
-  // Projet sélectionné par défaut
+  if (dateStr.includes('T')) {
+    const rawDatePart = dateStr.split('T')[0];
+    const rawTimePart = dateStr.split('T')[1]?.replace('Z', '').split('.')[0];
+
+    const dateParts = rawDatePart.split('-');
+    if (dateParts.length === 3) {
+      const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+      if (rawTimePart && rawTimePart !== '00:00:00' && rawTimePart !== '00:00') {
+        const timeFormatted = rawTimePart.substring(0, 5);
+        return `${formattedDate} à ${timeFormatted}`;
+      }
+      return formattedDate;
+    }
+  }
+
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+
+  return dateStr;
+};
+
+export const ProductionModule: React.FC = () => {
+  const { projects, createDailyReport, updateDailyReportStatus, updateValidationTaskStatus, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], setActiveTab } = useAppState();
+
+  // État local réactif du projet/site sélectionné
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    return projects[0]?.id || projects[0]?.code || 'CIV-2026-ASS-BEN-002';
+  });
+
+  // Auto-initialisation si les projets sont rechargés
+  React.useEffect(() => {
+    if (projects.length > 0 && (!selectedProjectId || !projects.some(p => p.id === selectedProjectId || p.code === selectedProjectId))) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects]);
+
+  // Projet sélectionné réactif
   const selectedProject = useMemo(() => {
     return projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0] || null;
   }, [projects, selectedProjectId]);
@@ -31,8 +70,78 @@ export const ProductionModule: React.FC = () => {
   const getNowTimeStr = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const getTodayFrDate = () => new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // État du statut du rapport : Brouillon / Soumis / Validé / Verrouillé
-  const [reportStatus, setReportStatus] = useState<'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé'>('Brouillon');
+  // Rôle de l'utilisateur connecté habilité à valider
+  const isValidatorRole = useMemo(() => {
+    const role = (currentUser?.role || '').toLowerCase();
+    return (
+      role.includes('conducteur') ||
+      role.includes('directeur') ||
+      role.includes('super admin') ||
+      role.includes('admin') ||
+      role.includes('dp') ||
+      role.includes('dt')
+    );
+  }, [currentUser]);
+
+  // État du statut du rapport : Défaut automatique à 'Soumis' pour les valideurs (Conducteur, DP, DT, Admin)
+  const [reportStatus, setReportStatus] = useState<'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé'>(() => {
+    const role = (currentUser?.role || '').toLowerCase();
+    if (role.includes('conducteur') || role.includes('directeur') || role.includes('super admin') || role.includes('admin') || role.includes('dp') || role.includes('dt')) {
+      return 'Soumis';
+    }
+    return 'Brouillon';
+  });
+
+  // Filtre de projet pour le tableau récapitulatif des valideurs (Défaut: 'ALL' pour ne rater aucun rapport soumis)
+  const [stepProjectFilter, setStepProjectFilter] = useState<string>('ALL');
+  const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
+
+  // Dynamic status-matching helper : Filtrage strict et étanche par site / projet
+  const isProjectReportMatch = (r: any, proj: any): boolean => {
+    if (!r || !proj) return false;
+    const pId = String(proj.id || '').toUpperCase().trim();
+    const pCode = String(proj.code || '').toUpperCase().trim();
+
+    const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
+    const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase().trim();
+    const rText = `${rProjId} ${rCode} ${String(r.wbsCode || '')} ${String(r.activityName || '')}`.toUpperCase();
+
+    const isSongonProject = pId.includes('SON') || pCode.includes('SON') || (proj.name && proj.name.toUpperCase().includes('SONGON'));
+    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || (proj.name && proj.name.toUpperCase().includes('BINGERVILLE'));
+
+    if (isSongonProject) {
+      if (rCode.startsWith('REP-BEN-') || rText.includes('BEN-002') || rText.includes('BINGERVILLE')) {
+        return false;
+      }
+      return rProjId.includes('SON') || rCode.includes('SON') || rText.includes('SONGON') || rProjId === pId || rProjId === pCode;
+    }
+
+    if (isBingervilleProject) {
+      if (rCode.startsWith('REP-SON-') || rText.includes('SON-001') || rText.includes('SONGON')) {
+        return false;
+      }
+      return rProjId.includes('BEN') || rCode.includes('BEN') || rText.includes('BINGERVILLE') || rProjId === pId || rProjId === pCode;
+    }
+
+    return rProjId === pId || rProjId === pCode;
+  };
+
+  // Rapports d'étapes (Soumis / Validé / Verrouillé) filtrés strictement pour le site sélectionné
+  const stepReports = useMemo(() => {
+    return dailyReports.filter(r => {
+      const matchProj = isProjectReportMatch(r, selectedProject);
+      const normReportStatus = (r.status || 'Soumis').toUpperCase().trim();
+      const normCurrentStatus = (reportStatus || 'Soumis').toUpperCase().trim();
+
+      const isStatusMatch =
+        normReportStatus === normCurrentStatus ||
+        (normCurrentStatus.includes('SOUMIS') && (normReportStatus.includes('SOUMIS') || normReportStatus.includes('ATTENTE') || normReportStatus.includes('PENDING'))) ||
+        (normCurrentStatus.includes('VALID') && (normReportStatus.includes('VALID') || normReportStatus.includes('APPROVED'))) ||
+        (normCurrentStatus.includes('VERROU') && (normReportStatus.includes('VERROU') || normReportStatus.includes('CLOSED')));
+
+      return matchProj && isStatusMatch;
+    });
+  }, [dailyReports, selectedProject, reportStatus]);
   const [reportDate, setReportDate] = useState<string>(getTodayIso());
   const [creationTime, setCreationTime] = useState<string>(getNowTimeStr());
   const [lastSaveTime, setLastSaveTime] = useState<string>(getNowTimeStr());
@@ -114,6 +223,19 @@ export const ProductionModule: React.FC = () => {
   // Liste des activités progressivement enregistrées sur le rapport (Bas)
   const [recordedActivities, setRecordedActivities] = useState<RecordedActivityItem[]>([]);
 
+  // Synchronisation dynamique lors du changement de site/chantier
+  React.useEffect(() => {
+    if (selectedProject) {
+      setStepProjectFilter(selectedProject.id);
+      if (projectWbsNodes && projectWbsNodes.length > 0) {
+        setCurrentWbsCode(projectWbsNodes[0].wbsCode || projectWbsNodes[0].priceNo || projectWbsNodes[0].id || '');
+      } else {
+        setCurrentWbsCode('');
+      }
+      setCurrentRealizedQty('');
+    }
+  }, [selectedProjectId, selectedProject?.id, selectedProject?.code]);
+
   // Activité courante sélectionnée
   const currentSelectedAct = useMemo(() => {
     if (!currentWbsCode) return null;
@@ -144,7 +266,8 @@ export const ProductionModule: React.FC = () => {
     if (!currentWbsCode || !currentSelectedAct) return 0;
     const previousCumul = dailyReports
       .filter(r => (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code) && 
-                   (r.wbsCode === currentWbsCode || r.wbsId === currentWbsCode || r.activityName === currentSelectedAct.description))
+                   (r.wbsCode === currentWbsCode || r.wbsId === currentWbsCode || r.activityName === currentSelectedAct.description) &&
+                   ['VALIDÉ', 'VALIDE', 'VALIDEE', 'VERROUILLÉ', 'VERROUILLE', 'VERROUILLEE'].includes(String(r.status || '').toUpperCase()))
       .reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
 
     const wbsNodeMatch = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || [])
@@ -264,7 +387,7 @@ export const ProductionModule: React.FC = () => {
   // Initialisation dynamique des consommations basées sur les articles de stock réels de la base de données
   const defaultStockConsumptions = useMemo(() => {
     if (stockItems && stockItems.length > 0) {
-      return stockItems.slice(0, 5).map(item => ({
+      return stockItems.map(item => ({
         article: item.name,
         unit: item.unit || 'U',
         prevue: Number(item.minQuantity || 100),
@@ -272,12 +395,7 @@ export const ProductionModule: React.FC = () => {
         ecart: 0
       }));
     }
-    return [
-      { article: 'Ciment CPJ 42.5 (Sacs)', unit: 'Sac', prevue: 150, consommee: 0, ecart: 0 },
-      { article: 'Fer à Béton HA Ø12 (Barres)', unit: 'Barre', prevue: 80, consommee: 0, ecart: 0 },
-      { article: 'Gasoil / Carburant Engins', unit: 'L', prevue: 300, consommee: 0, ecart: 0 },
-      { article: 'Sable de Lagune 0/4', unit: 'm³', prevue: 45, consommee: 0, ecart: 0 }
-    ];
+    return [];
   }, [stockItems]);
 
   const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>(defaultStockConsumptions);
@@ -376,12 +494,36 @@ export const ProductionModule: React.FC = () => {
     const isDirection = userRole.includes('direction') || userRole.includes('dg');
     const isDirecteurProjet = userRole.includes('directeur projet') || userRole.includes('dp');
     const isDirecteurTechnique = userRole.includes('directeur technique') || userRole.includes('dt');
+    const isConducteur = userRole.includes('conducteur');
     const isControleur = userRole.includes('contrôleur') || userRole.includes('controleur');
 
     if (targetStatus === 'Validé') {
-      if (!isSuperAdmin && !isDirection && !isDirecteurProjet && !isDirecteurTechnique) {
-        alert(`⛔ HABILITATION INSUFFISANTE\n\nVotre compte (${currentUser?.name || 'Utilisateur'}, Rôle: "${currentUser?.role || 'Non spécifié'}") n'est pas habilité à VALIDER ce rapport.\n\nSeuls les comptes habilités suivants disposent des droits de validation :\n• Directeur de Projet (DP)\n• Directeur Technique (DT)\n• Direction Générale (DG)\n• Super Administrateur`);
+      if (!isSuperAdmin && !isDirection && !isDirecteurProjet && !isDirecteurTechnique && !isConducteur) {
+        alert(`⛔ HABILITATION INSUFFISANTE\n\nVotre compte (${currentUser?.name || 'Utilisateur'}, Rôle: "${currentUser?.role || 'Non spécifié'}") n'est pas habilité à VALIDER ce rapport.\n\nSeuls les comptes habilités suivants disposent des droits de validation :\n• Conducteur de Travaux\n• Directeur de Projet (DP)\n• Directeur Technique (DT)\n• Direction Générale (DG)\n• Super Administrateur`);
         return;
+      }
+
+      // Valider les rapports non validés du chantier actif
+      const reportsToValidate = dailyReports.filter(r => {
+        if (!isProjectReportMatch(r, selectedProject)) return false;
+        const normS = (r.status || '').toUpperCase();
+        return !normS.includes('VALID') && !normS.includes('VERROU');
+      });
+
+      if (reportsToValidate.length > 0) {
+        reportsToValidate.forEach(rep => {
+          if (updateDailyReportStatus) {
+            updateDailyReportStatus(rep.id, 'Validé', `Validé par ${currentUser?.name || 'Valideur'} (${currentUser?.role || 'DP/DT'})`);
+          }
+          if (updateValidationTaskStatus) {
+            updateValidationTaskStatus(rep.id, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
+          }
+        });
+        alert(`✅ ${reportsToValidate.length} rapport(s) du chantier ${selectedProject.name} validé(s) avec succès !\n\n• Métrés & WBS actualisés déterministiquement\n• % Avancement Physique du Projet recalculé\n• Cost Control (AC, EV, EAC, Marge) propagé\n• Sorties de stock enregistrées sans double imputation`);
+      } else if (recordedActivities.length > 0 || currentWbsCode) {
+        handleSubmitValidation();
+      } else {
+        alert('ℹ️ Aucun rapport en attente de validation pour ce chantier.');
       }
     }
 
@@ -512,7 +654,10 @@ export const ProductionModule: React.FC = () => {
       });
     }
 
-    alert(`🚀 Rapport Journalier (${itemsToSave.length} activité(s)) envoyé pour validation et persisté dans la base de données !`);
+    setRecordedActivities([]);
+    setCurrentRealizedQty('');
+    setReportStatus('Soumis');
+    alert(`🚀 Rapport Journalier (${itemsToSave.length} activité(s)) envoyé pour validation et persisté dans la base de données ! Visible immédiatement dans l'onglet Étape 2 (SOUMIS) et dans le Centre de Validation.`);
   };
 
   if (!selectedProject) {
@@ -544,9 +689,25 @@ export const ProductionModule: React.FC = () => {
             </h1>
             <HelpCircle size={16} className="text-slate-400 cursor-pointer hover:text-slate-600" />
           </div>
-          <p className="text-slate-500 text-xs font-semibold mt-0.5">
-            {selectedProject.code} · {selectedProject.name}
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <Building2 size={15} className="text-blue-600 shrink-0" />
+            <span className="font-extrabold text-slate-500 text-xs">Site / Chantier :</span>
+            <select
+              value={selectedProjectId}
+              onChange={e => {
+                const newProjId = e.target.value;
+                setSelectedProjectId(newProjId);
+                setStepProjectFilter(newProjId);
+              }}
+              className="bg-blue-50/90 border border-blue-300 text-blue-950 font-black text-xs px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-xs transition hover:bg-blue-100 max-w-[450px] truncate"
+            >
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>
+                  🏗️ {p.code} · {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -620,7 +781,9 @@ export const ProductionModule: React.FC = () => {
                 {reportStatus !== 'Brouillon' ? <CheckCircle2 size={18} /> : <FileText size={18} />}
               </div>
               <div>
-                <span className="font-black text-xs block text-slate-900">1. Brouillon</span>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1.5">
+                  <span>1. Brouillon</span>
+                </span>
                 <span className="text-[10.5px] font-medium text-slate-500">En cours de saisie</span>
               </div>
             </button>
@@ -648,7 +811,16 @@ export const ProductionModule: React.FC = () => {
                 {reportStatus === 'Validé' || reportStatus === 'Verrouillé' ? <CheckCircle2 size={18} /> : <Send size={18} />}
               </div>
               <div>
-                <span className="font-black text-xs block text-slate-900">2. Soumis</span>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1.5">
+                  <span>2. Soumis</span>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-black rounded-full text-[10.5px]">
+                    {dailyReports.filter(r => {
+                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      const s = (r.status || '').toUpperCase();
+                      return s.includes('SOUMIS') || s.includes('ATTENTE') || s.includes('PENDING');
+                    }).length}
+                  </span>
+                </span>
                 <span className="text-[10.5px] font-medium text-slate-500">Envoyé pour validation</span>
               </div>
             </button>
@@ -672,9 +844,15 @@ export const ProductionModule: React.FC = () => {
                 <CheckCircle2 size={18} />
               </div>
               <div>
-                <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
-                  3. Validé
-                  <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1 rounded">Habilité DP/DT</span>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1.5">
+                  <span>3. Validé</span>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full text-[10.5px]">
+                    {dailyReports.filter(r => {
+                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      const s = (r.status || '').toUpperCase();
+                      return s.includes('VALID') || s.includes('APPROVED');
+                    }).length}
+                  </span>
                 </span>
                 <span className="text-[10.5px] font-medium text-slate-500">Approuvé par DP</span>
               </div>
@@ -695,9 +873,15 @@ export const ProductionModule: React.FC = () => {
                 <Lock size={18} />
               </div>
               <div>
-                <span className="font-black text-xs block text-slate-900 flex items-center gap-1">
-                  4. Verrouillé
-                  <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1 rounded">Habilité DP/CdG</span>
+                <span className="font-black text-xs block text-slate-900 flex items-center gap-1.5">
+                  <span>4. Verrouillé</span>
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-black rounded-full text-[10.5px]">
+                    {dailyReports.filter(r => {
+                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      const s = (r.status || '').toUpperCase();
+                      return s.includes('VERROU') || s.includes('CLOSED');
+                    }).length}
+                  </span>
                 </span>
                 <span className="text-[10.5px] font-medium text-slate-500">Données consolidées</span>
               </div>
@@ -796,11 +980,161 @@ export const ProductionModule: React.FC = () => {
         )}
       </div>
 
-      {/* 3. SECTION INFORMATIONS GÉNÉRALES (INPUTS ET SÉLECTEURS) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-        <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-          INFORMATIONS GÉNÉRALES DU CHANTIER
-        </h2>
+      {/* 2B. PANNEAU DYNAMIQUE WORKFLOW POUR LES ÉTAPES 2 (SOUMIS), 3 (VALIDÉ), 4 (VERROUILLÉ) */}
+      {reportStatus !== 'Brouillon' && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                <span>Rapports Journaliers Terrain — Étape {reportStatus === 'Soumis' ? '2 (Soumis)' : reportStatus === 'Validé' ? '3 (Validés)' : '4 (Verrouillés)'}</span>
+                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[11px]">
+                  {stepReports.length}
+                </span>
+              </h2>
+              <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
+                {reportStatus === 'Soumis' && "Rapports en attente de revue par le Conducteur de Travaux et le Directeur de Projet."}
+                {reportStatus === 'Validé' && "Rapports approuvés par la Direction Technique, prêts pour la consolidation financière."}
+                {reportStatus === 'Verrouillé' && "Rapports verrouillés et certifiés pour le Cost Control et l'audit comptable."}
+              </p>
+            </div>
+          </div>
+
+          {stepReports.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 font-medium border border-dashed border-slate-200 rounded-2xl text-xs space-y-1">
+              <FileText size={32} className="mx-auto text-slate-300 mb-1" />
+              <div>Aucun rapport journalier avec le statut <strong>{reportStatus}</strong> pour le filtre sélectionné.</div>
+              <div className="text-[10.5px] text-slate-400">Astuce : Basculez sur "Tous les projets" ou vérifiez le statut à l'étape 1. Brouillon.</div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold text-[10.5px]">
+                    <th className="p-3">Réf. Rapport</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Activité WBS</th>
+                    <th className="p-3 text-right">Quantité réalisée</th>
+                    <th className="p-3 text-center">Productivité</th>
+                    <th className="p-3 text-center">Auteur / Chef</th>
+                    <th className="p-3 text-right">Décision & Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-xs">
+                  {stepReports.map(rep => (
+                    <tr key={rep.id} className="hover:bg-slate-50 transition">
+                      <td className="p-3 font-mono font-extrabold text-blue-800 cursor-pointer hover:underline" onClick={() => setViewingReportDetail(rep)}>
+                        {rep.code || rep.id}
+                      </td>
+                      <td className="p-3 font-mono text-slate-700 font-bold">{formatFrenchDate(rep.date)}</td>
+                      <td className="p-3 font-bold text-slate-900">{rep.wbsCode ? `[${rep.wbsCode}] ` : ''}{rep.activityName}</td>
+                      <td className="p-3 text-right font-mono font-black text-slate-900">{formatQty(rep.realizedQty)} {rep.unit}</td>
+                      <td className="p-3 text-center font-mono font-black text-emerald-700">{rep.productivityRate || 100}%</td>
+                      <td className="p-3 text-center text-slate-600 font-bold">{rep.createdBy || rep.teamLeader || 'Conducteur'}</td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setViewingReportDetail(rep)}
+                            className="px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                          >
+                            <Eye size={13} />
+                            <span>Détails</span>
+                          </button>
+                          {reportStatus === 'Soumis' && (
+                            isValidatorRole ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    const targetId = rep.id;
+                                    const targetCode = rep.code || rep.reportCode;
+                                    if (updateDailyReportStatus) {
+                                      updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                      if (targetCode && targetCode !== targetId) {
+                                        updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                      }
+                                    }
+                                    if (updateValidationTaskStatus) {
+                                      updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                    }
+                                    setReportStatus('Validé');
+                                    alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! Transféré à l'Étape 3 (VALIDÉ).`);
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition flex items-center gap-1"
+                                >
+                                  <CheckCircle2 size={13} />
+                                  <span>✅ Valider (Étape 3)</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
+                                    if (!reason.trim()) return;
+                                    const targetId = rep.id;
+                                    const targetCode = rep.code || rep.reportCode;
+                                    if (updateDailyReportStatus) {
+                                      updateDailyReportStatus(targetId, 'Brouillon', reason);
+                                      if (targetCode && targetCode !== targetId) {
+                                        updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                                      }
+                                    }
+                                    if (updateValidationTaskStatus) {
+                                      updateValidationTaskStatus(targetId, 'RETURNED', reason);
+                                    }
+                                    setReportStatus('Brouillon');
+                                    alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-amber-100 text-amber-900 hover:bg-amber-200 font-bold rounded-lg text-xs cursor-pointer transition"
+                                >
+                                  ↩️ Correction
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-amber-50 text-amber-800 font-bold rounded-lg text-[10.5px] border border-amber-200">
+                                ⏳ En attente de validation (Conducteur / DP)
+                              </span>
+                            )
+                          )}
+
+                          {reportStatus === 'Validé' && (
+                            isValidatorRole ? (
+                              <button
+                                onClick={() => {
+                                  if (updateDailyReportStatus) updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
+                                  alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
+                                }}
+                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition"
+                              >
+                                🔒 Verrouiller (Étape 4)
+                              </button>
+                            ) : (
+                              <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold rounded-lg text-xs border border-emerald-300 shadow-2xs inline-flex items-center gap-1">
+                                <CheckCircle2 size={13} className="text-emerald-700" />
+                                <span>✅ Validé par {rep.validatedBy || 'DP / DT'}</span>
+                              </span>
+                            )
+                          )}
+
+                          {reportStatus === 'Verrouillé' && (
+                            <span className="px-3 py-1 bg-purple-100 text-purple-900 font-black rounded-lg text-[11px] border border-purple-200">
+                              🔒 Certifié & Conduite
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (EXCLUSIF AU MODE BROUILLON) */}
+      {reportStatus === 'Brouillon' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+              INFORMATIONS GÉNÉRALES DU CHANTIER
+            </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Champ Projet */}
@@ -1560,6 +1894,207 @@ export const ProductionModule: React.FC = () => {
           </button>
         </div>
       </div>
+    </div>
+  )}
+
+      {/* MODAL SYNTHÈSE & DÉTAILS DU RAPPORT POUR LE VALIDEUR */}
+      {viewingReportDetail && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 my-8">
+            {/* EN-TÊTE MODAL AVEC BADGES DE STATUT */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <span className={`text-[11px] font-black uppercase px-3 py-1 rounded-full tracking-wide ${
+                  viewingReportDetail.status === 'Validé' || viewingReportDetail.status === 'Verrouillé'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : viewingReportDetail.status === 'Soumis'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}>
+                  FICHE RAPPORT TERRAIN — {viewingReportDetail.status || 'Soumis'}
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-2 flex items-center gap-2">
+                  <span>Réf: {viewingReportDetail.code || viewingReportDetail.id}</span>
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingReportDetail(null)}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                title="Fermer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* METADATAS PROJET ET HEURE DU RAPPORT */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs font-medium">
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Projet</span>
+                <span className="font-bold text-slate-900">
+                  {projects.find(p => p.id === viewingReportDetail.projectId || p.code === viewingReportDetail.projectId)?.name || viewingReportDetail.projectId || selectedProject?.name}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Date & Heure du rapport</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {formatFrenchDate(viewingReportDetail.date)}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Chef / Auteur</span>
+                <span className="font-bold text-slate-900">
+                  {viewingReportDetail.createdBy || viewingReportDetail.teamLeader || 'Conducteur'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Météo / Température</span>
+                <span className="font-bold text-slate-900">
+                  {viewingReportDetail.weather || '☀️ Ensoleillé'} ({viewingReportDetail.temperature || '32 °C'})
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Zone du chantier</span>
+                <span className="font-bold text-slate-900">
+                  {viewingReportDetail.locationZone || 'Zone A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Productivité</span>
+                <span className="font-mono font-black text-emerald-700">
+                  {viewingReportDetail.productivityRate || 100}%
+                </span>
+              </div>
+            </div>
+
+            {/* ACTIVITÉ & QUANTITÉ RÉALISÉE */}
+            <div className="space-y-2 border-b border-slate-100 pb-4">
+              <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                <Layers size={14} className="text-blue-600" />
+                Activité & Quantité Réalisée
+              </h4>
+              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-black text-slate-900 block">
+                    {viewingReportDetail.wbsCode ? `[${viewingReportDetail.wbsCode}] ` : ''}{viewingReportDetail.activityName}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+                    Quantité Prévue au Planning : {formatQty(viewingReportDetail.plannedQty || viewingReportDetail.targetQty)} {viewingReportDetail.unit}
+                  </span>
+                </div>
+                <div className="text-left sm:text-right font-mono">
+                  <span className="text-xl font-black text-blue-950 block">
+                    {formatQty(viewingReportDetail.realizedQty)} {viewingReportDetail.unit}
+                  </span>
+                  <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                    Avancement : {viewingReportDetail.productivityRate || 100}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* COMMENTAIRES & OBSERVATIONS */}
+            {viewingReportDetail.notes || viewingReportDetail.generalComment || viewingReportDetail.observations ? (
+              <div className="space-y-1 border-b border-slate-100 pb-4">
+                <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                  <FileText size={14} className="text-slate-600" />
+                  Commentaires & Observations Terrain
+                </h4>
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 italic">
+                  "{viewingReportDetail.notes || viewingReportDetail.generalComment || viewingReportDetail.observations}"
+                </div>
+              </div>
+            ) : null}
+
+            {/* HISTORIQUE DE VALIDATION ET TRAÇABILITÉ (SI PRÉSENT) */}
+            {Array.isArray(viewingReportDetail.historyLogs) && viewingReportDetail.historyLogs.length > 0 && (
+              <div className="space-y-2 border-b border-slate-100 pb-4">
+                <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                  <Clock size={14} className="text-indigo-600" />
+                  Historique de Validation & Traçabilité
+                </h4>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200 text-[11px]">
+                  {viewingReportDetail.historyLogs.map((log: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-100">
+                      <span className="font-mono font-bold text-slate-500">{log.timestamp}</span>
+                      <span className="font-semibold text-slate-800">{log.user} ({log.role})</span>
+                      <span className="font-bold text-blue-700">{log.action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* BOUTONS D'ACTION VALIDEURS */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Printer size={14} /> Imprimer / PDF
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setViewingReportDetail(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Fermer
+                </button>
+                {isValidatorRole && viewingReportDetail.status === 'Soumis' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
+                        if (!reason.trim()) return;
+                        const targetId = viewingReportDetail.id;
+                        const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
+                        if (updateDailyReportStatus) {
+                          updateDailyReportStatus(targetId, 'Brouillon', reason);
+                          if (targetCode && targetCode !== targetId) {
+                            updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                          }
+                        }
+                        if (updateValidationTaskStatus) {
+                          updateValidationTaskStatus(targetId, 'RETURNED', reason);
+                        }
+                        setViewingReportDetail(null);
+                        alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                      }}
+                      className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>↩️ Demander Correction</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const targetId = viewingReportDetail.id;
+                        const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
+                        if (updateDailyReportStatus) {
+                          updateDailyReportStatus(targetId, 'Validé', 'Validé depuis la fiche synthétique');
+                          if (targetCode && targetCode !== targetId) {
+                            updateDailyReportStatus(targetCode, 'Validé', 'Validé depuis la fiche synthétique');
+                          }
+                        }
+                        if (updateValidationTaskStatus) {
+                          updateValidationTaskStatus(targetId, 'APPROVED', 'Validé depuis la fiche synthétique');
+                        }
+                        setViewingReportDetail(null);
+                        alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! Il est maintenant à l'Étape 3 (VALIDÉ).`);
+                      }}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>✅ Valider ce Rapport (DP/DT)</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL REJET / DEMANDE DE CORRECTION */}
       {showRejectModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">

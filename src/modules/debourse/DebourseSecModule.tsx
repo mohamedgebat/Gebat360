@@ -30,20 +30,12 @@ const formatFCFA = (amount?: number): string => {
   return `${Math.round(amount).toLocaleString('fr-FR')} FCFA`;
 };
 
-// Formateur compact en Milliards (Mds) ou Millions (M) pour les cartes KPIs
+// Formateur monétaire exact en chiffres complets (sans Mds/M) pour les cartes KPIs
 const formatCompactMds = (val: number, withSuffix: boolean = true, isDiff: boolean = false): string => {
+  if (val === undefined || val === null || isNaN(val)) return withSuffix ? '0 FCFA' : '0';
   const rounded = Math.round(val);
-  const prefix = isDiff && rounded > 0 ? '+' : '';
-  const abs = Math.abs(rounded);
-
-  if (abs >= 1_000_000_000) {
-    const mds = (rounded / 1_000_000_000).toFixed(2).replace('.', ',');
-    return `${prefix}${mds}${withSuffix ? ' Mds FCFA' : ' Mds'}`;
-  } else if (abs >= 1_000_000) {
-    const m = (rounded / 1_000_000).toFixed(2).replace('.', ',');
-    return `${prefix}${m}${withSuffix ? ' M FCFA' : ' M'}`;
-  }
-  return `${prefix}${rounded.toLocaleString('fr-FR')}${withSuffix ? ' FCFA' : ''}`;
+  const formatted = rounded.toLocaleString('fr-FR');
+  return withSuffix ? `${formatted} FCFA` : formatted;
 };
 
 interface WbsHierarchyNode {
@@ -438,9 +430,7 @@ export const DebourseSecModule: React.FC = () => {
       DIV: 0.034,
     };
 
-    const projectTotalRevised = treeData.budgetDs > 0
-      ? treeData.budgetDs
-      : Number(selectedProject?.revisedBudget || selectedProject?.initialBudget || 2320000000);
+    const projectTotalRevised = Number(selectedProject?.revisedBudget || selectedProject?.initialBudget || treeData.budgetDs || 0);
 
     const rawConfigs = [
       { key: 'MO', label: "Main-d'œuvre", icon: <Users size={16} />, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', chartColor: '#2563eb', ratio: natureRatios.MO },
@@ -483,12 +473,13 @@ export const DebourseSecModule: React.FC = () => {
       const committed = committedByNature[c.key] || 0;
       const actualCost = actualCostByNature[c.key] || 0;
 
-      const resteAEngager = Math.max(0, dbRevised - committed);
-      const forecast = Math.max(0, dbRevised - actualCost);
-      const eac = actualCost + forecast;
+      const maxSpentOrCommitted = Math.max(committed, actualCost);
+      const resteAEngager = Math.max(0, dbRevised - maxSpentOrCommitted);
+      const eac = Math.max(dbRevised, actualCost + Math.max(0, dbRevised - maxSpentOrCommitted));
       const ecart = eac - dbRevised;
 
-      const avancementPct = dbRevised > 0 ? Math.round((actualCost / dbRevised) * 100) : 0;
+      const pctRaw = dbRevised > 0 ? (actualCost / dbRevised) * 100 : 0;
+      const avancementPct = pctRaw > 0 && pctRaw < 1 ? parseFloat(pctRaw.toFixed(1)) : Math.round(pctRaw);
       const committedPct = dbRevised > 0 ? Math.round((committed / dbRevised) * 100) : 0;
       const actualPct = dbRevised > 0 ? Math.round((actualCost / dbRevised) * 100) : 0;
       const sharePct = parseFloat(((dbRevised / (projectTotalRevised || 1)) * 100).toFixed(1));
@@ -534,7 +525,8 @@ export const DebourseSecModule: React.FC = () => {
     const resteAEngager = natureRows.reduce((s, r) => s + r.resteAEngager, 0);
     const eac = natureRows.reduce((s, r) => s + r.eac, 0);
     const ecart = eac - revisedBudget;
-    const avancementPct = revisedBudget > 0 ? Math.round((actualCost / revisedBudget) * 100) : 0;
+    const pctRaw = revisedBudget > 0 ? (actualCost / revisedBudget) * 100 : 0;
+    const avancementPct = pctRaw > 0 && pctRaw < 1 ? parseFloat(pctRaw.toFixed(1)) : Math.round(pctRaw);
     const committedPct = revisedBudget > 0 ? Math.round((committed / revisedBudget) * 100) : 0;
     const actualPct = revisedBudget > 0 ? Math.round((actualCost / revisedBudget) * 100) : 0;
 
@@ -696,160 +688,120 @@ export const DebourseSecModule: React.FC = () => {
       </div>
 
       {/* 3. LES 6 CARTES KPIS EXÉCUTIFS DU HAUT */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* CARD 1 : BUDGET INITIAL (DS) */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                BUDGET INITIAL (DS)
-              </span>
-              <DataInsight
-                metricId="budget_initial"
-                title="Budget Initial (DS)"
-                context={{ initialBudget: totals.initialBudget, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {formatCompactMds(totals.initialBudget, true)}
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              BUDGET INITIAL (DS)
+            </span>
+            <div className="p-2 bg-blue-600 text-white rounded-full shadow-sm shrink-0">
+              <Briefcase size={14} />
             </div>
           </div>
-          <div className="p-3 bg-blue-600 text-white rounded-full shadow-md shrink-0">
-            <Briefcase size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {formatCompactMds(totals.initialBudget, true)}
           </div>
         </div>
 
         {/* CARD 2 : BUDGET RÉVISÉ (DS) */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                BUDGET RÉVISÉ (DS)
-              </span>
-              <DataInsight
-                metricId="budget_revised"
-                title="Budget Révisé (DS)"
-                context={{ revisedBudget: totals.revisedBudget, initialBudget: totals.initialBudget, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {formatCompactMds(totals.revisedBudget, true)}
-            </div>
-            <div className="text-[10.5px] font-bold text-emerald-600">
-              {formatCompactMds(totals.revisedBudget - totals.initialBudget, false, true)}
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              BUDGET RÉVISÉ (DS)
+            </span>
+            <div className="p-2 bg-purple-600 text-white rounded-full shadow-sm shrink-0">
+              <Calculator size={14} />
             </div>
           </div>
-          <div className="p-3 bg-purple-600 text-white rounded-full shadow-md shrink-0">
-            <Calculator size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {formatCompactMds(totals.revisedBudget, true)}
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 leading-tight">
+            {totals.revisedBudget !== totals.initialBudget
+              ? `${totals.revisedBudget > totals.initialBudget ? '+' : ''}${(totals.revisedBudget - totals.initialBudget).toLocaleString('fr-FR')} FCFA`
+              : 'Conforme au budget initial'}
           </div>
         </div>
 
         {/* CARD 3 : ENGAGÉ TOTAL */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                ENGAGÉ TOTAL
-              </span>
-              <DataInsight
-                metricId="engaged"
-                title="Engagé Total"
-                context={{ committed: totals.committed, revisedBudget: totals.revisedBudget, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {formatCompactMds(totals.committed, true)}
-            </div>
-            <div className="text-[10.5px] font-bold text-emerald-600">
-              {totals.committedPct}% du budget révisé
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              ENGAGÉ TOTAL
+            </span>
+            <div className="p-2 bg-emerald-600 text-white rounded-full shadow-sm shrink-0">
+              <ShoppingBag size={14} />
             </div>
           </div>
-          <div className="p-3 bg-emerald-600 text-white rounded-full shadow-md shrink-0">
-            <ShoppingBag size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {formatCompactMds(totals.committed, true)}
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 leading-tight">
+            {totals.committedPct}% du budget révisé
           </div>
         </div>
 
         {/* CARD 4 : COÛT RÉEL À DATE */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                COÛT RÉEL À DATE
-              </span>
-              <DataInsight
-                metricId="cost_real"
-                title="Coût Réel à Date"
-                context={{ actualCost: totals.actualCost, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {formatCompactMds(totals.actualCost, true)}
-            </div>
-            <div className="text-[10.5px] font-bold text-emerald-600">
-              {totals.actualPct}% du budget révisé
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              COÛT RÉEL À DATE
+            </span>
+            <div className="p-2 bg-orange-500 text-white rounded-full shadow-sm shrink-0">
+              <Coins size={14} />
             </div>
           </div>
-          <div className="p-3 bg-orange-500 text-white rounded-full shadow-md shrink-0">
-            <Coins size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {formatCompactMds(totals.actualCost, true)}
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 leading-tight">
+            {totals.actualPct}% du budget révisé
           </div>
         </div>
 
         {/* CARD 5 : PRÉVISION À TERMINAISON (EAC) */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                PRÉVISION À TERMINAISON (EAC)
-              </span>
-              <DataInsight
-                metricId="eac_total"
-                title="Prévision à Terminaison (EAC)"
-                context={{ eac: totals.eac, actualCost: totals.actualCost, forecast: totals.resteAEngager, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {formatCompactMds(totals.eac, true)}
-            </div>
-            <div className="text-[10.5px] font-bold text-emerald-600">
-              {totals.revisedBudget > 0 ? Math.round((totals.eac / totals.revisedBudget) * 100) : 0}% du budget révisé
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              PRÉVISION À TERMINAISON (EAC)
+            </span>
+            <div className="p-2 bg-teal-500 text-white rounded-full shadow-sm shrink-0">
+              <TrendingUp size={14} />
             </div>
           </div>
-          <div className="p-3 bg-teal-500 text-white rounded-full shadow-md shrink-0">
-            <TrendingUp size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {formatCompactMds(totals.eac, true)}
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 leading-tight">
+            {totals.revisedBudget > 0 ? Math.round((totals.eac / totals.revisedBudget) * 100) : 0}% du budget révisé
           </div>
         </div>
 
         {/* CARD 6 : MARGE PRÉVISIONNELLE */}
-        <div className="bg-white text-slate-800 p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between space-x-2">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
-                MARGE PRÉVISIONNELLE
-              </span>
-              <DataInsight
-                metricId="marge_eac"
-                title="Marge Prévisionnelle"
-                context={{ contractAmount: Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25)), eac: totals.eac, projectName: selectedProject.name, projectCode: selectedProject.code }}
-              />
-            </div>
-            <div className="text-base font-black tracking-tight text-slate-900 font-mono">
-              {(() => {
-                const contractVal = Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25));
-                const margeVal = contractVal - totals.eac;
-                return formatCompactMds(margeVal, true);
-              })()}
-            </div>
-            <div className="text-[10.5px] font-bold text-emerald-600">
-              {(() => {
-                const contractVal = Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25));
-                const margeVal = contractVal - totals.eac;
-                const pct = contractVal > 0 ? ((margeVal / contractVal) * 100).toFixed(1).replace('.', ',') : '0';
-                return `${pct}% de la valeur contractuelle`;
-              })()}
+        <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+              MARGE PRÉVISIONNELLE
+            </span>
+            <div className="p-2 bg-amber-500 text-white rounded-full shadow-sm shrink-0">
+              <BarChart2 size={14} />
             </div>
           </div>
-          <div className="p-3 bg-amber-500 text-white rounded-full shadow-md shrink-0">
-            <BarChart2 size={18} />
+          <div className="text-[13px] font-black text-slate-900 font-mono tracking-tight leading-snug">
+            {(() => {
+              const contractVal = Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25));
+              const margeVal = contractVal - totals.eac;
+              return formatCompactMds(margeVal, true);
+            })()}
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 leading-tight">
+            {(() => {
+              const contractVal = Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25));
+              const margeVal = contractVal - totals.eac;
+              const pct = contractVal > 0 ? ((margeVal / contractVal) * 100).toFixed(1).replace('.', ',') : '0';
+              return `${pct}% de la valeur contractuelle`;
+            })()}
           </div>
         </div>
       </div>
@@ -1301,6 +1253,7 @@ export const DebourseSecModule: React.FC = () => {
         projectId={selectedProject.id}
         projectName={selectedProject.name}
         projectCode={selectedProject.code}
+        projectContractAmount={selectedProject.contractAmount}
         isOpen={showDsImportModal}
         onClose={() => setShowDsImportModal(false)}
         existingWbsNodes={rawWbsNodes}

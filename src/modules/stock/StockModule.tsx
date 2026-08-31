@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { StockItem, StockMovementType, Warehouse } from '../../types';
 import { isProjectMatch } from '../../utils/projectMatcher';
+import { hasPermission, hasProjectAccess } from '../../core/permissions';
 import { SearchableSelect, SelectOption } from '../../components/common/SearchableSelect';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
@@ -14,8 +15,12 @@ import {
 export const StockModule: React.FC = () => {
   const { stockItems, warehouses, stockMovements, projects, wbsMap, createStockMovement, processGoodsReceipt, purchaseOrders, addAuditLog, currentUser } = useAppState();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
-  const selectedProject = projects.find(p => p.id === selectedProjectId) || projects[0];
+  const authorizedProjects = useMemo(() => {
+    return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));
+  }, [projects, currentUser]);
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(authorizedProjects[0]?.id || authorizedProjects[0]?.code || '');
+  const selectedProject = authorizedProjects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || authorizedProjects[0];
 
   // Onglet courant : Stock Physique, Mouvements, Inventaire, Réservations
   const [activeTab, setActiveTab] = useState<'items' | 'transfer' | 'inventory' | 'reservation'>('items');

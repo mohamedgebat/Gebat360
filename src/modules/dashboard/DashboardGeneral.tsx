@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import {
   Briefcase,
@@ -65,64 +66,23 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return wbsMap[targetProject?.id] || wbsMap[targetProject?.code] || Object.values(wbsMap).flat();
   }, [wbsMap, selectedProjectId, targetProject]);
 
+  const summary = useMemo(() => {
+    return getProjectFinancialSummary(targetProject, targetWbsNodes, [], filteredPurchaseRequests, dailyReports);
+  }, [targetProject, targetWbsNodes, filteredPurchaseRequests, dailyReports]);
+
   const totalProjectsCount = filteredProjects.length;
-  const totalMarketAmount = useMemo(() => {
-    return filteredProjects.reduce((s, p) => s + Number(p.contractAmount || 0), 0);
-  }, [filteredProjects]);
-
-  const totalBudgetDs = useMemo(() => {
-    if (selectedProjectId !== 'ALL' && targetProject) {
-      return Number(targetProject.revisedBudget || targetProject.initialBudget || 0);
-    }
-    return filteredProjects.reduce((s, p) => s + Number(p.revisedBudget || p.initialBudget || 0), 0);
-  }, [selectedProjectId, targetProject, filteredProjects]);
-
-  const actualCostAmount = useMemo(() => {
-    const fromWbs = targetWbsNodes.reduce((sum, n) => sum + (Number(n.actualCost) || 0), 0);
-    const fromReports = filteredDailyReports.reduce((sum, r) => {
-      let cost = Number(r.totalCost);
-      const qte = Number(r.realizedQty) || 0;
-      const pu = Number(r.pu) || 5000;
-      if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
-      return sum + (cost || 0);
-    }, 0);
-    return Math.max(fromWbs, fromReports);
-  }, [targetWbsNodes, filteredDailyReports]);
-
-  const engagedAmount = useMemo(() => {
-    const wbsEngaged = targetWbsNodes.reduce((sum, n) => sum + (Number(n.committed) || 0), 0);
-    const daTotal = filteredPurchaseRequests.reduce((sum, d) => sum + (Number(d.estimatedTotal || d.estimatedAmount) || 0), 0);
-    return Math.max(wbsEngaged, daTotal);
-  }, [targetWbsNodes, filteredPurchaseRequests]);
-
-  const totalEac = useMemo(() => {
-    if (selectedProjectId !== 'ALL' && targetProject) {
-      return Number(targetProject.revisedBudget || targetProject.initialBudget || 0);
-    }
-    return filteredProjects.reduce((s, p) => {
-      return s + Number(p.revisedBudget || p.initialBudget || 0);
-    }, 0);
-  }, [selectedProjectId, targetProject, filteredProjects]);
-
-  const eacMarginAmount = totalMarketAmount - totalEac;
-  const eacMarginRate = totalMarketAmount > 0 ? ((eacMarginAmount / totalMarketAmount) * 100).toFixed(1) : '0';
-
-  // KPI AVANCEMENT = Avancement moyen pondéré réel par le montant du marché (identique à ProjectsPortfolio.tsx)
-  const globalProgressRate = useMemo(() => {
-    if (selectedProjectId !== 'ALL' && targetProject) {
-      return Number(targetProject.progress || 0).toFixed(1);
-    }
-    const totalContract = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || 0), 0);
-    if (totalContract > 0) {
-      const weightedProg = filteredProjects.reduce((s, p) => s + (Number(p.progress || 0) * Number(p.contractAmount || 0)), 0);
-      return (weightedProg / totalContract).toFixed(1);
-    }
-    return '0.0';
-  }, [selectedProjectId, targetProject, filteredProjects]);
+  const totalMarketAmount = summary.contractAmount;
+  const totalBudgetDs = summary.revisedBudget;
+  const actualCostAmount = summary.actualCost;
+  const engagedAmount = summary.committed;
+  const totalEac = summary.eac;
+  const eacMarginAmount = summary.eacMargin;
+  const eacMarginRate = summary.eacMarginPct.toFixed(1);
+  const globalProgressRate = summary.progressPct.toFixed(1);
 
   const criticalAlertsCount = alerts.filter(a => a.status === 'Actif' || a.status === 'ACTIVE').length;
 
-  const remainingCostAmount = totalBudgetDs > 0 ? Math.max(0, totalBudgetDs - actualCostAmount) : 0;
+  const remainingCostAmount = summary.resteAEngager;
   const facturedAmount = 0;
   const encaisseAmount = 0;
   const cashAvailableAmount = Math.max(0, encaisseAmount - actualCostAmount);
@@ -215,7 +175,12 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   const monthsChartData = useMemo(() => {
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
-    const currentProg = parseFloat(globalProgressRate);
+    const currentProg = Math.min(100, Math.max(0, summary.progressPct));
+
+    const validReports = filteredDailyReports.filter(r => {
+      const s = (r.status || '').toUpperCase();
+      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+    });
 
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
@@ -223,32 +188,43 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       let realPct = 0;
       if (!isFuture) {
         // Cumul réel des rapports de production enregistrés jusqu'à ce mois inclus
-        const monthReports = filteredDailyReports.filter(r => r.date && r.date <= `${m.key}-31`);
-        const cumulativeValue = monthReports.reduce((s, r) => {
-          let cost = Number(r.totalCost);
-          const qte = Number(r.realizedQty) || 0;
-          const pu = Number(r.pu) || 0;
-          if (isNaN(cost) || cost <= 0) cost = qte * pu;
-          return s + (cost || 0);
-        }, 0);
-
+        const monthReports = validReports.filter(r => r.date && String(r.date).substring(0, 7) <= m.key);
         const targetContractAmount = Number(targetProject?.contractAmount || totalMarketAmount || 1);
 
         if (monthReports.length > 0 && targetContractAmount > 0) {
-          realPct = parseFloat(((cumulativeValue / targetContractAmount) * 100).toFixed(1));
+          const cumulativeValue = monthReports.reduce((s, r) => {
+            let cost = Number(r.totalCost);
+            const qte = Number(r.realizedQty) || 0;
+            let unitPrice = Number(r.pu);
+            if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
+              const wbsCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
+              const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wbsCode);
+              unitPrice = Number(node?.pu || node?.marketUnitPrice || 500000);
+            }
+            if (isNaN(cost) || cost <= 0 || cost > 500000000 || cost > targetContractAmount) {
+              cost = qte * unitPrice;
+            }
+            return s + (cost || 0);
+          }, 0);
+
+          const calculated = (cumulativeValue / targetContractAmount) * 100;
+          realPct = Math.min(100, Math.max(0, parseFloat(calculated.toFixed(1))));
+          if (realPct === 0 && currentProg > 0) realPct = currentProg;
         } else {
           if (m.key === activeMonthCutoff) {
             realPct = currentProg;
           } else if (m.key < activeMonthCutoff) {
             const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
             if (activeIdx > 0 && index <= activeIdx) {
-              realPct = parseFloat(((index / activeIdx) * currentProg).toFixed(1));
+              realPct = Math.min(100, Math.max(0, parseFloat(((index / activeIdx) * currentProg).toFixed(1))));
             } else {
               realPct = currentProg;
             }
           }
         }
       }
+
+      realPct = Math.min(100, Math.max(0, realPct));
 
       // Objectif théorique en S-Curve de 0% au premier mois à 100% au dernier mois
       const ratio = index / (count - 1 || 1);
@@ -269,7 +245,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [dashboardTimeline, filteredDailyReports, targetProject, totalMarketAmount, activeMonthCutoff, globalProgressRate]);
+  }, [dashboardTimeline, filteredDailyReports, targetProject, totalMarketAmount, activeMonthCutoff, summary.progressPct, targetWbsNodes]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
@@ -475,8 +451,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">MONTANT MARCHÉ</span>
               <DataInsight metricId="marge_eac" title="Montant Cumulé des Marchés Contractuels" context={{ contractAmount: totalMarketAmount }} onNavigate={onNavigate} />
             </div>
-            <span className="text-lg font-black text-slate-900 mt-1 block font-mono">
-              {totalMarketAmount >= 1e9 ? `${(totalMarketAmount / 1e9).toFixed(2)} Mds FCFA` : `${(totalMarketAmount / 1e6).toFixed(0)} M FCFA`}
+            <span className="text-[13.5px] font-black text-slate-900 mt-1 block font-mono tracking-tight leading-tight">
+              {Math.round(totalMarketAmount).toLocaleString('fr-FR')} FCFA
             </span>
             <span className="text-[10px] text-emerald-600 font-bold block mt-1">
               {projects.length} chantiers <span className="text-slate-400 font-normal">enregistrés</span>
@@ -494,8 +470,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">BUDGET (DS)</span>
               <DataInsight metricId="budget_revised" context={{ revisedBudget: totalBudgetDs, wbsCount: targetWbsNodes.length }} onNavigate={onNavigate} />
             </div>
-            <span className="text-lg font-black text-slate-900 mt-1 block font-mono">
-              {totalBudgetDs >= 1e9 ? `${(totalBudgetDs / 1e9).toFixed(2)} Mds FCFA` : `${(totalBudgetDs / 1e6).toFixed(0)} M FCFA`}
+            <span className="text-[13.5px] font-black text-slate-900 mt-1 block font-mono tracking-tight leading-tight">
+              {Math.round(totalBudgetDs).toLocaleString('fr-FR')} FCFA
             </span>
             <span className="text-[10px] text-emerald-600 font-bold block mt-1">
               {targetWbsNodes.length} nœuds WBS <span className="text-slate-400 font-normal">consolidés</span>
@@ -513,8 +489,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">MARGE (EAC)</span>
               <DataInsight metricId="marge_eac" context={{ contractAmount: totalMarketAmount, eac: totalMarketAmount - eacMarginAmount }} onNavigate={onNavigate} />
             </div>
-            <span className="text-lg font-black text-slate-900 mt-1 block font-mono">
-              {eacMarginAmount >= 1e9 ? `${(eacMarginAmount / 1e9).toFixed(2)} Mds FCFA` : `${(eacMarginAmount / 1e6).toFixed(0)} M FCFA`}
+            <span className="text-[13.5px] font-black text-slate-900 mt-1 block font-mono tracking-tight leading-tight">
+              {Math.round(eacMarginAmount).toLocaleString('fr-FR')} FCFA
             </span>
             <span className="text-[10px] text-emerald-600 font-bold block mt-1">
               {eacMarginRate}% <span className="text-slate-400 font-normal">Taux de marge</span>
@@ -583,17 +559,35 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
             <div className="space-y-2 text-xs flex-1">
               {(() => {
-                const enCours = projects.filter(p => p.status === 'En cours').length;
-                const planifie = projects.filter(p => p.status === 'Planifié' || p.status === 'Nouveau').length;
-                const enRetard = projects.filter(p => p.status === 'En retard').length;
-                const aRisque = projects.filter(p => p.status === 'À risque' || p.risk === 'Élevé' || p.risk === 'Critique').length;
+                const enCours = projects.filter(p => {
+                  const s = String(p.status || '').toLowerCase().trim();
+                  return s === 'en cours' || s === 'en_cours' || s === 'actif' || s === 'active' || s === 'in_progress' || !p.status;
+                }).length;
+                const planifie = projects.filter(p => {
+                  const s = String(p.status || '').toLowerCase().trim();
+                  return s === 'planifié' || s === 'planifie' || s === 'nouveau' || s === 'planned';
+                }).length;
+                const enRetard = projects.filter(p => {
+                  const s = String(p.status || '').toLowerCase().trim();
+                  return s === 'en retard' || s === 'en_retard' || s === 'retard' || s === 'late';
+                }).length;
+                const aRisque = projects.filter(p => {
+                  const s = String(p.status || '').toLowerCase().trim();
+                  const r = String(p.risk || '').toLowerCase().trim();
+                  return s === 'à risque' || s === 'a risque' || r === 'élevé' || r === 'eleve' || r === 'critique';
+                }).length;
+
+                const pctEnCours = totalProjectsCount > 0 ? Math.round((enCours / totalProjectsCount) * 100) : 0;
+                const pctPlanifie = totalProjectsCount > 0 ? Math.round((planifie / totalProjectsCount) * 100) : 0;
+                const pctEnRetard = totalProjectsCount > 0 ? Math.round((enRetard / totalProjectsCount) * 100) : 0;
+                const pctARisque = totalProjectsCount > 0 ? Math.round((aRisque / totalProjectsCount) * 100) : 0;
 
                 return (
                   <>
-                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>En cours</span><span className="font-bold font-mono text-slate-900">{enCours} <span className="text-[10px] text-slate-400 font-normal">({totalProjectsCount > 0 ? ((enCours / totalProjectsCount) * 100).toFixed(0) : 0}%)</span></span></div>
-                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-blue-800"></span>Planifié</span><span className="font-bold font-mono text-slate-900">{planifie} <span className="text-[10px] text-slate-400 font-normal">(0%)</span></span></div>
-                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>En retard</span><span className="font-bold font-mono text-slate-900">{enRetard} <span className="text-[10px] text-slate-400 font-normal">(0%)</span></span></div>
-                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>À risque</span><span className="font-bold font-mono text-slate-900">{aRisque} <span className="text-[10px] text-slate-400 font-normal">({totalProjectsCount > 0 ? ((aRisque / totalProjectsCount) * 100).toFixed(0) : 0}%)</span></span></div>
+                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>En cours</span><span className="font-bold font-mono text-slate-900">{enCours} <span className="text-[10px] text-slate-400 font-normal">({pctEnCours}%)</span></span></div>
+                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-blue-800"></span>Planifié</span><span className="font-bold font-mono text-slate-900">{planifie} <span className="text-[10px] text-slate-400 font-normal">({pctPlanifie}%)</span></span></div>
+                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>En retard</span><span className="font-bold font-mono text-slate-900">{enRetard} <span className="text-[10px] text-slate-400 font-normal">({pctEnRetard}%)</span></span></div>
+                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>À risque</span><span className="font-bold font-mono text-slate-900">{aRisque} <span className="text-[10px] text-slate-400 font-normal">({pctARisque}%)</span></span></div>
                   </>
                 );
               })()}
@@ -836,10 +830,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
               </thead>
               <tbody className="divide-y divide-slate-100 text-[11px] font-medium">
                 {projects.map((p, idx) => {
-                  const mkt = Number(p.contractAmount || 0);
-                  const dsBudget = Number(p.revisedBudget || p.initialBudget || Math.round(mkt * 0.95));
-                  const marginAmt = mkt - dsBudget;
-                  const marginPct = mkt > 0 ? ((marginAmt / mkt) * 100).toFixed(1) : '0.0';
+                  const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+                  const pSummary = getProjectFinancialSummary(p, pNodes, [], purchaseRequests, dailyReports);
+                  const marginAmt = pSummary.eacMargin;
+                  const marginPct = pSummary.eacMarginPct.toFixed(1);
 
                   const formatMarginText = (val: number) => {
                     if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(2) + ' Mds FCFA';

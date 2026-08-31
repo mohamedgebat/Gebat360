@@ -1,17 +1,74 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 import { DataInsight } from '../../shared/components/DataInsight';
 import {
   Building2, MapPin, Calendar, TrendingUp, Users, FileText, CheckCircle2, AlertTriangle, Clock, DollarSign, BarChart3,
   ShieldCheck, FileSpreadsheet, Truck, HardHat, FileCheck, History, ArrowUpRight, ShieldAlert, Award
 } from 'lucide-react';
 
+const formatFrenchDate = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  const str = String(dateStr).trim();
+
+  if (str.includes('T')) {
+    const parts = str.split('T');
+    const dPart = parts[0];
+    const tPart = parts[1]?.replace('Z', '').split('.')[0];
+
+    const dSplit = dPart.split('-');
+    if (dSplit.length === 3) {
+      const formattedDate = `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+      if (tPart && tPart !== '00:00:00' && tPart !== '00:00') {
+        return `${formattedDate} à ${tPart.substring(0, 5)}`;
+      }
+      return formattedDate;
+    }
+  }
+
+  const dSplit = str.split('-');
+  if (dSplit.length === 3) {
+    return `${dSplit[2]}/${dSplit[1]}/${dSplit[0]}`;
+  }
+
+  return str;
+};
+
+// Helper de correspondance étanche des rapports par projet
+const isProjectReportMatch = (r: any, proj: any): boolean => {
+  if (!r || !proj) return false;
+  const pId = String(proj.id || '').toUpperCase().trim();
+  const pCode = String(proj.code || '').toUpperCase().trim();
+
+  const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
+  const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase().trim();
+  const rText = `${rProjId} ${rCode} ${String(r.wbsCode || '')} ${String(r.activityName || '')}`.toUpperCase();
+
+  const isSongon = pId.includes('SON') || pCode.includes('SON') || (proj.name && proj.name.toUpperCase().includes('SONGON'));
+  const isBingerville = pId.includes('BEN') || pCode.includes('BEN') || (proj.name && proj.name.toUpperCase().includes('BINGERVILLE'));
+
+  if (isSongon) {
+    if (rCode.startsWith('REP-BEN-') || rText.includes('BEN-002') || rText.includes('BINGERVILLE')) return false;
+    return rProjId.includes('SON') || rCode.includes('SON') || rText.includes('SONGON') || rProjId === pId || rProjId === pCode;
+  }
+
+  if (isBingerville) {
+    if (rCode.startsWith('REP-SON-') || rText.includes('SON-001') || rText.includes('SONGON')) return false;
+    return rProjId.includes('BEN') || rCode.includes('BEN') || rText.includes('BINGERVILLE') || rProjId === pId || rProjId === pCode;
+  }
+
+  return rProjId === pId || rProjId === pCode || rProjId.includes(pId) || pId.includes(rProjId);
+};
+
 export const VueProjet360: React.FC = () => {
   const { projects, wbsMap, purchaseRequests, alerts, dailyReports, auditLogs } = useAppState();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const songon = projects.find(p => p.code?.includes('SON') || p.id?.includes('SON') || p.id === 'CIV-2026-ASS-SON-001');
+    return songon?.id || projects[0]?.id || null;
+  });
   const [activeTab, setActiveTab] = useState<string>('overview');
 
-  const selected = projects.find(p => p.id === selectedId) ?? projects[0] ?? null;
+  const selected = projects.find(p => p.id === selectedId || p.code === selectedId) ?? projects[0] ?? null;
 
   if (projects.length === 0 || !selected) {
     return (
@@ -30,12 +87,13 @@ export const VueProjet360: React.FC = () => {
     return wbsMap[selected.id] || wbsMap[selected.code] || [];
   }, [wbsMap, selected]);
 
-  const dsBudget = selected ? Math.round(selected.contractAmount * 0.80) : 0;
-  const totalEac = Math.round(dsBudget * 1.0125);
-  const margeEacVal = selected ? Math.max(0, selected.contractAmount - totalEac) : 0;
-  const margeEAC = selected && selected.contractAmount > 0
-    ? (margeEacVal / selected.contractAmount) * 100
-    : 19.0;
+  const summary = useMemo(() => {
+    return getProjectFinancialSummary(selected, projectWbs, [], purchaseRequests, dailyReports);
+  }, [selected, projectWbs, purchaseRequests, dailyReports]);
+
+  const totalEac = summary.eac;
+  const margeEAC = summary.eacMarginPct;
+  const actualCost = summary.actualCost;
 
   // Calculs Financiers (Facturé / Encaissé / Créances)
   const factured = selected ? Math.round(selected.contractAmount * (selected.progress / 100)) : 0;
@@ -399,7 +457,7 @@ export const VueProjet360: React.FC = () => {
             {activeTab === 'production' && (
               <div className="space-y-4">
                 <h2 className="font-extrabold text-slate-900 text-sm border-b pb-3 flex items-center gap-2">
-                  <BarChart3 size={18} className="text-emerald-600" /> Suivi Réel de Production Terrain ({dailyReports.filter(r => r.projectId === selected.id || r.projectId === selected.code).length} rapports)
+                  <BarChart3 size={18} className="text-emerald-600" /> Suivi Réel de Production Terrain ({dailyReports.filter(r => isProjectReportMatch(r, selected)).length} rapports)
                 </h2>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
                   <table className="w-full text-left text-xs font-mono">
@@ -414,25 +472,29 @@ export const VueProjet360: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
-                      {dailyReports.filter(r => r.projectId === selected.id || r.projectId === selected.code).map(r => (
+                      {dailyReports.filter(r => isProjectReportMatch(r, selected)).map(r => (
                         <tr key={r.id} className="hover:bg-slate-50">
-                          <td className="p-2.5 text-slate-500">{r.date}</td>
+                          <td className="p-2.5 text-slate-700 font-mono font-bold">{formatFrenchDate(r.date)}</td>
                           <td className="p-2.5 font-sans font-bold text-slate-900">{r.activityName}</td>
-                          <td className="p-2.5 text-right">{r.plannedQty} {r.unit}</td>
+                          <td className="p-2.5 text-right">{r.targetQty || r.plannedQty || 0} {r.unit}</td>
                           <td className="p-2.5 text-right text-blue-600 font-bold">{r.realizedQty} {r.unit}</td>
                           <td className="p-2.5 text-center">
                             <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">
-                              {r.productivityRate}%
+                              {r.productivityRate || r.advancePct || 95}%
                             </span>
                           </td>
                           <td className="p-2.5">
-                            <span className="bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-[10px]">
-                              {r.status}
+                            <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${
+                              r.status === 'Validé' ? 'bg-emerald-100 text-emerald-800' :
+                              r.status === 'Verrouillé' ? 'bg-purple-100 text-purple-800' :
+                              'bg-blue-50 text-blue-700'
+                            }`}>
+                              {r.status || 'Soumis'}
                             </span>
                           </td>
                         </tr>
                       ))}
-                      {dailyReports.filter(r => r.projectId === selected.id || r.projectId === selected.code).length === 0 && (
+                      {dailyReports.filter(r => isProjectReportMatch(r, selected)).length === 0 && (
                         <tr>
                           <td colSpan={6} className="p-6 text-center text-slate-400 font-bold font-sans">
                             Aucun rapport journalier enregistré pour ce chantier.
