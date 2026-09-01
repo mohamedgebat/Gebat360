@@ -241,15 +241,24 @@ export const getProjectFinancialSummary = (
   }
 
   if (actualCost <= 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
-    actualCost = wbsNodes.reduce((s, n) => s + Number(n.actualCost || n.actualCostAmount || 0), 0);
+    const getLeaves = (arr: any[]): any[] => {
+      let res: any[] = [];
+      arr.forEach(n => {
+        if (!n.children || n.children.length === 0) res.push(n);
+        else res = res.concat(getLeaves(n.children));
+      });
+      return res;
+    };
+    const leafNodes = getLeaves(wbsNodes);
+    actualCost = leafNodes.reduce((s, n) => s + Number(n.actualCost || n.actualCostAmount || 0), 0);
   }
 
   // 5. Reste à Engager
   const maxSpentOrCommitted = Math.max(committed, actualCost);
   const resteAEngager = Math.max(0, revisedBudget - maxSpentOrCommitted);
 
-  // 6. EAC (Prévision à Terminaison) : Plafonné au budget révisé sauf dépassement réel avéré
-  const eac = (actualCost > revisedBudget) ? Math.max(revisedBudget, actualCost) : revisedBudget;
+  // 6. EAC (Prévision à Terminaison) : Plafonné au budget révisé DS sauf surcoût contractuel validé
+  const eac = (actualCost > revisedBudget && actualCost <= contractAmount) ? actualCost : revisedBudget;
 
   // 7. Marges et Taux
   const initialMargin = calculateInitialMargin(contractAmount, revisedBudget);

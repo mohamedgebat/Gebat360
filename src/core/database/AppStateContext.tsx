@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v336 - Outlier Cost Sanitization & SSOT Financial Margin Restoration)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v337 - Purified Leaf WBS Cost Reduction & EAC Margin Restoration)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_08_31_fix_outlier_cost_sanitization_v336';
+    const DATA_VERSION = 'v2026_09_01_fix_leaf_wbs_reduction_eac_margin_v337';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
