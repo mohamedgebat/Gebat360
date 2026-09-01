@@ -199,6 +199,45 @@ export class ApiService {
     });
   }
 
+  static async updateProject(projectId: string, data: any): Promise<any> {
+    return this.request<any>(`/projects/${projectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteProject(projectId: string): Promise<any> {
+    return this.request<any>(`/projects/${projectId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  static async updateDailyReport(reportId: string, data: any): Promise<any> {
+    return this.request<any>(`/daily-reports/${reportId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteDailyReport(reportId: string): Promise<any> {
+    return this.request<any>(`/daily-reports/${reportId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  static async updatePurchaseRequest(daId: string, data: any): Promise<any> {
+    return this.request<any>(`/da/${daId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deletePurchaseRequest(daId: string): Promise<any> {
+    return this.request<any>(`/da/${daId}`, {
+      method: 'DELETE',
+    });
+  }
+
   static async getRisks(): Promise<any[]> {
     return this.request<any[]>('/risks');
   }

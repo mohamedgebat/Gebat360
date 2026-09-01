@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v341 - Live MySQL Projects Fetch Effect & Permissive CORS)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v342 - Full-Stack MySQL REST API CRUD Synchronization)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_live_mysql_projects_fetch_effect_v341';
+    const DATA_VERSION = 'v2026_09_01_full_stack_mysql_rest_api_crud_v342';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
@@ -323,22 +323,40 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_PROJECTS;
   });
 
-  // Synchronisation en direct des projets depuis la base de données MySQL (Railway)
+  // Synchronisation globale et complète en direct depuis la base de données MySQL (Railway)
   useEffect(() => {
-    async function loadDbProjects() {
+    async function loadDbData() {
       if (isBackendConnected) {
         try {
-          const dbProjects = await ApiService.getProjects();
+          const [dbProjects, dbReports, dbDA, dbStock] = await Promise.all([
+            ApiService.getProjects(),
+            ApiService.getDailyReports(),
+            ApiService.getPurchaseRequests(),
+            ApiService.getStockItems()
+          ]);
+
           if (Array.isArray(dbProjects) && dbProjects.length > 0) {
             setProjects(dbProjects);
             localStorage.setItem('gebat_projects', JSON.stringify(dbProjects));
           }
+          if (Array.isArray(dbReports) && dbReports.length > 0) {
+            setDailyReports(dbReports);
+            localStorage.setItem('gebat_daily_reports', JSON.stringify(dbReports));
+          }
+          if (Array.isArray(dbDA) && dbDA.length > 0) {
+            setPurchaseRequests(dbDA);
+            localStorage.setItem('gebat_purchase_requests', JSON.stringify(dbDA));
+          }
+          if (Array.isArray(dbStock) && dbStock.length > 0) {
+            setStockItems(dbStock);
+            localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
+          }
         } catch (err) {
-          console.warn('⚠️ Impossible de charger les projets depuis MySQL:', err);
+          console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
         }
       }
     }
-    loadDbProjects();
+    loadDbData();
   }, [isBackendConnected]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
     const saved = localStorage.getItem('gebat_wbs');
