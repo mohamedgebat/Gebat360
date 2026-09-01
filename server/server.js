@@ -12,7 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'gebat_360_secure_jwt_secret_key_2026_btp';
 
-app.use(cors());
+const allowedFrontendUrl = process.env.FRONTEND_URL || 'https://btp360.gebat-sa.com';
+app.use(cors({
+  origin: [allowedFrontendUrl, 'https://btp360.gebat-sa.com', 'http://localhost:5173', 'http://localhost:3000'],
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
