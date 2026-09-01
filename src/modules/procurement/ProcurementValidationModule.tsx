@@ -42,7 +42,7 @@ export const ProcurementValidationModule: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('En attente');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // ALIMENTATION 100% DYNAMIQUE DU CENTRE DE VALIDATION CENTRALISÉ UNIQUE DEPUIS LA BASE DE DONNÉES
+  // ALIMENTATION 100% DYNAMIQUE DU CENTRE DE VALIDATION CENTRALISÉ (UNIQUEMENT DEMANDES D'ACHAT & ENGAGEMENTS FINANCIERS)
   const allValidationItems = useMemo<ValidationItem[]>(() => {
     const list: ValidationItem[] = [];
 
@@ -67,26 +67,8 @@ export const ProcurementValidationModule: React.FC = () => {
       });
     }
 
-    // 2. RAPPORTS JOURNALIERS ET ALERTES
-    dailyReports.forEach(report => {
-      list.push({
-        id: `VAL-RPT-${report.id}`,
-        category: 'Rapport Journalier',
-        object: `Rapport Journalier ${report.code || report.id} — ${report.workDone || 'Coulage béton / Travaux terrain'}`,
-        amount: 0,
-        projectId: report.projectId,
-        projectName: projects.find(p => p.id === report.projectId || p.code === report.projectId)?.name || report.projectId,
-        wbsCode: report.wbsCode,
-        initiator: report.createdBy || 'Conducteur de Travaux',
-        date: report.date || new Date().toISOString().substring(0, 10),
-        urgency: (report.productivityRate || 100) < 80 ? 'Urgent' : 'Normale',
-        budgetImpact: (report.productivityRate || 100) < 80 ? 'Dépassement Mineur (<5%)' : 'Dans le budget',
-        status: (report.status === 'Validé' || report.status === 'Verrouillé') ? 'Validé' : report.status === 'Refusé' ? 'Refusé' : report.status === 'Brouillon' ? 'Retour correction' : 'En attente'
-      });
-    });
-
     return list;
-  }, [purchaseRequests, dailyReports, alerts, projects]);
+  }, [purchaseRequests, alerts, projects]);
 
   const [items, setItems] = useState<ValidationItem[]>(allValidationItems);
 
@@ -419,11 +401,10 @@ export const ProcurementValidationModule: React.FC = () => {
                   onChange={e => setCategoryFilter(e.target.value)}
                   className="p-1 bg-white border border-slate-200 rounded-lg font-bold text-xs"
                 >
-                  <option value="TOUS">Tous les types (DA, BC, Rpt...)</option>
+                  <option value="TOUS">Tous les types (DA, BC, Engagements...)</option>
                   <option value="DA">Demande d'Achat (DA)</option>
                   <option value="BC">Bon de Commande (BC)</option>
                   <option value="Dépassement">Dépassement Budgétaire</option>
-                  <option value="Rapport Journalier">Rapport Journalier</option>
                 </select>
               </div>
 

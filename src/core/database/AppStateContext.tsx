@@ -178,10 +178,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v349 - Full Dynamic Universal Database Sync & Full Stack REST API CRUD Across All Modules)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v350 - Centre de Validation Filtered to DA & Procurement Commitments Only)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_full_dynamic_universal_database_sync_v349';
+      const DATA_VERSION = 'v2026_09_01_validation_center_da_only_v350';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

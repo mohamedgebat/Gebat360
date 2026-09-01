@@ -99,27 +99,8 @@ export const WorkflowsEngineModule: React.FC = () => {
       );
     }
 
-    // 2. RAPPORTS JOURNALIERS ET ALERTES
-    dailyReports.forEach(report => {
-      list.push({
-        id: `VAL-RPT-${report.id}`,
-        category: 'Rapport Journalier',
-        object: `Rapport Journalier ${report.code || report.id} — ${report.activityName || report.notes || 'Coulage béton / Travaux terrain'}`,
-        amount: report.totalCost || 0,
-        projectId: report.projectId,
-        projectName: projects.find(p => p.id === report.projectId || p.code === report.projectId)?.name || report.projectId,
-        wbsCode: report.wbsCode || '01.01.001',
-        initiator: report.createdBy || 'Conducteur de Travaux',
-        date: report.date || new Date().toISOString().substring(0, 10),
-        urgency: (report.productivityRate || 100) < 80 ? 'Urgent' : 'Normale',
-        budgetImpact: (report.productivityRate || 100) < 80 ? 'Dépassement Mineur (<5%)' : 'Dans le budget',
-        attachments: [],
-        status: report.status === 'Verrouillé' ? 'Validé' : 'En attente'
-      });
-    });
-
     return list;
-  }, [purchaseRequests, dailyReports, alerts, projects]);
+  }, [purchaseRequests, alerts, projects]);
 
   const [items, setItems] = useState<ValidationItem[]>(allValidationItems);
 
