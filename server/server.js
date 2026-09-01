@@ -916,9 +916,15 @@ app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole([
 });
 
 // PUT /api/v1/users/:id — Modification complète d'un utilisateur dans MySQL
-app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN', 'DIRECTION']), async (req, res) => {
+app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Vérification d'habilitation : L'utilisateur peut modifier son propre compte OU doit avoir un rôle d'administration
+    if (req.user.id !== id && !['SUPER_ADMIN', 'ADMIN', 'DIRECTION'].includes(req.user.role)) {
+      return sendError(res, 403, 'FORBIDDEN', 'Vous n\'avez pas les droits de modifier cet utilisateur');
+    }
+
     const { name, email, role, phone, employeeCode, company, status, password } = req.body;
 
     const [existing] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
@@ -928,12 +934,12 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
 
     const current = existing[0];
     const newName = name || current.name;
-    const newEmail = email ? String(email).trim().toLowerCase() : current.email;
-    const newRole = role || current.role;
+    const newEmail = (email && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) ? String(email).trim().toLowerCase() : current.email;
+    const newRole = (role && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) ? role : current.role;
     const newPhone = phone !== undefined ? phone : current.phone;
     const newEmployeeCode = employeeCode !== undefined ? employeeCode : current.employee_code;
     const newCompany = company || current.company;
-    const newStatus = status || current.status;
+    const newStatus = (status && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) ? status : current.status;
     const avatar = newName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || current.avatar;
 
     let query = `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, phone = ?, employee_code = ?, company = ?, status = ?`;

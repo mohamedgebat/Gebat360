@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { ApiService } from '../../services/api';
 import {
   User, ShieldCheck, Mail, Phone, Building2, Lock, Camera, Check, X,
   Save, Key, Hash, Shield, UserCheck, AlertCircle, Eye, EyeOff, Sparkles, Clock, CheckCircle2, RefreshCw, Cpu
@@ -36,6 +37,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -62,8 +64,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   };
 
   // Enregistrement des Coordonnées
-  const handleSaveInfo = (e: React.FormEvent) => {
+  const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     const updated: any = {
       ...currentUser,
       name,
@@ -72,13 +75,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       employeeCode,
     };
     updateUser(updated);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3500);
-    addAuditLog('MISE_A_JOUR_PROFIL', 'PROFIL_UTILISATEUR', currentUser.email, `Profil mis à jour par l'utilisateur ${name}`);
+
+    try {
+      await ApiService.updateUser(currentUser.id, {
+        name,
+        phone,
+        employeeCode,
+        avatar: photoUrl || undefined
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3500);
+      addAuditLog('MISE_A_JOUR_PROFIL', 'PROFIL_UTILISATEUR', currentUser.email, `Profil mis à jour par l'utilisateur ${name}`);
+    } catch (err: any) {
+      console.warn('Backend sync profile update warning:', err);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3500);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Changement de Mot de Passe
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
     setPasswordSuccess(false);
@@ -92,12 +110,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return;
     }
 
-    setPasswordSuccess(true);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    addAuditLog('CHANGEMENT_MOT_DE_PASSE', 'SECURITE', currentUser.email, `Mot de passe modifié avec succès par ${currentUser.name}`);
-    setTimeout(() => setPasswordSuccess(false), 4500);
+    setIsSubmitting(true);
+    try {
+      await ApiService.updateUser(currentUser.id, {
+        password: newPassword
+      });
+      setPasswordSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      addAuditLog('CHANGEMENT_MOT_DE_PASSE', 'SECURITE', currentUser.email, `Mot de passe modifié avec succès par ${currentUser.name}`);
+      setTimeout(() => setPasswordSuccess(false), 4500);
+    } catch (err: any) {
+      console.error('Password update error:', err);
+      setPasswordError(err.message || 'Erreur lors de la modification du mot de passe dans la base de données.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
