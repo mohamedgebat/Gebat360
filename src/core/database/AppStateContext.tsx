@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v357 - Resilient Mobile PWA Install Prompt & Global Window Capture Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v358 - Fixed Dropdown Layout Width and Clean Label Formatting in SearchableSelect)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_resilient_mobile_pwa_install_v357';
+      const DATA_VERSION = 'v2026_09_01_fixed_dropdown_layout_v358';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

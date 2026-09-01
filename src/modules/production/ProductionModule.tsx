@@ -202,7 +202,7 @@ export const ProductionModule: React.FC = () => {
       const code = act.wbsCode || act.priceNo || act.id;
       return {
         value: code,
-        label: `${code ? `${code} — ` : ''}${act.description}`,
+        label: act.description,
         sublabel: `Code WBS: ${code} | Unité: ${act.unit || 'm²'} | Volume Prévu: ${Number(act.plannedQty || act.contractQty || 0).toLocaleString('fr-FR')}`,
         badge: code
       };
