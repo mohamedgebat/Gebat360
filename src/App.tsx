@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppStateProvider, useAppState } from './core/database/AppStateContext';
 import { ApiService } from './services/api';
 import { Sidebar, isMenuItemAllowed, getDefaultViewForRole, BLOCKED_ITEM_IDS } from './shared/components/Sidebar';
