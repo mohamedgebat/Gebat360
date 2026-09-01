@@ -37,6 +37,8 @@ interface SidebarProps {
   setCurrentView: (view: string) => void;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
+  mobileOpen?: boolean;
+  setMobileOpen?: (open: boolean) => void;
 }
 
 // MODULES ET FONCTIONNALITÉS BLOQUÉS TEMPORAIREMENT (RÈGLES SYSTÈME)
@@ -99,8 +101,16 @@ export function isMenuItemAllowed(role: string | undefined | User, itemId: strin
   return hasPermission(userObj, itemId, 'VOIR');
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, collapsed, setCollapsed }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ 
+  currentView, 
+  setCurrentView, 
+  collapsed, 
+  setCollapsed,
+  mobileOpen,
+  setMobileOpen
+}) => {
   const { alerts, purchaseRequests = [], dailyReports = [], currentUser } = useAppState();
+  const userRole = currentUser?.role;
 
   const activeAlertsCount = alerts.filter(a => a.status === 'Actif').length;
   const pendingDACount = purchaseRequests.filter(da => da.status === 'EN_ATTENTE_VALIDATION' || da.status === 'En attente validation' || da.status === 'En attente').length;
@@ -196,7 +206,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
   ];
 
   // Filtrage RBAC strict des sections et sous-menus selon le rôle de l'utilisateur connecté
-  const userRole = currentUser?.role;
   const menuSections = rawMenuSections
     .map(section => ({
       ...section,
@@ -215,34 +224,43 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
   }, [currentView]);
 
   return (
-    <aside
-      className={`sticky top-0 h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 z-30 shadow-xl shrink-0 ${
-        collapsed ? 'w-20' : 'w-72'
-      }`}
-    >
-      {/* Header Logo */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-950">
-        {!collapsed ? (
-          <div className="flex items-center gap-3">
+    <>
+      {/* Overlay Backdrop Mobile */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen && setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs md:hidden animate-in fade-in duration-200"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 md:sticky md:top-0 h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 shadow-2xl shrink-0 ${
+          collapsed ? 'w-20' : 'w-72'
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+      >
+        {/* Header Logo */}
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-950">
+          {!collapsed ? (
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo_gebat.png"
+                alt="GEBAT SA Logo"
+                className="h-9 w-auto object-contain rounded bg-white p-0.5"
+              />
+              <div>
+                <span className="font-extrabold text-lg text-white tracking-wider block leading-tight">GEBAT 360°</span>
+                <span className="block text-[9px] text-blue-400 font-semibold tracking-tighter uppercase">
+                  CONSTRUCTION OPERATING SYSTEM
+                </span>
+              </div>
+            </div>
+          ) : (
             <img
               src="/logo_gebat.png"
-              alt="GEBAT SA Logo"
-              className="h-9 w-auto object-contain rounded bg-white p-0.5"
+              alt="GEBAT Logo"
+              className="h-8 w-auto object-contain mx-auto bg-white p-0.5 rounded"
             />
-            <div>
-              <span className="font-extrabold text-lg text-white tracking-wider block leading-tight">GEBAT 360°</span>
-              <span className="block text-[9px] text-blue-400 font-semibold tracking-tighter uppercase">
-                CONSTRUCTION OPERATING SYSTEM
-              </span>
-            </div>
-          </div>
-        ) : (
-          <img
-            src="/logo_gebat.png"
-            alt="GEBAT Logo"
-            className="h-8 w-auto object-contain mx-auto bg-white p-0.5 rounded"
-          />
-        )}
+          )}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition"
@@ -309,6 +327,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
                         onClick={() => {
                           if (isItemBlocked) return;
                           setCurrentView(item.id);
+                          if (setMobileOpen) setMobileOpen(false);
                         }}
                         className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${
                           isActive
@@ -342,5 +361,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, c
         </div>
       )}
     </aside>
+    </>
   );
 };

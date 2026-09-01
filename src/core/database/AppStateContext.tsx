@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v342 - Full-Stack MySQL REST API CRUD Synchronization)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v343 - Mobile Responsive Drawer Layout & Universal iOS Android PWA Install Engine)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_full_stack_mysql_rest_api_crud_v342';
+    const DATA_VERSION = 'v2026_09_01_mobile_responsive_pwa_install_v343';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');

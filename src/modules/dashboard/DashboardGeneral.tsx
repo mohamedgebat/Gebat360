@@ -421,8 +421,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         </div>
       </div>
 
-      {/* 2. LIGNE 1 : 6 CARTES KPI PRINCIPALES */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 2. LIGNE 1 : 6 CARTES KPI PRINCIPALES (RESPONSIVE MOBILE grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         
         {/* KPI 1: PROJETS ACTIFS */}
         <div 

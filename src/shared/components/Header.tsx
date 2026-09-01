@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { UserProfileModal } from './UserProfileModal';
-import { Bell, ShieldCheck, Search, AlertTriangle, ArrowRight, CheckCircle2, X, LogOut, Sun, Moon } from 'lucide-react';
+import { Bell, ShieldCheck, Search, AlertTriangle, ArrowRight, CheckCircle2, X, LogOut, Sun, Moon, Menu } from 'lucide-react';
 
 interface HeaderProps {
   currentViewTitle: string;
   onNavigate?: (view: string) => void;
+  onToggleMobileMenu?: () => void;
 }
 
 const NetworkStatusBadge: React.FC = () => {
@@ -61,7 +62,7 @@ const NetworkStatusBadge: React.FC = () => {
   );
 };
 
-export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) => {
+export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, onToggleMobileMenu }) => {
   const { currentUser, alerts, purchaseRequests, theme, toggleTheme } = useAppState();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -104,18 +105,27 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate }) 
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
       
       {/* 1. TITRE ET CONTEXTE NATIONALE GEBAT SA */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            className="md:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition cursor-pointer border border-slate-200 shadow-2xs"
+            title="Ouvrir le menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
         <img
           src="/logo_gebat_official.png"
           alt="GEBAT SA"
           className="h-9 w-auto object-contain rounded-lg border border-slate-200 p-0.5 bg-white hidden sm:block shadow-2xs"
         />
         <div>
-          <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">{currentViewTitle}</h1>
-          <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
+          <h1 className="text-sm sm:text-xl font-black text-slate-900 tracking-tight leading-tight truncate max-w-[160px] sm:max-w-none">{currentViewTitle}</h1>
+          <span className="text-[10px] sm:text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
             GEBAT SA — Côte d’Ivoire
           </span>

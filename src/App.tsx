@@ -363,8 +363,21 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Vue exclusive selon le profil connecté si pas encore définie
+  useEffect(() => {
+    if (currentUser?.role) {
+      const defaultPage = getDefaultViewForRole(currentUser.role);
+      const isAllowed = isMenuItemAllowed(currentUser, currentView);
+      if (!isAllowed) {
+        setCurrentView(defaultPage);
+      }
+    }
+  }, [currentUser?.role]);
+
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900">
+    <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900 overflow-x-hidden">
       <Sidebar
         currentView={currentView}
         setCurrentView={v => {
@@ -373,10 +386,16 @@ const MainApp: React.FC = () => {
         }}
         collapsed={collapsed}
         setCollapsed={setCollapsed}
+        mobileOpen={mobileMenuOpen}
+        setMobileOpen={setMobileMenuOpen}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        <Header currentViewTitle={getTitle()} onNavigate={setCurrentView} />
-        <main className="px-3 sm:px-4 py-6 flex-1 w-full">
+        <Header 
+          currentViewTitle={getTitle()} 
+          onNavigate={setCurrentView}
+          onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+        />
+        <main className="px-2.5 sm:px-4 py-4 sm:py-6 flex-1 w-full max-w-full overflow-x-hidden">
           {renderContent()}
         </main>
       </div>
