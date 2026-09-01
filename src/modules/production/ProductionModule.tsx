@@ -12,6 +12,7 @@ import {
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { hasProjectAccess } from '../../core/permissions';
+import { SearchableSelect, SelectOption } from '../../components/common/SearchableSelect';
 
 const formatQty = (val: number | undefined | null): string => {
   if (val === undefined || val === null || isNaN(val)) return '0,00';
@@ -194,6 +195,19 @@ export const ProductionModule: React.FC = () => {
     }
     return realActivitiesSource;
   }, [selectedProject, wbsMap, realActivitiesSource]);
+
+  // Options de recherche rapide pour le sélecteur WBS / Activités (Recherche Instantanée)
+  const wbsSelectOptions: SelectOption[] = useMemo(() => {
+    return projectWbsNodes.map(act => {
+      const code = act.wbsCode || act.priceNo || act.id;
+      return {
+        value: code,
+        label: `${code ? `${code} — ` : ''}${act.description}`,
+        sublabel: `Code WBS: ${code} | Unité: ${act.unit || 'm²'} | Volume Prévu: ${Number(act.plannedQty || act.contractQty || 0).toLocaleString('fr-FR')}`,
+        badge: code
+      };
+    });
+  }, [projectWbsNodes]);
 
   // 1. INFORMATIONS GÉNÉRALES
   const [locationZone, setLocationZone] = useState<string>('');
@@ -1327,26 +1341,17 @@ export const ProductionModule: React.FC = () => {
                 )}
               </div>
 
-              {/* Sélecteur WBS / Activité */}
+              {/* Sélecteur WBS / Activité avec Recherche Rapide Instantanée */}
               <div>
-                <label className="block text-[11px] font-extrabold text-slate-800 mb-1">
-                  WBS / Activité <span className="text-rose-500">*</span>
-                </label>
-                <select
+                <SearchableSelect
+                  label="WBS / Activité"
+                  required
+                  options={wbsSelectOptions}
                   value={currentWbsCode}
-                  onChange={e => setCurrentWbsCode(e.target.value)}
+                  onChange={val => setCurrentWbsCode(val)}
+                  placeholder="🔍 Recherche rapide (Taper code WBS ou nom d'activité : 200.1, Coulage, Décapage)..."
                   disabled={!isFormEditable}
-                  className={`w-full p-2.5 border rounded-xl font-bold text-xs shadow-2xs ${
-                    !isFormEditable ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 cursor-pointer'
-                  }`}
-                >
-                  <option value="">Sélectionner une activité WBS...</option>
-                  {projectWbsNodes.map(act => (
-                    <option key={act.id} value={act.wbsCode || act.priceNo || act.id}>
-                      {act.wbsCode ? `${act.wbsCode} - ` : ''}{act.description}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Grille des quantitatifs de l'activité courante */}
