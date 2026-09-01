@@ -353,11 +353,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* Footer Info avec indication du rôle actif */}
+      {/* Footer Info avec indication du rôle actif et photo de profil */}
       {!collapsed && (
-        <div className="p-3 border-t border-slate-800 text-[11px] text-slate-400 text-center">
-          <span className="text-blue-400 font-bold block">{currentUser?.name || 'Session Réelle'}</span>
-          <span className="text-[10px] text-slate-500 font-medium">{currentUser?.role || 'Acheteur / Chef de lot'}</span>
+        <div className="p-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center gap-2.5">
+          {currentUser?.photoUrl || (currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/'))) ? (
+            <img
+              src={currentUser.photoUrl || currentUser.avatar}
+              alt={currentUser.name}
+              className="w-8 h-8 rounded-full object-cover border border-[#E8CE27]/60 shadow-xs shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-[#E8CE27]/20 border border-[#E8CE27]/40 text-[#E8CE27] font-black text-[10px] flex items-center justify-center shrink-0">
+              {currentUser?.avatar || (currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'YM')}
+            </div>
+          )}
+          <div className="min-w-0 flex-1 text-left">
+            <span className="text-blue-400 font-bold block truncate">{currentUser?.name || 'Session Réelle'}</span>
+            <span className="text-[10px] text-slate-400 font-medium block truncate">{currentUser?.role || 'Directeur Projet'}</span>
+          </div>
         </div>
       )}
     </aside>

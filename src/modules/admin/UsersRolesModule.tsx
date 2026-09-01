@@ -980,8 +980,8 @@ export const UsersRolesModule: React.FC = () => {
                     >
                       <td className="p-3">
                         <div className="flex items-center gap-3">
-                          {u.photoUrl ? (
-                            <img src={u.photoUrl} alt={u.name} className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 shadow-xs shrink-0" />
+                          {u.photoUrl || (u.avatar && (u.avatar.startsWith('data:') || u.avatar.startsWith('http') || u.avatar.startsWith('/'))) ? (
+                            <img src={u.photoUrl || u.avatar} alt={u.name} className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 shadow-xs shrink-0" />
                           ) : (
                             <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-black flex items-center justify-center text-xs shrink-0 shadow-xs">
                               {u.avatar || u.name.substring(0, 2).toUpperCase()}
@@ -1070,8 +1070,8 @@ export const UsersRolesModule: React.FC = () => {
             <>
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-3">
-                  {selectedUser.photoUrl ? (
-                    <img src={selectedUser.photoUrl} alt={selectedUser.name} className="w-12 h-12 rounded-2xl object-cover border border-blue-200 shadow-sm" />
+                  {selectedUser.photoUrl || (selectedUser.avatar && (selectedUser.avatar.startsWith('data:') || selectedUser.avatar.startsWith('http') || selectedUser.avatar.startsWith('/'))) ? (
+                    <img src={selectedUser.photoUrl || selectedUser.avatar} alt={selectedUser.name} className="w-12 h-12 rounded-2xl object-cover border border-blue-200 shadow-sm" />
                   ) : (
                     <div className="w-12 h-12 rounded-2xl bg-blue-800 text-white font-black flex items-center justify-center text-sm shadow-sm">
                       {selectedUser.avatar}

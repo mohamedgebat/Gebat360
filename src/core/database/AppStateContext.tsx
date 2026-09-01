@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v352 - Mandatory Password Change on 1st Login Dynamic REST Sync)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v353 - Universal Profile Photo Rendering across Header, Sidebar, Modal, and Admin Modules)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_mandatory_password_change_v352';
+      const DATA_VERSION = 'v2026_09_01_universal_profile_photo_v353';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

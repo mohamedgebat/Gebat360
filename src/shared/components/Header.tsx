@@ -263,9 +263,9 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
             className="flex items-center gap-2 hover:bg-slate-100/80 p-1 rounded-xl transition cursor-pointer group text-left"
             title="Consulter mon profil et modifier mon mot de passe"
           >
-            {currentUser?.photoUrl ? (
+            {currentUser?.photoUrl || (currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/'))) ? (
               <img
-                src={currentUser.photoUrl}
+                src={currentUser.photoUrl || currentUser.avatar}
                 alt={currentUser.name}
                 className="w-9 h-9 rounded-full object-cover border-2 border-blue-500 shadow-2xs group-hover:border-blue-600 transition"
               />
