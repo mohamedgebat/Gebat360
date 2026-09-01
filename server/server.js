@@ -856,8 +856,9 @@ app.post(['/api/v1/auth/logout', '/api/auth/logout'], async (req, res) => {
 // GET /api/v1/users — Liste des utilisateurs pour le module Administration
 app.get(['/api/v1/users', '/api/users'], requireAuth, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, name, email, role, avatar, phone, employee_code as employeeCode, company, status, created_at FROM users ORDER BY created_at DESC');
-    res.status(200).json(rows);
+    const [rows] = await pool.query('SELECT id, name, email, role, avatar, phone, employee_code as employeeCode, company, status, default_password as defaultPassword, must_change_password as mustChangePassword, created_at FROM users ORDER BY created_at DESC');
+    const mapped = rows.map(u => ({ ...u, mustChangePassword: Boolean(u.mustChangePassword) }));
+    res.status(200).json(mapped);
   } catch (err) {
     res.status(500).json({ error: 'Erreur récupération des utilisateurs', detail: err.message });
   }
@@ -866,7 +867,7 @@ app.get(['/api/v1/users', '/api/users'], requireAuth, async (req, res) => {
 // POST /api/v1/admin/users — Création d'un utilisateur réel dans MySQL avec hachage de mot de passe
 app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN', 'DIRECTION']), async (req, res) => {
   try {
-    const { name, email, role, phone, employeeCode, password } = req.body;
+    const { name, email, role, phone, employeeCode, password, defaultPassword, mustChangePassword } = req.body;
     if (!name || !email) {
       return sendError(res, 400, 'INVALID_DATA', 'Le nom et l\'adresse e-mail sont obligatoires.');
     }
@@ -878,20 +879,21 @@ app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole([
     }
 
     const userId = 'USR-' + Date.now();
-    const rawPassword = password || 'Gebat@2026!';
+    const rawPassword = defaultPassword || password || 'Gebat@2026!';
     const passwordHash = await bcrypt.hash(rawPassword, 10);
     const avatar = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'US';
+    const mustChangeVal = mustChangePassword !== undefined ? (mustChangePassword ? 1 : 0) : 1;
 
     await pool.query(
-      `INSERT INTO users (id, name, email, role, avatar, phone, employee_code, company, password_hash, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'GEBAT SA', ?, 'ACTIF')`,
-      [userId, name, cleanEmail, role || 'SUPER_ADMIN', avatar, phone || '', employeeCode || '', passwordHash]
+      `INSERT INTO users (id, name, email, role, avatar, phone, employee_code, company, password_hash, default_password, must_change_password, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'GEBAT SA', ?, ?, ?, 'ACTIF')`,
+      [userId, name, cleanEmail, role || 'SUPER_ADMIN', avatar, phone || '', employeeCode || '', passwordHash, rawPassword, mustChangeVal]
     );
 
     // Audit Log
     await pool.query(
       `INSERT INTO audit_logs (id, user_id, user_name, user_role, action, module, object_ref, new_value, justification)
-       VALUES (?, ?, ?, ?, 'USER_CREATED', 'ADMINISTRATION', ?, ?, 'Création de compte administrateur')`,
+       VALUES (?, ?, ?, ?, 'USER_CREATED', 'ADMINISTRATION', ?, ?, 'Création de compte utilisateur')`,
       [`AUD-CRE-${Date.now()}`, req.user.id, req.user.name, req.user.role, cleanEmail, `Création utilisateur ${name} (${role})`]
     );
 
@@ -906,6 +908,8 @@ app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole([
         phone,
         employeeCode,
         company: 'GEBAT SA',
+        defaultPassword: rawPassword,
+        mustChangePassword: !!mustChangeVal,
         status: 'ACTIF'
       }
     });
@@ -925,7 +929,7 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
       return sendError(res, 403, 'FORBIDDEN', 'Vous n\'avez pas les droits de modifier cet utilisateur');
     }
 
-    const { name, email, role, phone, employeeCode, company, status, password } = req.body;
+    const { name, email, role, phone, employeeCode, company, status, password, defaultPassword, mustChangePassword } = req.body;
 
     const [existing] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -940,13 +944,16 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
     const newEmployeeCode = employeeCode !== undefined ? employeeCode : current.employee_code;
     const newCompany = company || current.company;
     const newStatus = (status && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) ? status : current.status;
+    const newDefaultPassword = defaultPassword !== undefined ? defaultPassword : current.default_password;
+    const newMustChange = mustChangePassword !== undefined ? (mustChangePassword ? 1 : 0) : (current.must_change_password || 0);
     const avatar = newName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || current.avatar;
 
-    let query = `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, phone = ?, employee_code = ?, company = ?, status = ?`;
-    let params = [newName, newEmail, newRole, avatar, newPhone, newEmployeeCode, newCompany, newStatus];
+    let query = `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, phone = ?, employee_code = ?, company = ?, status = ?, default_password = ?, must_change_password = ?`;
+    let params = [newName, newEmail, newRole, avatar, newPhone, newEmployeeCode, newCompany, newStatus, newDefaultPassword, newMustChange];
 
-    if (password) {
-      const passwordHash = await bcrypt.hash(password, 10);
+    if (password || defaultPassword) {
+      const targetPwd = password || defaultPassword;
+      const passwordHash = await bcrypt.hash(targetPwd, 10);
       query += `, password_hash = ?`;
       params.push(passwordHash);
     }
@@ -972,6 +979,8 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
       phone: newPhone,
       employeeCode: newEmployeeCode,
       company: newCompany,
+      defaultPassword: newDefaultPassword,
+      mustChangePassword: !!newMustChange,
       status: newStatus
     };
 

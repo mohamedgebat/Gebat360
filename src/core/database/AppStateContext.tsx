@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v351 - Stock Management Dynamic REST API Synchronization & Transactional Movement CRUD)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v352 - Mandatory Password Change on 1st Login Dynamic REST Sync)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_stock_module_dynamic_rest_api_v351';
+      const DATA_VERSION = 'v2026_09_01_mandatory_password_change_v352';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
