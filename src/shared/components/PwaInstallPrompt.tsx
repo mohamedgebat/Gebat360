@@ -58,16 +58,28 @@ export const PwaInstallPrompt: React.FC = () => {
     };
   }, []);
 
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
+  const handleInstallClick = async (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const targetPrompt = deferredPrompt || (typeof window !== 'undefined' ? (window as any).deferredPwaPrompt : null);
+
+    if (targetPrompt) {
       try {
-        await deferredPrompt.prompt();
-        const choiceResult = await deferredPrompt.userChoice;
+        await targetPrompt.prompt();
+        const choiceResult = await targetPrompt.userChoice;
         if (choiceResult.outcome === 'accepted') {
           setIsInstalled(true);
-          localStorage.setItem('gebat_pwa_prompt_dismissed', 'true');
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('gebat_pwa_prompt_dismissed', 'true');
+          }
         }
         setDeferredPrompt(null);
+        if (typeof window !== 'undefined') {
+          (window as any).deferredPwaPrompt = null;
+        }
       } catch (err) {
         console.warn('⚠️ Erreur déclenchement prompt PWA:', err);
         setShowGuideModal(true);
@@ -97,6 +109,7 @@ export const PwaInstallPrompt: React.FC = () => {
           </div>
           <button
             onClick={handleDismiss}
+            onTouchEnd={e => { e.preventDefault(); handleDismiss(); }}
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
             title="Fermer définitivement"
           >
@@ -107,6 +120,7 @@ export const PwaInstallPrompt: React.FC = () => {
         <div className="flex items-center gap-2 pt-0.5">
           <button
             onClick={handleInstallClick}
+            onTouchEnd={e => { e.preventDefault(); handleInstallClick(e); }}
             className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition transform active:scale-95 cursor-pointer border border-blue-400/30"
           >
             <Download size={16} className="animate-bounce" />

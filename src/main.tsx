@@ -3,6 +3,15 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// Capture immédiate du prompt d'installation PWA au niveau window
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    (window as any).deferredPwaPrompt = e;
+    console.log('📱 [PWA] Evénement beforeinstallprompt capturé au niveau global window');
+  });
+}
+
 // Enregistrement immédiat et résilient du Service Worker PWA GEBAT 360°
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   const registerSW = () => {
