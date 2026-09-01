@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v353 - Universal Profile Photo Rendering across Header, Sidebar, Modal, and Admin Modules)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v354 - Universal Real-Time Multi-Profile Synchronization Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_universal_profile_photo_v353';
+      const DATA_VERSION = 'v2026_09_01_universal_multi_profile_sync_v354';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -328,7 +328,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_PROJECTS;
   });
 
-  // Synchronisation globale et complète en direct depuis la base de données MySQL (Railway)
+  // Synchronisation globale et complète en temps réel depuis la base de données MySQL (Railway)
   useEffect(() => {
     async function loadDbData() {
       if (isBackendConnected) {
@@ -366,7 +366,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     }
+
     loadDbData();
+    // Synchronisation en tâche de fond toutes les 15 secondes pour garantir l'uniformité des données sur tous les profils
+    const interval = setInterval(loadDbData, 15000);
+    return () => clearInterval(interval);
   }, [isBackendConnected]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
     const saved = localStorage.getItem('gebat_wbs');
