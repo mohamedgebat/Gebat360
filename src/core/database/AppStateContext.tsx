@@ -178,10 +178,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v348 - User Profile CRUD Database Synchronization & Self Update)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v349 - Full Dynamic Universal Database Sync & Full Stack REST API CRUD Across All Modules)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_user_profile_crud_database_sync_v348';
+      const DATA_VERSION = 'v2026_09_01_full_dynamic_universal_database_sync_v349';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -330,11 +330,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     async function loadDbData() {
       if (isBackendConnected) {
         try {
-          const [dbProjects, dbReports, dbDA, dbStock] = await Promise.all([
+          const [dbProjects, dbReports, dbDA, dbStock, dbUsers] = await Promise.all([
             ApiService.getProjects(),
             ApiService.getDailyReports(),
             ApiService.getPurchaseRequests(),
-            ApiService.getStockItems()
+            ApiService.getStockItems(),
+            ApiService.getUsers()
           ]);
 
           if (Array.isArray(dbProjects) && dbProjects.length > 0) {
@@ -352,6 +353,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (Array.isArray(dbStock) && dbStock.length > 0) {
             setStockItems(dbStock);
             localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
+          }
+          if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+            setUsers(dbUsers);
+            localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
           }
         } catch (err) {
           console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
