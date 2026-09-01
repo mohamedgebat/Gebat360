@@ -31,6 +31,8 @@ dist-ssr
 scratch
 ~$*
 *.tmp
+*.zip
+dist.zip
 
 # Editor directories and files
 .vscode/*
