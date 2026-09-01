@@ -7,7 +7,7 @@ import {
   FileText, Clock, Lock, ArrowRight, UserCheck, Calculator, TrendingUp, Camera, Paperclip,
   Check, X, Truck, Package, HardHat, AlertCircle, FileSpreadsheet, Eye, Upload, Download, Search,
   ChevronRight, ChevronLeft, ArrowLeft, ChevronDown, RefreshCw, Layers, Building2, User, FileCheck,
-  Send, HelpCircle, Bell, Printer
+  Send, HelpCircle, Bell, Printer, Trash2
 } from 'lucide-react';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
@@ -368,41 +368,85 @@ export const ProductionModule: React.FC = () => {
 
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
-  const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([]);
+
+  const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([
+    { category: 'Chefs de chantier & Encadrement', effectif: 0, hNormales: 0, hSup: 0 },
+    { category: 'Maçons & Coffreurs', effectif: 0, hNormales: 0, hSup: 0 },
+    { category: 'Ferrailleurs & Boiseurs', effectif: 0, hNormales: 0, hSup: 0 },
+    { category: 'Manoeuvres & Ouvriers', effectif: 0, hNormales: 0, hSup: 0 }
+  ]);
+
+  const [materielRows, setMaterielRows] = useState<Array<{ name: string; qty: number; hours: number; fuel: number }>>([
+    { name: 'Bulldozer CAT D7', qty: 0, hours: 0, fuel: 0 },
+    { name: 'Camion Benne 15T', qty: 0, hours: 0, fuel: 0 },
+    { name: 'Pelle Hydraulique 20T', qty: 0, hours: 0, fuel: 0 }
+  ]);
+
+  const [soustraitantRows, setSoustraitantRows] = useState<Array<{ company: string; task: string; effectif: number; status: string }>>([
+    { company: 'SOGEA BTP', task: 'Débroussement & Élagage', effectif: 0, status: 'Actif' },
+    { company: 'GEBAT TOPO', task: 'Relevés Altimétriques', effectif: 0, status: 'Actif' }
+  ]);
+
+  const handleAddPersonnelRow = () => {
+    setPersonnelRows(prev => [...prev, { category: '', effectif: 0, hNormales: 0, hSup: 0 }]);
+  };
+
+  const handleAddMaterielRow = () => {
+    setMaterielRows(prev => [...prev, { name: '', qty: 0, hours: 0, fuel: 0 }]);
+  };
+
+  const handleAddSoustraitantRow = () => {
+    setSoustraitantRows(prev => [...prev, { company: '', task: '', effectif: 0, status: 'Actif' }]);
+  };
 
   const personnelTotals = useMemo(() => {
     return personnelRows.reduce(
       (acc, r) => ({
-        effectif: acc.effectif + r.effectif,
-        hNormales: acc.hNormales + r.hNormales,
-        hSup: acc.hSup + r.hSup,
+        effectif: acc.effectif + Number(r.effectif || 0),
+        hNormales: acc.hNormales + Number(r.hNormales || 0),
+        hSup: acc.hSup + Number(r.hSup || 0),
       }),
       { effectif: 0, hNormales: 0, hSup: 0 }
     );
   }, [personnelRows]);
 
+  const materielTotals = useMemo(() => {
+    return materielRows.reduce(
+      (acc, r) => ({
+        qty: acc.qty + Number(r.qty || 0),
+        hours: acc.hours + Number(r.hours || 0),
+        fuel: acc.fuel + Number(r.fuel || 0),
+      }),
+      { qty: 0, hours: 0, fuel: 0 }
+    );
+  }, [materielRows]);
+
+  const soustraitantTotals = useMemo(() => {
+    return soustraitantRows.reduce(
+      (acc, r) => ({
+        effectif: acc.effectif + Number(r.effectif || 0),
+        count: acc.count + 1
+      }),
+      { effectif: 0, count: 0 }
+    );
+  }, [soustraitantRows]);
+
   // 4. CONSOMMATIONS & LIVRAISONS
   const [consumptionTab, setConsumptionTab] = useState<'consommations' | 'livraisons'>('consommations');
 
-  // Initialisation dynamique des consommations basées sur les articles de stock réels de la base de données
-  const defaultStockConsumptions = useMemo(() => {
-    if (stockItems && stockItems.length > 0) {
-      return stockItems.map(item => ({
-        article: item.name,
-        unit: item.unit || 'U',
-        prevue: Number(item.minQuantity || 100),
-        consommee: 0,
-        ecart: 0
-      }));
-    }
-    return [];
-  }, [stockItems]);
+  const defaultConsumptions = useMemo(() => [
+    { article: 'CIMENT CHF', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
+    { article: 'CIMENT CPA (Coulage de radier et BP)', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
+    { article: 'CIMENT CPJ', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
+    { article: 'FER 6 (Barres 12m)', unit: 'BARRE', prevue: 100, consommee: 0, ecart: 0 }
+  ], []);
 
-  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>(defaultStockConsumptions);
+  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>(defaultConsumptions);
 
-  React.useEffect(() => {
-    setConsommationsRows(defaultStockConsumptions);
-  }, [defaultStockConsumptions]);
+  const [livraisonsRows, setLivraisonsRows] = useState<Array<{ ref: string; supplier: string; qty: string; date: string }>>([
+    { ref: 'BL-2026-089-SOCIMAC', supplier: 'SOCIMAC / Ciment CPJ 45', qty: '+150 sac', date: getTodayFrDate() },
+    { ref: 'BL-2026-092-ACI', supplier: 'Aciéries CI / Fer HA 12', qty: '+3,50 t', date: getTodayFrDate() }
+  ]);
 
   const handleAddConsumptionRow = () => {
     setConsommationsRows(prev => [
@@ -411,13 +455,22 @@ export const ProductionModule: React.FC = () => {
     ]);
   };
 
+  const handleAddLivraisonRow = () => {
+    setLivraisonsRows(prev => [
+      ...prev,
+      { ref: `BL-${Date.now().toString().slice(-4)}`, supplier: '', qty: '0', date: getTodayFrDate() }
+    ]);
+  };
+
   // 5. PROBLÈMES RENCONTRÉS
-  const [problems, setProblems] = useState<Array<{ type: string; impact: 'Moyen' | 'Faible' | 'Fort' }>>([]);
+  const [problems, setProblems] = useState<Array<{ type: string; impact: 'Moyen' | 'Faible' | 'Fort' | 'Critique' }>>([
+    { type: 'Nouvel incident signalisé', impact: 'Moyen' }
+  ]);
 
   const handleAddProblem = () => {
     setProblems(prev => [
       ...prev,
-      { type: 'Nouvel incident signalisé', impact: 'Moyen' }
+      { type: '', impact: 'Moyen' }
     ]);
   };
 
@@ -1506,7 +1559,7 @@ export const ProductionModule: React.FC = () => {
 
             {/* 1. Onglet Personnel */}
             {resourceTab === 'personnel' && (
-              <div className="overflow-x-auto pt-2">
+              <div className="overflow-x-auto pt-2 space-y-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10.5px]">
@@ -1514,73 +1567,192 @@ export const ProductionModule: React.FC = () => {
                       <th className="py-2 text-center">Effectif</th>
                       <th className="py-2 text-center">Heures normales</th>
                       <th className="py-2 text-center">Heures sup.</th>
+                      <th className="py-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {personnelRows.map((r, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2 font-bold text-slate-800">{r.category}</td>
-                        <td className="py-2 text-center font-mono font-bold">{r.effectif}</td>
-                        <td className="py-2 text-center font-mono">{r.hNormales} h</td>
-                        <td className="py-2 text-center font-mono">{r.hSup > 0 ? `${r.hSup} h` : '-'}</td>
+                        <td className="py-1.5 font-bold text-slate-800 pr-2">
+                          <input
+                            type="text"
+                            placeholder="Ex: Maçons, Ferrailleurs..."
+                            value={r.category}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setPersonnelRows(prev => prev.map((item, i) => i === idx ? { ...item, category: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono font-bold px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.effectif || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setPersonnelRows(prev => prev.map((item, i) => i === idx ? { ...item, effectif: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.hNormales || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setPersonnelRows(prev => prev.map((item, i) => i === idx ? { ...item, hNormales: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.hSup || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setPersonnelRows(prev => prev.map((item, i) => i === idx ? { ...item, hSup: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right pl-1">
+                          <button
+                            onClick={() => setPersonnelRows(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Supprimer la ligne"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     <tr className="font-black text-slate-900 bg-slate-50 border-t border-slate-200">
-                      <td className="py-2">Total</td>
-                      <td className="py-2 text-center font-mono">{personnelTotals.effectif}</td>
+                      <td className="py-2">Total Personnel</td>
+                      <td className="py-2 text-center font-mono">{personnelTotals.effectif} pers.</td>
                       <td className="py-2 text-center font-mono">{personnelTotals.hNormales} h</td>
                       <td className="py-2 text-center font-mono">{personnelTotals.hSup} h</td>
+                      <td></td>
                     </tr>
                   </tbody>
                 </table>
+                <button
+                  onClick={handleAddPersonnelRow}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition pt-1"
+                >
+                  <Plus size={14} /> Ajouter une catégorie de personnel
+                </button>
               </div>
             )}
 
             {/* 2. Onglet Matériel */}
             {resourceTab === 'materiel' && (
-              <div className="overflow-x-auto pt-2">
+              <div className="overflow-x-auto pt-2 space-y-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10.5px]">
-                      <th className="py-2">Désignation Engin</th>
+                      <th className="py-2">Désignation Engin / Équipement</th>
                       <th className="py-2 text-center">Quantité</th>
-                      <th className="py-2 text-center">Heures d'utilisation</th>
+                      <th className="py-2 text-center">Heures util.</th>
                       <th className="py-2 text-right">Carburant (L)</th>
+                      <th className="py-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-slate-800">Bulldozer CAT D7</td>
-                      <td className="py-2 text-center font-mono font-bold">1</td>
-                      <td className="py-2 text-center font-mono">8 h</td>
-                      <td className="py-2 text-right font-mono font-bold text-slate-900">140,00 L</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-slate-800">Camion Benne 15T</td>
-                      <td className="py-2 text-center font-mono font-bold">2</td>
-                      <td className="py-2 text-center font-mono">16 h</td>
-                      <td className="py-2 text-right font-mono font-bold text-slate-900">180,00 L</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-slate-800">Pelle Hydraulique 20T</td>
-                      <td className="py-2 text-center font-mono font-bold">1</td>
-                      <td className="py-2 text-center font-mono">7,5 h</td>
-                      <td className="py-2 text-right font-mono font-bold text-slate-900">110,00 L</td>
-                    </tr>
+                    {materielRows.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-1.5 font-bold text-slate-800 pr-2">
+                          <input
+                            type="text"
+                            placeholder="Ex: Bulldozer, Camion..."
+                            value={r.name}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setMaterielRows(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono font-bold px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.qty || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setMaterielRows(prev => prev.map((item, i) => i === idx ? { ...item, qty: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            placeholder="0"
+                            value={r.hours || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setMaterielRows(prev => prev.map((item, i) => i === idx ? { ...item, hours: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right font-mono px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.fuel || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setMaterielRows(prev => prev.map((item, i) => i === idx ? { ...item, fuel: val } : item));
+                            }}
+                            className="w-20 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-right font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right pl-1">
+                          <button
+                            onClick={() => setMaterielRows(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Supprimer la ligne"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                     <tr className="font-black text-slate-900 bg-slate-50 border-t border-slate-200">
                       <td className="py-2">Total Matériel</td>
-                      <td className="py-2 text-center font-mono">4 engins</td>
-                      <td className="py-2 text-center font-mono">31,5 h</td>
-                      <td className="py-2 text-right font-mono">430,00 L</td>
+                      <td className="py-2 text-center font-mono">{materielTotals.qty} engins</td>
+                      <td className="py-2 text-center font-mono">{materielTotals.hours} h</td>
+                      <td className="py-2 text-right font-mono">{materielTotals.fuel} L</td>
+                      <td></td>
                     </tr>
                   </tbody>
                 </table>
+                <button
+                  onClick={handleAddMaterielRow}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition pt-1"
+                >
+                  <Plus size={14} /> Ajouter un engin / matériel
+                </button>
               </div>
             )}
 
             {/* 3. Onglet Sous-traitants */}
             {resourceTab === 'soustraitants' && (
-              <div className="overflow-x-auto pt-2">
+              <div className="overflow-x-auto pt-2 space-y-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10.5px]">
@@ -1588,28 +1760,87 @@ export const ProductionModule: React.FC = () => {
                       <th className="py-2">Tâche / Spécialité</th>
                       <th className="py-2 text-center">Effectif</th>
                       <th className="py-2 text-right">Statut</th>
+                      <th className="py-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-slate-800">SOGEA BTP</td>
-                      <td className="py-2 text-slate-600 font-bold">Débroussement & Élagage</td>
-                      <td className="py-2 text-center font-mono font-bold">5</td>
-                      <td className="py-2 text-right"><span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded text-[10px]">Actif</span></td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-slate-800">GEBAT TOPO</td>
-                      <td className="py-2 text-slate-600 font-bold">Relevés Altimétriques</td>
-                      <td className="py-2 text-center font-mono font-bold">2</td>
-                      <td className="py-2 text-right"><span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded text-[10px]">Terminé</span></td>
-                    </tr>
+                    {soustraitantRows.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-1.5 font-bold text-slate-800 pr-1">
+                          <input
+                            type="text"
+                            placeholder="Nom de l'entreprise..."
+                            value={r.company}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setSoustraitantRows(prev => prev.map((item, i) => i === idx ? { ...item, company: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 font-bold text-slate-800 pr-1">
+                          <input
+                            type="text"
+                            placeholder="Prestation..."
+                            value={r.task}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setSoustraitantRows(prev => prev.map((item, i) => i === idx ? { ...item, task: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono font-bold px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={r.effectif || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setSoustraitantRows(prev => prev.map((item, i) => i === idx ? { ...item, effectif: val } : item));
+                            }}
+                            className="w-16 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right px-1">
+                          <select
+                            value={r.status}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setSoustraitantRows(prev => prev.map((item, i) => i === idx ? { ...item, status: val } : item));
+                            }}
+                            className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[10.5px] font-bold text-slate-800 focus:outline-none cursor-pointer"
+                          >
+                            <option value="Actif">Actif</option>
+                            <option value="En attente">En attente</option>
+                            <option value="Terminé">Terminé</option>
+                          </select>
+                        </td>
+                        <td className="py-1.5 text-right pl-1">
+                          <button
+                            onClick={() => setSoustraitantRows(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Supprimer la ligne"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                     <tr className="font-black text-slate-900 bg-slate-50 border-t border-slate-200">
-                      <td className="py-2" colSpan={2}>Total Intervenants Extérieurs</td>
-                      <td className="py-2 text-center font-mono">7</td>
-                      <td className="py-2 text-right font-mono">2 st.</td>
+                      <td className="py-2" colSpan={2}>Total Sous-traitance</td>
+                      <td className="py-2 text-center font-mono">{soustraitantTotals.effectif} pers.</td>
+                      <td className="py-2 text-right font-mono" colSpan={2}>{soustraitantTotals.count} st.</td>
                     </tr>
                   </tbody>
                 </table>
+                <button
+                  onClick={handleAddSoustraitantRow}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition pt-1"
+                >
+                  <Plus size={14} /> Ajouter un sous-traitant
+                </button>
               </div>
             )}
           </div>
@@ -1639,9 +1870,9 @@ export const ProductionModule: React.FC = () => {
               </div>
             </h2>
 
-            {/* Onglet 1 : Consommations */}
+            {/* Onglet 1 : Consommations (CHAQUE CHAMP SAISISSABLE & NON OBLIGATOIRE) */}
             {consumptionTab === 'consommations' && (
-              <div className="overflow-x-auto pt-2">
+              <div className="overflow-x-auto pt-2 space-y-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10px]">
@@ -1650,17 +1881,87 @@ export const ProductionModule: React.FC = () => {
                       <th className="py-2 text-right">Quantité prévue</th>
                       <th className="py-2 text-right">Quantité consommée</th>
                       <th className="py-2 text-right">Écart</th>
+                      <th className="py-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {consommationsRows.map((c, i) => (
                       <tr key={i} className="hover:bg-slate-50">
-                        <td className="py-2 font-bold text-slate-800">{c.article}</td>
-                        <td className="py-2 text-center font-bold text-slate-500">{c.unit}</td>
-                        <td className="py-2 text-right font-mono">{formatQty(c.prevue)}</td>
-                        <td className="py-2 text-right font-mono font-bold text-slate-900">{formatQty(c.consommee)}</td>
-                        <td className={`py-2 text-right font-mono font-bold ${c.ecart > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        <td className="py-1.5 font-bold text-slate-800 pr-1">
+                          <input
+                            type="text"
+                            placeholder="Désignation matériau..."
+                            value={c.article}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setConsommationsRows(prev => prev.map((item, idx) => idx === i ? { ...item, article: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-bold text-slate-500 px-1">
+                          <input
+                            type="text"
+                            placeholder="U"
+                            value={c.unit}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setConsommationsRows(prev => prev.map((item, idx) => idx === i ? { ...item, unit: val } : item));
+                            }}
+                            className="w-12 px-1 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center font-bold text-slate-700 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right font-mono px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="0"
+                            value={c.prevue || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setConsommationsRows(prev => prev.map((item, idx) => {
+                                if (idx === i) {
+                                  const ecart = item.consommee > 0 ? item.consommee - val : 0;
+                                  return { ...item, prevue: val, ecart };
+                                }
+                                return item;
+                              }));
+                            }}
+                            className="w-20 px-1.5 py-1 bg-slate-50 border border-slate-200 text-right font-mono text-xs rounded-lg focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right font-mono font-bold text-slate-900 px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="0"
+                            value={c.consommee || ''}
+                            onChange={e => {
+                              const val = Number(e.target.value || 0);
+                              setConsommationsRows(prev => prev.map((item, idx) => {
+                                if (idx === i) {
+                                  const ecart = val > 0 ? val - item.prevue : 0;
+                                  return { ...item, consommee: val, ecart };
+                                }
+                                return item;
+                              }));
+                            }}
+                            className="w-24 px-2 py-1 bg-blue-50/60 border border-blue-300 font-mono font-bold text-right text-xs text-blue-950 rounded-lg focus:bg-white focus:border-blue-600 focus:outline-none shadow-2xs"
+                          />
+                        </td>
+                        <td className={`py-1.5 text-right font-mono font-bold ${c.ecart > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                           {c.ecart > 0 ? `+${formatQty(c.ecart)}` : formatQty(c.ecart)}
+                        </td>
+                        <td className="py-1.5 text-right pl-1">
+                          <button
+                            onClick={() => setConsommationsRows(prev => prev.filter((_, idx) => idx !== i))}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Supprimer la ligne"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1669,37 +1970,68 @@ export const ProductionModule: React.FC = () => {
               </div>
             )}
 
-            {/* Onglet 2 : Livraisons Réelles */}
+            {/* Onglet 2 : Livraisons Réelles (SAISISSABLE) */}
             {consumptionTab === 'livraisons' && (
-              <div className="overflow-x-auto pt-2">
+              <div className="overflow-x-auto pt-2 space-y-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10px]">
                       <th className="py-2">Réf. Bon de Livraison</th>
                       <th className="py-2">Fournisseur / Article</th>
                       <th className="py-2 text-center">Quantité Livrée</th>
-                      <th className="py-2 text-right">Date</th>
+                      <th className="py-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-blue-700 font-mono">BL-2026-089-SOCIMAC</td>
-                      <td className="py-2 font-bold text-slate-800">SOCIMAC / Ciment CPJ 45</td>
-                      <td className="py-2 text-center font-mono font-bold text-emerald-700">+150 sac</td>
-                      <td className="py-2 text-right font-mono text-slate-500">10/08/2026</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-blue-700 font-mono">BL-2026-092-ACI</td>
-                      <td className="py-2 font-bold text-slate-800">Aciéries CI / Fer HA 12</td>
-                      <td className="py-2 text-center font-mono font-bold text-emerald-700">+3,50 t</td>
-                      <td className="py-2 text-right font-mono text-slate-500">14/08/2026</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50">
-                      <td className="py-2 font-bold text-blue-700 font-mono">BL-2026-104-TOTAL</td>
-                      <td className="py-2 font-bold text-slate-800">TotalEnergies / Gasoil</td>
-                      <td className="py-2 text-center font-mono font-bold text-emerald-700">+1 200,00 L</td>
-                      <td className="py-2 text-right font-mono text-slate-500">20/08/2026</td>
-                    </tr>
+                    {livraisonsRows.map((l, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-1.5 font-bold text-blue-700 font-mono pr-1">
+                          <input
+                            type="text"
+                            placeholder="Réf BL..."
+                            value={l.ref}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLivraisonsRows(prev => prev.map((item, i) => i === idx ? { ...item, ref: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-blue-700 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 font-bold text-slate-800 pr-1">
+                          <input
+                            type="text"
+                            placeholder="Fournisseur / Article..."
+                            value={l.supplier}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLivraisonsRows(prev => prev.map((item, i) => i === idx ? { ...item, supplier: val } : item));
+                            }}
+                            className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-center font-mono font-bold text-emerald-700 px-1">
+                          <input
+                            type="text"
+                            placeholder="+100 u"
+                            value={l.qty}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLivraisonsRows(prev => prev.map((item, i) => i === idx ? { ...item, qty: val } : item));
+                            }}
+                            className="w-20 px-2 py-1 bg-emerald-50/60 border border-emerald-300 rounded-lg text-xs font-mono font-bold text-emerald-800 text-center focus:bg-white focus:border-emerald-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1.5 text-right pl-1">
+                          <button
+                            onClick={() => setLivraisonsRows(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Supprimer la livraison"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1707,43 +2039,73 @@ export const ProductionModule: React.FC = () => {
           </div>
 
           <button
-            onClick={handleAddConsumptionRow}
+            onClick={consumptionTab === 'consommations' ? handleAddConsumptionRow : handleAddLivraisonRow}
             className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition pt-2 border-t border-slate-100"
           >
             <Plus size={14} /> {consumptionTab === 'consommations' ? 'Ajouter une ligne de consommation' : 'Réceptionner une livraison'}
           </button>
         </div>
 
-        {/* CARD 2 : PROBLÈMES RENCONTRÉS */}
+        {/* CARD 2 : PROBLÈMES RENCONTRÉS (CHAQUE CHAMP SAISISSABLE & DYNAMIQUE) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider pb-2 border-b border-slate-100">
               PROBLÈMES RENCONTRÉS
             </h2>
 
-            <div className="overflow-x-auto pt-2">
+            <div className="overflow-x-auto pt-2 space-y-2">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10.5px]">
-                    <th className="py-2">Type de problème</th>
+                    <th className="py-2">Type de problème / Incident</th>
                     <th className="py-2 text-right">Impact</th>
+                    <th className="py-2 text-right"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {problems.map((p, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2.5 font-bold text-slate-800 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-slate-900"></span>
-                        {p.type}
+                      <td className="py-1.5 font-bold text-slate-800 pr-2">
+                        <input
+                          type="text"
+                          placeholder="Saisissez la description du problème..."
+                          value={p.type}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setProblems(prev => prev.map((item, i) => i === idx ? { ...item, type: val } : item));
+                          }}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                        />
                       </td>
-                      <td className="py-2.5 text-right">
-                        <span className={`px-2.5 py-0.5 rounded font-bold text-[10px] ${
-                          p.impact === 'Moyen'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }`}>
-                          {p.impact}
-                        </span>
+                      <td className="py-1.5 text-right pl-1 shrink-0">
+                        <select
+                          value={p.impact}
+                          onChange={e => {
+                            const val = e.target.value as any;
+                            setProblems(prev => prev.map((item, i) => i === idx ? { ...item, impact: val } : item));
+                          }}
+                          className={`px-2 py-1 rounded font-bold text-xs focus:outline-none cursor-pointer ${
+                            p.impact === 'Moyen'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                              : p.impact === 'Fort' || p.impact === 'Critique'
+                              ? 'bg-rose-50 text-rose-800 border border-rose-300'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                          }`}
+                        >
+                          <option value="Faible">Faible</option>
+                          <option value="Moyen">Moyen</option>
+                          <option value="Fort">Fort</option>
+                          <option value="Critique">Critique</option>
+                        </select>
+                      </td>
+                      <td className="py-1.5 text-right pl-1">
+                        <button
+                          onClick={() => setProblems(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                          title="Supprimer l'incident"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
