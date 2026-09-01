@@ -6,6 +6,13 @@
 .env.*.local
 *.env
 
+# Confidential Folders & Files (NEVER COMMIT TO GITHUB)
+Cahier_Conception/
+Données/
+*.docx
+*.doc
+*.docm
+
 # Logs
 logs
 *.log
