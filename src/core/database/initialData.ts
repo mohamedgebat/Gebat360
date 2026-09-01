@@ -850,7 +850,6 @@ export const INITIAL_DAILY_REPORTS: DailyReport[] = [
     productivityRate: 91.7,
     createdAt: '2026-08-29 20:54'
   },
-  ...REAL_DAILY_REPORTS,
   {
     id: 'CR-2026-08-17-01',
     code: 'CR-2026-08-17-01',

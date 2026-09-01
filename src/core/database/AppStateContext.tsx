@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v337 - Purified Leaf WBS Cost Reduction & EAC Margin Restoration)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v338 - Clean Daily Reports & SSOT Margin Restoration)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_fix_leaf_wbs_reduction_eac_margin_v337';
+    const DATA_VERSION = 'v2026_09_01_fix_clean_daily_reports_ssot_margin_v338';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
