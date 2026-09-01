@@ -536,6 +536,16 @@ const requireRole = (allowedRoles) => {
 // ==============================================================================
 // 1. HEALTH CHECK & STATUS
 // ==============================================================================
+app.get('/', (req, res) => {
+  return res.json({
+    name: 'GEBAT 360° REST API Backend Server',
+    status: 'online',
+    system: 'GEBAT SA ERP',
+    healthCheck: '/api/health',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get(['/api/v1/health', '/api/health'], async (req, res) => {
   let dbStatus = 'Non connecté';
   let dbError = null;
