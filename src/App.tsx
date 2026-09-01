@@ -43,6 +43,18 @@ const MainApp: React.FC = () => {
   const [currentView, setCurrentView] = useState<string>('dashboard-portfolio');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Vue exclusive selon le profil connecté si pas encore définie
+  useEffect(() => {
+    if (currentUser?.role) {
+      const defaultPage = getDefaultViewForRole(currentUser.role);
+      const isAllowed = isMenuItemAllowed(currentUser, currentView);
+      if (!isAllowed) {
+        setCurrentView(defaultPage);
+      }
+    }
+  }, [currentUser?.role]);
 
   // Protection & Habilitation RBAC Stricte : Orientations automatiques vers la page dédiée du profil
   React.useEffect(() => {
@@ -362,19 +374,6 @@ const MainApp: React.FC = () => {
         return <DashboardGeneral />;
     }
   };
-
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Vue exclusive selon le profil connecté si pas encore définie
-  useEffect(() => {
-    if (currentUser?.role) {
-      const defaultPage = getDefaultViewForRole(currentUser.role);
-      const isAllowed = isMenuItemAllowed(currentUser, currentView);
-      if (!isAllowed) {
-        setCurrentView(defaultPage);
-      }
-    }
-  }, [currentUser?.role]);
 
   return (
     <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900 overflow-x-hidden">

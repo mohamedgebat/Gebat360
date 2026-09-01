@@ -179,21 +179,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v343 - Mobile Responsive Drawer Layout & Universal iOS Android PWA Install Engine)
-  if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_mobile_responsive_pwa_install_v343';
-    const savedVer = localStorage.getItem('gebat_data_version');
-    if (savedVer !== DATA_VERSION) {
-      localStorage.removeItem('gebat_daily_reports');
-      localStorage.removeItem('gebat_user_created_reports_backup');
-      localStorage.removeItem('gebat_submitted_reports_permanent_lock');
-      localStorage.removeItem('gebat_wbs');
-      localStorage.removeItem('gebat_projects');
-      localStorage.removeItem('gebat_stock_items');
-      localStorage.removeItem('gebat_stock_movements');
-      localStorage.removeItem('gebat_warehouses');
-      localStorage.setItem('gebat_data_version', DATA_VERSION);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const DATA_VERSION = 'v2026_09_01_mobile_responsive_pwa_install_v343';
+      const savedVer = localStorage.getItem('gebat_data_version');
+      if (savedVer !== DATA_VERSION) {
+        localStorage.removeItem('gebat_daily_reports');
+        localStorage.removeItem('gebat_user_created_reports_backup');
+        localStorage.removeItem('gebat_submitted_reports_permanent_lock');
+        localStorage.removeItem('gebat_wbs');
+        localStorage.removeItem('gebat_projects');
+        localStorage.removeItem('gebat_stock_items');
+        localStorage.removeItem('gebat_stock_movements');
+        localStorage.removeItem('gebat_warehouses');
+        localStorage.setItem('gebat_data_version', DATA_VERSION);
+      }
     }
-  }
+  }, []);
 
   const [currentUser, setCurrentUserRaw] = useState<User>(() => {
     if (typeof window !== 'undefined') {
