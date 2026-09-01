@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v340 - Live Railway MySQL Projects Stream & CamelCase Field Mapping)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v341 - Live MySQL Projects Fetch Effect & Permissive CORS)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_live_railway_mysql_projects_stream_v340';
+    const DATA_VERSION = 'v2026_09_01_live_mysql_projects_fetch_effect_v341';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
@@ -322,6 +322,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return INITIAL_PROJECTS;
   });
+
+  // Synchronisation en direct des projets depuis la base de données MySQL (Railway)
+  useEffect(() => {
+    async function loadDbProjects() {
+      if (isBackendConnected) {
+        try {
+          const dbProjects = await ApiService.getProjects();
+          if (Array.isArray(dbProjects) && dbProjects.length > 0) {
+            setProjects(dbProjects);
+            localStorage.setItem('gebat_projects', JSON.stringify(dbProjects));
+          }
+        } catch (err) {
+          console.warn('⚠️ Impossible de charger les projets depuis MySQL:', err);
+        }
+      }
+    }
+    loadDbProjects();
+  }, [isBackendConnected]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
     const saved = localStorage.getItem('gebat_wbs');
     if (saved) {
