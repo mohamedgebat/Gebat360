@@ -65,7 +65,19 @@ export class ApiService {
 
   // 3. Projets
   static async getProjects(): Promise<any[]> {
-    return this.request<any[]>('/projects');
+    const raw = await this.request<any[]>('/projects');
+    if (!Array.isArray(raw)) return [];
+    return raw.map(p => ({
+      ...p,
+      contractAmount: Number(p.contractAmount || p.contract_amount || 0),
+      initialBudget: Number(p.initialBudget || p.initial_budget || 0),
+      revisedBudget: Number(p.revisedBudget || p.revised_budget || 0),
+      contractRef: p.contractRef || p.contract_ref,
+      startDate: p.startDate || p.start_date,
+      endDate: p.endDate || p.end_date,
+      durationMonths: Number(p.durationMonths || p.duration_months || 12),
+      progress: Number(p.progress || 0)
+    }));
   }
 
   static async createProject(project: any): Promise<any> {
