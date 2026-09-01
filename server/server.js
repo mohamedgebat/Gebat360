@@ -61,6 +61,20 @@ const loginLimiter = rateLimit({
 // Initialisation et Seeding de la base de données MySQL
 async function initDatabase() {
   try {
+    const dbName = process.env.DB_NAME || 'gebat_360_db';
+    try {
+      const tempConn = await mysql.createConnection({
+        host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT) || 3306,
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+      });
+      await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
+      await tempConn.end();
+    } catch (createErr) {
+      console.warn('Auto-create DB notice:', createErr.message);
+    }
+
     const conn = await pool.getConnection();
 
     // 1. Table users
