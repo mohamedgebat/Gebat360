@@ -109,6 +109,26 @@ export class ApiService {
     return this.request<any[]>('/stock/items');
   }
 
+  static async createStockItem(item: any): Promise<any> {
+    return this.request<any>('/stock/items', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+
+  static async updateStockItem(id: string, item: any): Promise<any> {
+    return this.request<any>(`/stock/items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(item),
+    });
+  }
+
+  static async deleteStockItem(id: string): Promise<any> {
+    return this.request<any>(`/stock/items/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   static async getStockMovements(): Promise<any[]> {
     return this.request<any[]>('/stock/movements');
   }

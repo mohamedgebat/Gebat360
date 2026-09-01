@@ -84,6 +84,9 @@ interface AppStateContextType {
   processGoodsReceipt: (poId: string, receivedQty: number, receivedBy: string) => void;
   consumeStockToWBS: (itemId: string, quantity: number, projectId: string, wbsId: string, activityName: string, user: string) => void;
   createStockMovement: (mvtData: Omit<StockMovement, 'id'>) => StockMovement;
+  addStockItem: (itemData: Omit<StockItem, 'id'>) => StockItem;
+  updateStockItem: (updatedItem: StockItem) => void;
+  deleteStockItem: (itemId: string) => void;
   addUser: (newUser: User) => void;
   updateUser: (updatedUser: User) => void;
   deleteUser: (userId: string) => void;
@@ -178,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v350 - Centre de Validation Filtered to DA & Procurement Commitments Only)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v351 - Stock Management Dynamic REST API Synchronization & Transactional Movement CRUD)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_validation_center_da_only_v350';
+      const DATA_VERSION = 'v2026_09_01_stock_module_dynamic_rest_api_v351';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -1810,7 +1813,50 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       `Flux ${mvtData.type} enregistré: ${mvtData.quantity} ${mvtData.unit} de ${mvtData.itemName} au dépôt ${mvtData.warehouse || 'Magasin'}. Coût: ${(mvtData.totalCost || 0).toLocaleString('fr-FR')} FCFA.`
     );
 
+    // REST API Persistence
+    ApiService.createStockMovement(newMvt).catch(err => console.error('Error saving stock movement to DB:', err));
+
     return newMvt;
+  };
+
+  const addStockItem = (itemData: Omit<StockItem, 'id'>): StockItem => {
+    const id = `STK-${Date.now()}`;
+    const newItem: StockItem = {
+      ...itemData,
+      id,
+      code: itemData.code || `ART-${Date.now().toString().slice(-4)}`
+    };
+    setStockItems(prev => {
+      const updated = [newItem, ...prev];
+      safeSaveToStorage('gebat_stock_items', updated);
+      return updated;
+    });
+    ApiService.createStockItem(newItem).catch(err => console.error('Error creating stock item in DB:', err));
+    addAuditLog('CREATION_ARTICLE_STOCK', 'STOCK_DATABASE', newItem.code, `Article ${newItem.name} ajouté en stock (${newItem.currentStock} ${newItem.unit}).`);
+    return newItem;
+  };
+
+  const updateStockItem = (updatedItem: StockItem) => {
+    setStockItems(prev => {
+      const updated = prev.map(i => i.id === updatedItem.id ? updatedItem : i);
+      safeSaveToStorage('gebat_stock_items', updated);
+      return updated;
+    });
+    ApiService.updateStockItem(updatedItem.id, updatedItem).catch(err => console.error('Error updating stock item in DB:', err));
+    addAuditLog('MODIFICATION_ARTICLE_STOCK', 'STOCK_DATABASE', updatedItem.code, `Article ${updatedItem.name} mis à jour (Stock: ${updatedItem.currentStock} ${updatedItem.unit}).`);
+  };
+
+  const deleteStockItem = (itemId: string) => {
+    const target = stockItems.find(i => i.id === itemId);
+    setStockItems(prev => {
+      const updated = prev.filter(i => i.id !== itemId);
+      safeSaveToStorage('gebat_stock_items', updated);
+      return updated;
+    });
+    ApiService.deleteStockItem(itemId).catch(err => console.error('Error deleting stock item from DB:', err));
+    if (target) {
+      addAuditLog('SUPPRESSION_ARTICLE_STOCK', 'STOCK_DATABASE', target.code, `Article ${target.name} supprimé du stock.`);
+    }
   };
 
   const createDailyReport = (reportData: Omit<DailyReport, 'id' | 'code' | 'productivityRate'>) => {
@@ -2569,7 +2615,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateDAStatus,
         approveDA,
         processGoodsReceipt,
-        consumeStockToWBS,
+        createStockMovement,
+        addStockItem,
+        updateStockItem,
+        deleteStockItem,
         createDailyReport,
         updateDailyReportStatus,
         createValidationTask,

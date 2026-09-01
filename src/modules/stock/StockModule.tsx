@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const StockModule: React.FC = () => {
-  const { stockItems, warehouses, stockMovements, projects, wbsMap, createStockMovement, processGoodsReceipt, purchaseOrders, addAuditLog, currentUser } = useAppState();
+  const { stockItems, warehouses, stockMovements, projects, wbsMap, createStockMovement, addStockItem, updateStockItem, deleteStockItem, processGoodsReceipt, purchaseOrders, addAuditLog, currentUser } = useAppState();
 
   const authorizedProjects = useMemo(() => {
     return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));

@@ -1624,6 +1624,82 @@ app.post(['/api/v1/stock/movements', '/api/stock/movements'], requireAuth, async
   }
 });
 
+// POST /api/v1/stock/items — Création d'un article de stock dans MySQL
+app.post(['/api/v1/stock/items', '/api/stock/items'], requireAuth, async (req, res) => {
+  try {
+    const s = req.body;
+    const id = s.id || `STK-${Date.now()}`;
+    const code = s.code || `ART-${Date.now().toString().slice(-4)}`;
+    const name = s.name || s.designation || 'Nouvel Article';
+    const category = s.category || 'Général';
+    const unit = s.unit || 'U';
+    const currentStock = Number(s.currentStock || s.current_stock || 0);
+    const minThreshold = Number(s.minThreshold || s.min_threshold || 10);
+    const averageUnitPrice = Number(s.averageUnitPrice || s.average_unit_price || 0);
+    const totalValue = Number(s.totalValue || s.total_value || (currentStock * averageUnitPrice));
+    const warehouse = s.warehouse || 'Magasin Principal';
+
+    await pool.query(
+      `INSERT INTO stock_items (id, code, name, category, unit, current_stock, min_threshold, average_unit_price, total_value, warehouse)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+       name = VALUES(name), category = VALUES(category), unit = VALUES(unit), current_stock = VALUES(current_stock),
+       min_threshold = VALUES(min_threshold), average_unit_price = VALUES(average_unit_price), total_value = VALUES(total_value), warehouse = VALUES(warehouse)`,
+      [id, code, name, category, unit, currentStock, minThreshold, averageUnitPrice, totalValue, warehouse]
+    );
+
+    res.status(201).json({ message: 'Article de stock créé avec succès dans MySQL', item: { id, code, name, category, unit, currentStock, minThreshold, averageUnitPrice, totalValue, warehouse } });
+  } catch (err) {
+    console.error('Erreur création article stock:', err);
+    res.status(500).json({ error: 'Erreur lors de la création de l\'article de stock', detail: err.message });
+  }
+});
+
+// PUT /api/v1/stock/items/:id — Modification d'un article de stock dans MySQL
+app.put(['/api/v1/stock/items/:id', '/api/stock/items/:id'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const s = req.body;
+
+    const [existing] = await pool.query('SELECT * FROM stock_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Article de stock non trouvé' });
+    }
+
+    const current = existing[0];
+    const name = s.name || current.name;
+    const category = s.category || current.category;
+    const unit = s.unit || current.unit;
+    const currentStock = s.currentStock !== undefined ? Number(s.currentStock) : current.current_stock;
+    const minThreshold = s.minThreshold !== undefined ? Number(s.minThreshold) : current.min_threshold;
+    const averageUnitPrice = s.averageUnitPrice !== undefined ? Number(s.averageUnitPrice) : current.average_unit_price;
+    const totalValue = currentStock * averageUnitPrice;
+    const warehouse = s.warehouse || current.warehouse;
+
+    await pool.query(
+      `UPDATE stock_items SET name = ?, category = ?, unit = ?, current_stock = ?, min_threshold = ?, average_unit_price = ?, total_value = ?, warehouse = ? WHERE id = ?`,
+      [name, category, unit, currentStock, minThreshold, averageUnitPrice, totalValue, warehouse, id]
+    );
+
+    res.status(200).json({ message: 'Article de stock mis à jour dans MySQL', item: { id, name, category, unit, currentStock, minThreshold, averageUnitPrice, totalValue, warehouse } });
+  } catch (err) {
+    console.error('Erreur mise à jour article stock:', err);
+    res.status(500).json({ error: 'Erreur lors de la mise à jour de l\'article de stock', detail: err.message });
+  }
+});
+
+// DELETE /api/v1/stock/items/:id — Suppression d'un article de stock dans MySQL
+app.delete(['/api/v1/stock/items/:id', '/api/stock/items/:id'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM stock_items WHERE id = ?', [id]);
+    res.status(200).json({ message: 'Article de stock supprimé de MySQL' });
+  } catch (err) {
+    console.error('Erreur suppression article stock:', err);
+    res.status(500).json({ error: 'Erreur lors de la suppression de l\'article de stock', detail: err.message });
+  }
+});
+
 // ==============================================================================
 // 8. PRODUCTION & RAPPORTS JOURNALIERS TERRAIN
 // ==============================================================================
