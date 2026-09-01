@@ -38,26 +38,26 @@ const NetworkStatusBadge: React.FC = () => {
 
   if (isSyncing) {
     return (
-      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs animate-pulse">
+      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-2 sm:px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-extrabold shadow-2xs animate-pulse shrink-0">
         <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
-        <span>Synchronisation...</span>
+        <span className="hidden sm:inline">Synchronisation...</span>
       </div>
     );
   }
 
   if (!isOnline) {
     return (
-      <div className="flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs" title="Mode hors ligne actif. Les données saisies sont conservées localement.">
+      <div className="flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-300 px-2 sm:px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-extrabold shadow-2xs shrink-0" title="Mode hors ligne actif. Les données saisies sont conservées localement.">
         <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-        <span>Hors ligne</span>
+        <span className="hidden sm:inline">Hors ligne</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200 px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs" title="Application connectée au réseau">
+    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 sm:px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-extrabold shadow-2xs shrink-0" title="Application connectée au réseau">
       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-      <span>En ligne</span>
+      <span className="hidden sm:inline">En ligne</span>
     </div>
   );
 };
@@ -105,14 +105,14 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-16 bg-white border-b border-slate-200 px-2.5 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
       
       {/* 1. TITRE ET CONTEXTE NATIONALE GEBAT SA */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 mr-2">
         {onToggleMobileMenu && (
           <button
             onClick={onToggleMobileMenu}
-            className="md:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition cursor-pointer border border-slate-200 shadow-2xs"
+            className="md:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition cursor-pointer border border-slate-200 shadow-2xs shrink-0"
             title="Ouvrir le menu"
           >
             <Menu size={20} />
@@ -121,19 +121,19 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
         <img
           src="/logo_gebat_official.png"
           alt="GEBAT SA"
-          className="h-9 w-auto object-contain rounded-lg border border-slate-200 p-0.5 bg-white hidden sm:block shadow-2xs"
+          className="h-8 w-auto object-contain rounded-lg border border-slate-200 p-0.5 bg-white hidden md:block shadow-2xs shrink-0"
         />
-        <div>
-          <h1 className="text-sm sm:text-xl font-black text-slate-900 tracking-tight leading-tight truncate max-w-[160px] sm:max-w-none">{currentViewTitle}</h1>
-          <span className="text-[10px] sm:text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xs sm:text-lg font-black text-slate-900 tracking-tight leading-tight truncate">{currentViewTitle}</h1>
+          <span className="text-[10px] text-slate-500 font-bold hidden sm:flex items-center gap-1.5 mt-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
             GEBAT SA — Côte d’Ivoire
           </span>
         </div>
       </div>
 
       {/* 2. BARRE D'ACTIONS ET NOTIFICATIONS DROITE */}
-      <div className="flex items-center gap-3 sm:gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
 
         {/* BARRE DE RECHERCHE RAPIDE */}
         <div className="relative hidden md:block">
@@ -145,18 +145,17 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
           />
         </div>
 
-        {/* INDICATEUR D'ÉTAT DU RÉSEAU (SECTION 20 DES DIRECTIVES PWA GEBAT) */}
+        {/* INDICATEUR D'ÉTAT DU RÉSEAU */}
         <NetworkStatusBadge />
 
         {/* BADGE COMPTEUR VALIDATIONS */}
         {pendingValidationsCount > 0 && (
           <button
             onClick={handleValidationClick}
-            className="flex items-center gap-1.5 bg-amber-50 text-amber-800 text-xs font-extrabold px-3 py-1.5 rounded-xl border border-amber-200 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+            className="hidden sm:flex items-center gap-1.5 bg-amber-50 text-amber-800 text-xs font-extrabold px-3 py-1.5 rounded-xl border border-amber-200 hover:bg-amber-100 transition shadow-2xs cursor-pointer shrink-0"
             title={`${pendingValidationsCount} demandes en attente de validation`}
           >
             <ShieldCheck size={16} className="text-amber-600 shrink-0" />
-            <span>{pendingValidationsCount} Validations</span>
           </button>
         )}
 

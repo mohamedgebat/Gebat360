@@ -373,48 +373,48 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   return (
     <div className="space-y-5 text-slate-800 font-sans w-full pb-10">
 
-      {/* 1. EN-TÊTE SUPÉRIEUR & SÉLECTEUR DE PÉRIODE */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 px-5 rounded-2xl border border-slate-200 shadow-xs">
+      {/* 1. EN-TÊTE SUPÉRIEUR & SÉLECTEUR DE PÉRIODE (RESPONSIVE MOBILE) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">TABLEAU DE BORD GÉNÉRAL</h1>
+          <h1 className="text-base sm:text-xl font-black text-slate-900 tracking-tight uppercase">TABLEAU DE BORD GÉNÉRAL</h1>
           <p className="text-xs text-slate-500 font-medium">
             Bonjour, <span className="font-extrabold text-blue-700">Directeur Général</span>
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
           {/* SÉLECTEUR DE PROJET DÉDIÉ ET FONCTIONNEL */}
-          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-bold text-blue-900 shadow-2xs">
-            <Building2 size={14} className="text-blue-600" />
-            <span className="text-blue-500 font-normal">Chantier / Projet :</span>
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 sm:py-1.5 text-xs font-bold text-blue-900 shadow-2xs min-w-0 max-w-full">
+            <Building2 size={15} className="text-blue-600 shrink-0" />
+            <span className="text-blue-500 font-normal shrink-0 hidden sm:inline">Chantier :</span>
             <select
               value={selectedProjectId}
               onChange={e => setSelectedProjectId(e.target.value)}
-              className="bg-transparent font-extrabold text-blue-900 focus:outline-none cursor-pointer"
+              className="bg-transparent font-extrabold text-blue-900 focus:outline-none cursor-pointer w-full truncate"
             >
               {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
               ))}
               <option value="ALL">Tous les projets (Portefeuille Global)</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700">
-            <span className="text-slate-400">Période :</span>
+          <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 sm:py-1.5 text-xs font-bold text-slate-700">
+            <span className="text-slate-400 shrink-0">Période :</span>
             <select
               value={selectedPeriod}
               onChange={e => setSelectedPeriod(e.target.value)}
-              className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer"
+              className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer truncate"
             >
               <option value="Juin 2026">Ce mois-ci (Juin 2026 OS)</option>
               <option value="T3 2026">Trimestre T3 2026</option>
               <option value="Année 2026">Année 2026</option>
               <option value="Année 2027">Année 2027 (Livraison STBV)</option>
             </select>
-            <Calendar size={14} className="text-slate-400 ml-1" />
+            <Calendar size={14} className="text-slate-400 shrink-0" />
           </div>
 
-          <button className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold px-4 py-2 rounded-xl flex items-center gap-2 shadow-xs transition cursor-pointer">
+          <button className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer shrink-0">
             <Filter size={14} />
             <span>Filtres</span>
           </button>

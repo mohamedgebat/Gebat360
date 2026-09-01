@@ -178,10 +178,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v343 - Mobile Responsive Drawer Layout & Universal iOS Android PWA Install Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v346 - Mobile Header Layout Polish & Overlap Fix)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_mobile_responsive_pwa_install_v343';
+      const DATA_VERSION = 'v2026_09_01_mobile_header_layout_overlap_fix_v346';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
