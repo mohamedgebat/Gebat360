@@ -3,7 +3,11 @@
  * Service de communication HTTP entre le Frontend React et le Backend Express/SQL
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1').replace(/\/$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || 
+  (typeof window !== 'undefined' && localStorage.getItem('gebat_api_url')) ||
+  'https://gebat360-production.up.railway.app/api/v1'
+).replace(/\/$/, '');
 
 export class ApiService {
   private static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

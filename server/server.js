@@ -436,6 +436,68 @@ async function initDatabase() {
       console.log('✅ Sites Bingerville & Songon créés avec succès.');
     }
 
+    // Seeding des 2 projets réels initiaux (Songon & Bingerville) dans MySQL
+    const [projRows] = await conn.query('SELECT COUNT(*) as count FROM projects');
+    if (projRows[0].count === 0) {
+      console.log('🌱 Initialisation des 2 projets réels dans MySQL (Songon & Bingerville)...');
+      await conn.query(`
+        INSERT INTO projects (
+          id, code, name, company, client, country, location, activity, manager, contract_ref,
+          contract_amount, currency, signature_date, start_date, duration_months, end_date,
+          initial_budget, revised_budget, progress, status, risk, site_id
+        ) VALUES
+        (
+          'CIV-2026-ASS-SON-001',
+          'CIV-2026-ASS-SON-001',
+          'Station de traitement des boues de vidange de la ville Abidjan Ouest (Songon)',
+          'GEBAT SA',
+          'Ministère de l’Hydraulique & Assainissement / ONEP',
+          'Côte d’Ivoire',
+          'Songon, Abidjan Ouest',
+          'Station de Traitement des Boues',
+          'SEA Alphonse',
+          'CTR-GEBAT-2026-ASS-SON-001',
+          2830415055.00,
+          'XOF',
+          '2026-01-15',
+          '2026-07-01',
+          6,
+          '2027-01-31',
+          778028406.00,
+          778028406.00,
+          7.1,
+          'En cours',
+          'Modéré',
+          2
+        ),
+        (
+          'CIV-2026-ASS-BEN-002',
+          'CIV-2026-ASS-BEN-002',
+          'Station de traitement des boues de vidange de la ville Abidjan Est commune de Bingerville',
+          'GEBAT SA',
+          'Ministère de l’Hydraulique & Assainissement / ONEP',
+          'Côte d’Ivoire',
+          'Bingerville, Abidjan Est',
+          'Station de Traitement des Boues',
+          'KOUASSI Jean',
+          'CTR-GEBAT-2026-ASS-BEN-002',
+          3427958972.00,
+          'XOF',
+          '2026-01-15',
+          '2026-06-01',
+          15,
+          '2027-09-01',
+          1890812405.00,
+          1890812405.00,
+          13.0,
+          'En cours',
+          'Faible',
+          1
+        )
+      `);
+      console.log('✅ Projets Songon et Bingerville insérés avec succès dans MySQL.');
+    }
+
 
 
     // Vérification du nombre d'utilisateurs. Si 0, création des utilisateurs de production réels

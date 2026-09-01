@@ -178,9 +178,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v338 - Clean Daily Reports & SSOT Margin Restoration)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v339 - Pure MySQL Backend Data Stream & SSOT Restoration)
   if (typeof window !== 'undefined') {
-    const DATA_VERSION = 'v2026_09_01_fix_clean_daily_reports_ssot_margin_v338';
+    const DATA_VERSION = 'v2026_09_01_pure_mysql_backend_data_stream_v339';
     const savedVer = localStorage.getItem('gebat_data_version');
     if (savedVer !== DATA_VERSION) {
       localStorage.removeItem('gebat_daily_reports');
