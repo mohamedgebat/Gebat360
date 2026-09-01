@@ -86,15 +86,20 @@ const MainApp: React.FC = () => {
       }
     }
 
-    if (isBackendConnected) {
+    const timer = setTimeout(() => {
+      setIsVerifyingAuth(false);
+    }, 1500);
+
+    if (isBackendConnected === true && currentUser) {
       checkExistingAuth();
     } else if (isBackendConnected === false) {
       setIsVerifyingAuth(false);
     }
+    return () => clearTimeout(timer);
   }, [isBackendConnected]);
 
   // Connexion automatique et fluide au serveur API Backend & MySQL
-  if (isBackendConnected === null || isBackendConnected === false || isVerifyingAuth) {
+  if (isVerifyingAuth) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white text-center font-sans">
         <div className="w-16 h-16 relative flex items-center justify-center mb-6">
@@ -104,13 +109,8 @@ const MainApp: React.FC = () => {
         </div>
         <h2 className="text-xl font-black tracking-tight uppercase text-white">GEBAT 360° ERP System</h2>
         <p className="text-slate-400 text-xs mt-2 font-medium">
-          Initialisation & Connexion à la base de données MySQL (`gebat_360_db`)...
+          Chargement du Cockpit de Gestion BTP GEBAT 360°...
         </p>
-        {isBackendConnected === false && (
-          <span className="mt-4 text-[11px] font-mono text-amber-400 bg-amber-500/10 px-3.5 py-1.5 rounded-full border border-amber-500/20 animate-pulse flex items-center gap-2 mx-auto">
-            <span>⚡ Reconnexion automatique au serveur backend en cours...</span>
-          </span>
-        )}
       </div>
     );
   }
