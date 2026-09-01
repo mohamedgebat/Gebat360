@@ -9,9 +9,21 @@ interface BeforeInstallPromptEvent extends Event {
 export const PwaInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
-  const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gebat_pwa_prompt_dismissed') === 'true';
+    }
+    return false;
+  });
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [isIos, setIsIos] = useState<boolean>(false);
+
+  const handleDismiss = () => {
+    setIsDismissed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gebat_pwa_prompt_dismissed', 'true');
+    }
+  };
 
   useEffect(() => {
     // Détecter si l'appareil est sous iOS (Safari)
@@ -33,6 +45,7 @@ export const PwaInstallPrompt: React.FC = () => {
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
+      localStorage.setItem('gebat_pwa_prompt_dismissed', 'true');
       console.log('✅ GEBAT 360° PWA installée avec succès !');
     };
 
@@ -52,6 +65,7 @@ export const PwaInstallPrompt: React.FC = () => {
         const choiceResult = await deferredPrompt.userChoice;
         if (choiceResult.outcome === 'accepted') {
           setIsInstalled(true);
+          localStorage.setItem('gebat_pwa_prompt_dismissed', 'true');
         }
         setDeferredPrompt(null);
       } catch (err) {
@@ -82,9 +96,9 @@ export const PwaInstallPrompt: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => setIsDismissed(true)}
+            onClick={handleDismiss}
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            title="Fermer"
+            title="Fermer définitivement"
           >
             <X size={18} />
           </button>

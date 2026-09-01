@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v355 - Instant SearchableSelect Quick Search for WBS & Activities in Production Module)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v356 - Permanent PWA Prompt Dismissal Storage)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_instant_searchable_select_v355';
+      const DATA_VERSION = 'v2026_09_01_permanent_pwa_prompt_dismissal_v356';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
