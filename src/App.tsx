@@ -393,6 +393,17 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('gebat_jwt_token');
+    localStorage.removeItem('gebat_current_user');
+    sessionStorage.clear();
+    setIsAuthenticated(false);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      window.location.href = window.location.origin + window.location.pathname;
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900 overflow-x-hidden">
       <Sidebar
@@ -411,6 +422,7 @@ const MainApp: React.FC = () => {
           currentViewTitle={getTitle()} 
           onNavigate={setCurrentView}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+          onLogout={handleLogout}
         />
         <main className="px-2.5 sm:px-4 py-4 sm:py-6 flex-1 w-full max-w-full overflow-x-hidden">
           {renderContent()}

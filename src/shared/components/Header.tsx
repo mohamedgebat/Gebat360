@@ -7,6 +7,7 @@ interface HeaderProps {
   currentViewTitle: string;
   onNavigate?: (view: string) => void;
   onToggleMobileMenu?: () => void;
+  onLogout?: () => void;
 }
 
 const NetworkStatusBadge: React.FC = () => {
@@ -284,9 +285,17 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
           {/* BOUTON DÉCONNEXION OFFICIEL */}
           <button
             onClick={() => {
-              localStorage.removeItem('gebat_jwt_token');
-              localStorage.removeItem('gebat_current_user');
-              window.location.reload();
+              if (onLogout) {
+                onLogout();
+              } else {
+                localStorage.removeItem('gebat_jwt_token');
+                localStorage.removeItem('gebat_current_user');
+                sessionStorage.clear();
+                if (typeof window !== 'undefined') {
+                  window.history.replaceState({}, document.title, window.location.pathname);
+                  window.location.href = window.location.origin + window.location.pathname;
+                }
+              }
             }}
             className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold px-3 py-1.5 rounded-xl border border-rose-200 text-xs transition shadow-2xs cursor-pointer"
             title="Se déconnecter de la session GEBAT 360°"

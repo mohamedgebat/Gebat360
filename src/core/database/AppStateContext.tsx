@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v362 - Instant SSO App-level Auth Grant Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v363 - Complete Logout Session Purge & Clean URL Reset Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_instant_sso_app_auth_v362';
+      const DATA_VERSION = 'v2026_09_02_complete_logout_purge_v363';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
