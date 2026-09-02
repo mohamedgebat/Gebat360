@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v361 - Fuzzy Email Matching & Unconditional SSO Auto-Login Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v362 - Instant SSO App-level Auth Grant Engine)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_fuzzy_sso_auto_login_v361';
+      const DATA_VERSION = 'v2026_09_02_instant_sso_app_auth_v362';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
