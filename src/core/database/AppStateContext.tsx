@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v363 - Complete Logout Session Purge & Clean URL Reset Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v364 - Fully Dynamic Real-Time MySQL API Direct Stream Engine)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_complete_logout_purge_v363';
+      const DATA_VERSION = 'v2026_09_02_fully_dynamic_mysql_api_stream_v364';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -385,39 +385,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Synchronisation globale et complète en temps réel depuis la base de données MySQL (Railway)
   useEffect(() => {
     async function loadDbData() {
-      if (isBackendConnected) {
-        try {
-          const [dbProjects, dbReports, dbDA, dbStock, dbUsers] = await Promise.all([
-            ApiService.getProjects(),
-            ApiService.getDailyReports(),
-            ApiService.getPurchaseRequests(),
-            ApiService.getStockItems(),
-            ApiService.getUsers()
-          ]);
+      try {
+        const [dbProjects, dbReports, dbDA, dbStock, dbUsers] = await Promise.all([
+          ApiService.getProjects(),
+          ApiService.getDailyReports(),
+          ApiService.getPurchaseRequests(),
+          ApiService.getStockItems(),
+          ApiService.getUsers()
+        ]);
 
-          if (Array.isArray(dbProjects) && dbProjects.length > 0) {
-            setProjects(dbProjects);
-            localStorage.setItem('gebat_projects', JSON.stringify(dbProjects));
-          }
-          if (Array.isArray(dbReports) && dbReports.length > 0) {
-            setDailyReports(dbReports);
-            localStorage.setItem('gebat_daily_reports', JSON.stringify(dbReports));
-          }
-          if (Array.isArray(dbDA) && dbDA.length > 0) {
-            setPurchaseRequests(dbDA);
-            localStorage.setItem('gebat_purchase_requests', JSON.stringify(dbDA));
-          }
-          if (Array.isArray(dbStock) && dbStock.length > 0) {
-            setStockItems(dbStock);
-            localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
-          }
-          if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-            setUsers(dbUsers);
-            localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
-          }
-        } catch (err) {
-          console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
+        if (Array.isArray(dbProjects) && dbProjects.length > 0) {
+          setProjects(dbProjects);
+          localStorage.setItem('gebat_projects', JSON.stringify(dbProjects));
         }
+        if (Array.isArray(dbReports) && dbReports.length > 0) {
+          setDailyReports(dbReports);
+          localStorage.setItem('gebat_daily_reports', JSON.stringify(dbReports));
+        }
+        if (Array.isArray(dbDA) && dbDA.length > 0) {
+          setPurchaseRequests(dbDA);
+          localStorage.setItem('gebat_purchase_requests', JSON.stringify(dbDA));
+        }
+        if (Array.isArray(dbStock) && dbStock.length > 0) {
+          setStockItems(dbStock);
+          localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
+        }
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          setUsers(dbUsers);
+          localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
+        }
+      } catch (err) {
+        console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
       }
     }
 
@@ -425,7 +423,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Synchronisation en tâche de fond toutes les 15 secondes pour garantir l'uniformité des données sur tous les profils
     const interval = setInterval(loadDbData, 15000);
     return () => clearInterval(interval);
-  }, [isBackendConnected]);
+  }, [isBackendConnected, currentUser]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
     const saved = localStorage.getItem('gebat_wbs');
     if (saved) {
