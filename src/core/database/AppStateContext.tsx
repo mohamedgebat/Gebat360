@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v358 - Fixed Dropdown Layout Width and Clean Label Formatting in SearchableSelect)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v359 - Seamless Single Sign-On (SSO) URL Auto-Login Engine)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_01_fixed_dropdown_layout_v358';
+      const DATA_VERSION = 'v2026_09_02_seamless_sso_auto_login_v359';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -202,6 +202,40 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [currentUser, setCurrentUserRaw] = useState<User>(() => {
     if (typeof window !== 'undefined') {
+      // DÉTECTION ET CONNEXION AUTOMATIQUE SSO (Single Sign-On depuis pilot360.gebat-sa.com)
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const ssoUserParam = urlParams.get('sso_user') || urlParams.get('user_email') || urlParams.get('email');
+        const ssoTokenParam = urlParams.get('sso_token');
+
+        let targetEmail = '';
+        if (ssoUserParam) {
+          targetEmail = decodeURIComponent(ssoUserParam).trim();
+        } else if (ssoTokenParam) {
+          try {
+            const decoded = JSON.parse(atob(decodeURIComponent(ssoTokenParam)));
+            if (decoded && decoded.email) targetEmail = decoded.email;
+          } catch (e) {}
+        }
+
+        if (targetEmail) {
+          const savedUsersStr = localStorage.getItem('gebat_users');
+          const allKnownUsers: User[] = savedUsersStr ? JSON.parse(savedUsersStr) : INITIAL_USERS;
+          const matchedUser = allKnownUsers.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
+                           || INITIAL_USERS.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase());
+
+          if (matchedUser) {
+            localStorage.setItem('gebat_current_user', JSON.stringify(matchedUser));
+            // Nettoyage esthétique du paramètre SSO de l'URL sans rechargement
+            window.history.replaceState({}, document.title, window.location.pathname);
+            console.log('🔑 [SSO SUCCESS] Connexion automatique réussie pour:', matchedUser.name, matchedUser.email);
+            return matchedUser;
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Erreur traitement SSO URL:', err);
+      }
+
       const saved = localStorage.getItem('gebat_current_user');
       if (saved) {
         try {
