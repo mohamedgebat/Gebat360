@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v365 - Dynamic Multi-User Name and Role Sync from pilot360 SSO stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v366 - Real-time Administration User Table Sync Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_dynamic_multi_user_sso_sync_v365';
+      const DATA_VERSION = 'v2026_09_02_realtime_admin_user_table_sync_v366';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -264,6 +264,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
           if (matchedUser) {
             localStorage.setItem('gebat_current_user', JSON.stringify(matchedUser));
+            
+            // Garantir que le profil connecté est bien présent dans l'annuaire des utilisateurs
+            setUsers(prev => {
+              const exists = prev.some(u => u.id === matchedUser!.id || u.email?.toLowerCase() === matchedUser!.email?.toLowerCase());
+              if (!exists) {
+                const nextUsers = [matchedUser!, ...prev];
+                localStorage.setItem('gebat_users', JSON.stringify(nextUsers));
+                return nextUsers;
+              }
+              return prev.map(u => (u.id === matchedUser!.id || u.email?.toLowerCase() === matchedUser!.email?.toLowerCase()) ? { ...u, ...matchedUser } : u);
+            });
+
             // Nettoyage esthétique des paramètres SSO de l'URL sans rechargement
             window.history.replaceState({}, document.title, window.location.pathname);
             console.log('🔑 [SSO DYNAMIC SUCCESS] Profil connecté:', matchedUser.name, '| Rôle:', matchedUser.role, '| Email:', matchedUser.email);
