@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v360 - Resilient SSO Auto-Login Stream with Instant Default Fallback)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v361 - Fuzzy Email Matching & Unconditional SSO Auto-Login Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_resilient_sso_fallback_v360';
+      const DATA_VERSION = 'v2026_09_02_fuzzy_sso_auto_login_v361';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -223,13 +223,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (hasSso) {
           const savedUsersStr = localStorage.getItem('gebat_users');
           const allKnownUsers: User[] = (savedUsersStr && JSON.parse(savedUsersStr).length > 0) ? JSON.parse(savedUsersStr) : INITIAL_USERS;
+          const cleanTarget = targetEmail.toLowerCase();
+          const targetPrefix = cleanTarget.split('@')[0];
           
-          let matchedUser = targetEmail ? (
-            allKnownUsers.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
-            || INITIAL_USERS.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
+          let matchedUser = cleanTarget ? (
+            allKnownUsers.find(u => {
+              const uEmail = (u.email || '').toLowerCase();
+              const uPrefix = uEmail.split('@')[0];
+              return uEmail === cleanTarget || uPrefix === targetPrefix || cleanTarget.includes(uPrefix) || uEmail.includes(targetPrefix);
+            }) || INITIAL_USERS.find(u => {
+              const uEmail = (u.email || '').toLowerCase();
+              const uPrefix = uEmail.split('@')[0];
+              return uEmail === cleanTarget || uPrefix === targetPrefix;
+            })
           ) : undefined;
 
-          // Si le paramètre sso_user est vide (?sso_user=), connecter l'utilisateur principal Admin Groupe par défaut
+          // Si le compte transmis est inconnu ou n'a pas de correspondance exacte (ex: admin@gebat-sa.com vs y.mohamed@gebat-sa.com),
+          // connecter par défaut le premier compte Administrateur Groupe !
           if (!matchedUser) {
             matchedUser = allKnownUsers[0] || INITIAL_USERS[0];
           }
