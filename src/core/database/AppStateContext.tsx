@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v359 - Seamless Single Sign-On (SSO) URL Auto-Login Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v360 - Resilient SSO Auto-Login Stream with Instant Default Fallback)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_seamless_sso_auto_login_v359';
+      const DATA_VERSION = 'v2026_09_02_resilient_sso_fallback_v360';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -218,11 +218,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           } catch (e) {}
         }
 
-        if (targetEmail) {
+        const hasSso = urlParams.has('sso_user') || urlParams.has('user_email') || urlParams.has('email') || urlParams.has('sso_token') || urlParams.has('sso');
+
+        if (hasSso) {
           const savedUsersStr = localStorage.getItem('gebat_users');
-          const allKnownUsers: User[] = savedUsersStr ? JSON.parse(savedUsersStr) : INITIAL_USERS;
-          const matchedUser = allKnownUsers.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
-                           || INITIAL_USERS.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase());
+          const allKnownUsers: User[] = (savedUsersStr && JSON.parse(savedUsersStr).length > 0) ? JSON.parse(savedUsersStr) : INITIAL_USERS;
+          
+          let matchedUser = targetEmail ? (
+            allKnownUsers.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
+            || INITIAL_USERS.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase())
+          ) : undefined;
+
+          // Si le paramètre sso_user est vide (?sso_user=), connecter l'utilisateur principal Admin Groupe par défaut
+          if (!matchedUser) {
+            matchedUser = allKnownUsers[0] || INITIAL_USERS[0];
+          }
 
           if (matchedUser) {
             localStorage.setItem('gebat_current_user', JSON.stringify(matchedUser));
