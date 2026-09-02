@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v364 - Fully Dynamic Real-Time MySQL API Direct Stream Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v365 - Dynamic Multi-User Name and Role Sync from pilot360 SSO stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_fully_dynamic_mysql_api_stream_v364';
+      const DATA_VERSION = 'v2026_09_02_dynamic_multi_user_sso_sync_v365';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -206,6 +206,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const urlParams = new URLSearchParams(window.location.search);
         const ssoUserParam = urlParams.get('sso_user') || urlParams.get('user_email') || urlParams.get('email');
+        const ssoNameParam = urlParams.get('sso_name') || urlParams.get('name') || urlParams.get('display_name');
+        const ssoRoleParam = urlParams.get('sso_role') || urlParams.get('role');
         const ssoTokenParam = urlParams.get('sso_token');
 
         let targetEmail = '';
@@ -226,29 +228,45 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const cleanTarget = targetEmail.toLowerCase();
           const targetPrefix = cleanTarget.split('@')[0];
           
-          let matchedUser = cleanTarget ? (
-            allKnownUsers.find(u => {
-              const uEmail = (u.email || '').toLowerCase();
-              const uPrefix = uEmail.split('@')[0];
-              return uEmail === cleanTarget || uPrefix === targetPrefix || cleanTarget.includes(uPrefix) || uEmail.includes(targetPrefix);
-            }) || INITIAL_USERS.find(u => {
-              const uEmail = (u.email || '').toLowerCase();
-              const uPrefix = uEmail.split('@')[0];
-              return uEmail === cleanTarget || uPrefix === targetPrefix;
-            })
+          let matchedUser: User | undefined = cleanTarget ? (
+            allKnownUsers.find(u => (u.email || '').toLowerCase() === cleanTarget) ||
+            allKnownUsers.find(u => (u.email || '').toLowerCase().split('@')[0] === targetPrefix) ||
+            INITIAL_USERS.find(u => (u.email || '').toLowerCase() === cleanTarget)
           ) : undefined;
 
-          // Si le compte transmis est inconnu ou n'a pas de correspondance exacte (ex: admin@gebat-sa.com vs y.mohamed@gebat-sa.com),
-          // connecter par défaut le premier compte Administrateur Groupe !
-          if (!matchedUser) {
+          // Extraire le nom complet et le rôle transmis depuis pilot360
+          const formattedName = ssoNameParam ? decodeURIComponent(ssoNameParam).trim() : '';
+          const formattedRole = ssoRoleParam ? decodeURIComponent(ssoRoleParam).trim() : '';
+
+          if (matchedUser) {
+            matchedUser = {
+              ...matchedUser,
+              name: formattedName || matchedUser.name,
+              role: (formattedRole as any) || matchedUser.role,
+              avatar: formattedName ? formattedName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : matchedUser.avatar
+            };
+          } else if (cleanTarget || formattedName) {
+            // Création automatique d'un profil dynamique d'après le compte pilot360
+            const displayName = formattedName || cleanTarget.split('@')[0].replace('.', ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const userAvatar = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            matchedUser = {
+              id: `USR-SSO-${Date.now()}`,
+              name: displayName,
+              email: cleanTarget || 'compte.groupe@gebat-sa.com',
+              role: (formattedRole as any) || 'Super Admin',
+              avatar: userAvatar,
+              company: 'GEBAT SA',
+              status: 'ACTIF'
+            };
+          } else {
             matchedUser = allKnownUsers[0] || INITIAL_USERS[0];
           }
 
           if (matchedUser) {
             localStorage.setItem('gebat_current_user', JSON.stringify(matchedUser));
-            // Nettoyage esthétique du paramètre SSO de l'URL sans rechargement
+            // Nettoyage esthétique des paramètres SSO de l'URL sans rechargement
             window.history.replaceState({}, document.title, window.location.pathname);
-            console.log('🔑 [SSO SUCCESS] Connexion automatique réussie pour:', matchedUser.name, matchedUser.email);
+            console.log('🔑 [SSO DYNAMIC SUCCESS] Profil connecté:', matchedUser.name, '| Rôle:', matchedUser.role, '| Email:', matchedUser.email);
             return matchedUser;
           }
         }
