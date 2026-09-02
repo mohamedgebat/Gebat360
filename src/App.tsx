@@ -80,8 +80,8 @@ const MainApp: React.FC = () => {
 
       let token = localStorage.getItem('gebat_jwt_token');
 
-      // Si l'utilisateur vient du portail SSO ou est déjà connecté avec un profil actif
-      if (hasSso || (currentUser && currentUser.email)) {
+      // Si l'utilisateur vient directement du portail SSO
+      if (hasSso) {
         if (!token) {
           token = 'sso_active_token_gebat_360';
           localStorage.setItem('gebat_jwt_token', token);
@@ -91,11 +91,13 @@ const MainApp: React.FC = () => {
         return;
       }
 
-      if (!token) {
+      // Si pas de jeton ou pas d'utilisateur enregistré, forcer l'écran de connexion
+      if (!token || !currentUser || !currentUser.email) {
         setIsAuthenticated(false);
         setIsVerifyingAuth(false);
         return;
       }
+
       try {
         const res = await ApiService.getMe();
         if (res && res.user) {
@@ -103,12 +105,10 @@ const MainApp: React.FC = () => {
           localStorage.setItem('gebat_current_user', JSON.stringify(res.user));
           setIsAuthenticated(true);
         } else {
-          // Token de secours valide
           setIsAuthenticated(true);
         }
       } catch (e) {
-        // Mode résilient avec profil courant
-        if (currentUser) {
+        if (currentUser && currentUser.email) {
           setIsAuthenticated(true);
         } else {
           localStorage.removeItem('gebat_jwt_token');

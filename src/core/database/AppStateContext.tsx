@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v366 - Real-time Administration User Table Sync Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v367 - Definitive Logout & Direct MySQL User Synchronization Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_realtime_admin_user_table_sync_v366';
+      const DATA_VERSION = 'v2026_09_02_definitive_logout_mysql_sync_v367';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -294,14 +294,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         } catch (e) {}
       }
     }
-    return INITIAL_USERS[0];
+    return null as unknown as User;
   });
 
   const setCurrentUser = (user: User) => {
     setCurrentUserRaw(user);
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('gebat_current_user', JSON.stringify(user));
+        if (user) {
+          localStorage.setItem('gebat_current_user', JSON.stringify(user));
+        } else {
+          localStorage.removeItem('gebat_current_user');
+        }
         window.dispatchEvent(new Event('gebat_state_updated'));
       } catch (e) {}
     }
@@ -322,29 +326,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     async function loadDbUsers() {
-      if (isBackendConnected) {
-        try {
-          const dbUsers = await ApiService.getUsers();
-          if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-            setUsers(prevUsers => {
-              const merged = dbUsers.map((dbU: any) => {
-                const existing = prevUsers.find(u => u.id === dbU.id || u.email === dbU.email);
-                return {
-                  ...dbU,
-                  photoUrl: dbU.photoUrl || existing?.photoUrl || (dbU.email === currentUser?.email ? currentUser?.photoUrl : undefined)
-                };
-              });
-              localStorage.setItem('gebat_users', JSON.stringify(merged));
-              return merged;
+      try {
+        const dbUsers = await ApiService.getUsers();
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          setUsers(prevUsers => {
+            const merged = dbUsers.map((dbU: any) => {
+              const existing = prevUsers.find(u => u.id === dbU.id || u.email === dbU.email);
+              return {
+                ...dbU,
+                photoUrl: dbU.photoUrl || existing?.photoUrl || (dbU.email === currentUser?.email ? currentUser?.photoUrl : undefined)
+              };
             });
-          }
-        } catch (err) {
-          console.warn('⚠️ Impossible de charger la liste des utilisateurs depuis MySQL:', err);
+            localStorage.setItem('gebat_users', JSON.stringify(merged));
+            return merged;
+          });
         }
+      } catch (err) {
+        console.warn('⚠️ Impossible de charger la liste des utilisateurs depuis MySQL:', err);
       }
     }
     loadDbUsers();
-  }, [isBackendConnected]);
+  }, [isBackendConnected, currentUser]);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('gebat_theme') as 'light' | 'dark') || 'light';
