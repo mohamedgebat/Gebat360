@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v371 - Guaranteed Unconditional MySQL Persistence Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v372 - 5s Ultra-Fast Real-Time Multi-Profile MySQL Database Sync Engine)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_guaranteed_unconditional_mysql_persistence_v371';
+      const DATA_VERSION = 'v2026_09_03_5s_ultrafast_mysql_sync_v372';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -452,8 +452,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     loadDbData();
-    // Synchronisation en tâche de fond toutes les 15 secondes pour garantir l'uniformité des données sur tous les profils
-    const interval = setInterval(loadDbData, 15000);
+    // Synchronisation en tâche de fond ultra-rapide toutes les 5 secondes pour garantir l'uniformité instantanée des données sur tous les profils
+    const interval = setInterval(loadDbData, 5000);
     return () => clearInterval(interval);
   }, [isBackendConnected, currentUser]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
