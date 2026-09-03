@@ -63,7 +63,7 @@ const NetworkStatusBadge: React.FC = () => {
   );
 };
 
-export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, onToggleMobileMenu }) => {
+export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, onToggleMobileMenu, onLogout }) => {
   const { currentUser, alerts, purchaseRequests, theme, toggleTheme } = useAppState();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -284,13 +284,18 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
 
           {/* BOUTON DÉCONNEXION OFFICIEL */}
           <button
-            onClick={() => {
-              if (onLogout) {
-                onLogout();
-              } else {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
                 localStorage.removeItem('gebat_jwt_token');
                 localStorage.removeItem('gebat_current_user');
                 sessionStorage.clear();
+              } catch (err) {}
+
+              if (typeof onLogout === 'function') {
+                onLogout();
+              } else {
                 if (typeof window !== 'undefined') {
                   window.history.replaceState({}, document.title, window.location.pathname);
                   window.location.href = window.location.origin + window.location.pathname;

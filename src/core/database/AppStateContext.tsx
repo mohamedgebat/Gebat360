@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v368 - Universal CORS Allow-Origin and Dual Login Workflow Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v369 - Fix Header onLogout Destructuring ReferenceError and Cross-Profile Real-Time Sync)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_02_universal_cors_dual_login_v368';
+      const DATA_VERSION = 'v2026_09_03_fix_onlogout_referenceerror_v369';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
