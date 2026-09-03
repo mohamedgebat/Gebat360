@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 import { CeoProjectItem, CeoExecutiveAlert, CeoDecisionItem } from '../../types/ceoDashboard';
 import {
   Building2, TrendingUp, TrendingDown, DollarSign, CreditCard, ShoppingBag,
@@ -55,32 +56,22 @@ export const CeoCommandCenter: React.FC = () => {
     }, 600);
   };
 
-  // RECEPTACLE DES PROJETS DU PORTEFEUILLE AVEC ALIMENTATION DYNAMIQUE DE LA BASE DE DONNÉES RÉELLE
+  // RECEPTACLE DES PROJETS DU PORTEFEUILLE AVEC ALIMENTATION DYNAMIQUE SSOT
   const realCeoProjects = useMemo<CeoProjectItem[]>(() => {
     return projects.map((p, idx) => {
-      const isBingerville = p.code?.includes('BEN') || p.id?.includes('BEN') || p.id === 'CIV-2026-ASS-BEN-002';
-      const isSongon = p.code?.includes('SON') || p.id?.includes('SON') || p.id === 'CIV-2026-ASS-SON-001';
-
       const userWbsNodes = wbsMap[p.id] || wbsMap[p.code] || [];
-      const wbsNodes = userWbsNodes.length > 0 
-        ? userWbsNodes 
-        : (isBingerville 
-            ? REAL_DS_BINGERVILLE_ACTIVITIES 
-            : isSongon 
-              ? REAL_DS_SONGON_ACTIVITIES 
-              : []);
+      const summary = getProjectFinancialSummary(p, userWbsNodes, [], purchaseRequests, dailyReports);
 
-      const contractValue = Number(p.contractAmount || 0);
-      const budget = Number(p.revisedBudget || p.initialBudget || 0);
+      const contractValue = summary.contractAmount;
+      const budget = summary.revisedBudget;
+      const realActualCost = summary.actualCost;
+      const realCommitted = summary.committed;
+      const realEAC = summary.eac;
 
-      const realActualCost = wbsNodes.reduce((sum, n) => sum + (Number(n.actualCost) || 0), 0);
-      const realCommitted = realActualCost > 0 ? realActualCost : Number(wbsNodes.reduce((sum, n) => sum + (Number(n.committed) || 0), 0));
-      const realEAC = budget > 0 ? budget : contractValue;
+      const progress = summary.progressPct;
 
-      const progress = Number(p.progress || 0);
-
-      const initialMarginPct = contractValue > 0 ? parseFloat((((contractValue - budget) / contractValue) * 100).toFixed(1)) : 0;
-      const eacMarginPct = contractValue > 0 ? parseFloat((((contractValue - realEAC) / contractValue) * 100).toFixed(1)) : 0;
+      const initialMarginPct = summary.initialMarginPct;
+      const eacMarginPct = summary.eacMarginPct;
       const invoiced = Math.round(contractValue * (progress / 100));
       const collected = Math.round(invoiced * 0.85);
 
@@ -112,7 +103,7 @@ export const CeoCommandCenter: React.FC = () => {
         arbitrationCount: p.risk === 'Élevé' ? 1 : 0,
       };
     });
-  }, [projects, wbsMap]);
+  }, [projects, wbsMap, purchaseRequests, dailyReports]);
 
   // ALERTES RÉELLES AGREGÉES DE TOUS LES CHANTIERS (OU MOCK FALLBACK)
   const ceoAlertsList = useMemo<CeoExecutiveAlert[]>(() => {

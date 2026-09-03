@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 import {
   Briefcase,
   Coins,
@@ -24,7 +25,7 @@ interface PortfolioDashboardProps {
 }
 
 export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelectProject, onNewProjectClick }) => {
-  const { projects } = useAppState();
+  const { projects, wbsMap, dailyReports, purchaseRequests } = useAppState();
   const [selectedRegion, setSelectedRegion] = useState('Tous');
 
   // Format de devise FCFA en chiffres exacts sans abréviation ni arrondi
@@ -33,10 +34,32 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
     return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
   };
 
-  // Calculs financiers stratégiques
-  const totalMarket = projects.reduce((acc, p) => acc + p.contractAmount, 0) + 75000000000;
-  const totalBudgetDS = projects.reduce((acc, p) => acc + p.revisedBudget, 0) + 55000000000;
-  const totalEacMargin = totalMarket - totalBudgetDS;
+  // Calculs financiers stratégiques consolidés dynamiques (SSOT)
+  const portfolioSummary = useMemo(() => {
+    return projects.reduce((acc, proj) => {
+      const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
+      const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+      return {
+        contractAmount: acc.contractAmount + s.contractAmount,
+        initialBudget: acc.initialBudget + s.initialBudget,
+        revisedBudget: acc.revisedBudget + s.revisedBudget,
+        committed: acc.committed + s.committed,
+        actualCost: acc.actualCost + s.actualCost,
+        resteAEngager: acc.resteAEngager + s.resteAEngager,
+        eac: acc.eac + s.eac,
+        initialMargin: acc.initialMargin + s.initialMargin,
+        eacMargin: acc.eacMargin + s.eacMargin
+      };
+    }, {
+      contractAmount: 0, initialBudget: 0, revisedBudget: 0, committed: 0,
+      actualCost: 0, resteAEngager: 0, eac: 0, initialMargin: 0, eacMargin: 0
+    });
+  }, [projects, wbsMap, purchaseRequests, dailyReports]);
+
+  const totalMarket = portfolioSummary.contractAmount;
+  const totalBudgetDS = portfolioSummary.revisedBudget;
+  const totalEacMargin = portfolioSummary.eacMargin;
+  const marginPct = totalMarket > 0 ? ((totalEacMargin / totalMarket) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-6 text-slate-800 font-sans max-w-7xl mx-auto">
@@ -73,11 +96,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
           <div>
             <span className="text-[10px] font-extrabold text-blue-400 uppercase tracking-wider block">VALEUR DU PORTEFEUILLE</span>
             <span className="text-2xl font-black mt-1 block font-mono">{formatFCFA(totalMarket)}</span>
-            <span className="text-[10px] text-slate-300">24 Projets en Côte d'Ivoire</span>
+            <span className="text-[10px] text-slate-300">{projects.length} Projets Actifs</span>
           </div>
           <div className="pt-3 border-t border-slate-800 text-[10px] text-emerald-400 font-bold flex items-center justify-between">
             <span>Volume contractuel</span>
-            <span>🇨🇮 100% CI</span>
+            <span>🇨 REST API MySQL</span>
           </div>
         </div>
 
@@ -85,11 +108,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">BUDGET DÉBOURSÉ RÉVISÉ</span>
             <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">{formatFCFA(totalBudgetDS)}</span>
-            <span className="text-[10px] text-slate-500 font-semibold">Taux d'engagement : 68,4%</span>
+            <span className="text-[10px] text-slate-500 font-semibold">Taux d'engagement : {totalBudgetDS > 0 ? ((portfolioSummary.committed / totalBudgetDS) * 100).toFixed(1) : '0'}%</span>
           </div>
           <div className="pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-medium flex justify-between">
             <span>Coût direct chantier</span>
-            <span className="font-bold text-slate-800">71,8 Mds FCFA réalisés</span>
+            <span className="font-bold text-slate-800">{formatFCFA(portfolioSummary.actualCost)} réalisés</span>
           </div>
         </div>
 
@@ -97,11 +120,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">MARGE PRÉVISIONNELLE (EAC)</span>
             <span className="text-2xl font-black text-emerald-600 mt-1 block font-mono">{formatFCFA(totalEacMargin)}</span>
-            <span className="text-[10px] text-emerald-600 font-bold">15,2% du Chiffre d'Affaires</span>
+            <span className="text-[10px] text-emerald-600 font-bold">{marginPct}% du Chiffre d'Affaires</span>
           </div>
           <div className="pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-medium flex justify-between">
             <span>Rentabilité globale</span>
-            <span className="font-bold text-emerald-600">+1,4 pt vs V0</span>
+            <span className="font-bold text-emerald-600">Taux de Marge SSOT</span>
           </div>
         </div>
 
