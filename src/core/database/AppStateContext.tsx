@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v391 - Ultra Modern BTP Project Cards Design)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v392 - Fix Physical Progress SSOT Calculation Jump)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_ultra_modern_btp_project_cards_v391';
+      const DATA_VERSION = 'v2026_09_03_fix_physical_progress_calculation_jump_v392';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

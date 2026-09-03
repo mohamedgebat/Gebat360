@@ -266,13 +266,11 @@ export const getProjectFinancialSummary = (
   const initialMarginPct = calculateMarginPercentage(initialMargin, contractAmount);
   const eacMarginPct = calculateMarginPercentage(eacMargin, contractAmount);
 
-  // 8. Progress (Harmonisé et Unifié 100% SSOT entre Cartes KPI, Graphiques et Portefeuille)
+  // 8. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
   let progressPct = 0;
-  if (contractAmount > 0 && actualCost > 0) {
-    progressPct = Number(((actualCost / contractAmount) * 100).toFixed(1));
-  }
 
-  if (progressPct === 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
+  // Priorité 1 : Avancement physique pondéré des nœuds WBS
+  if (Array.isArray(wbsNodes) && wbsNodes.length > 0) {
     const getLeaves = (arr: any[]): any[] => {
       let res: any[] = [];
       arr.forEach(n => {
@@ -289,8 +287,14 @@ export const getProjectFinancialSummary = (
     }
   }
 
-  if (progressPct === 0) {
-    progressPct = Number(project?.progress || project?.physicalProgress || 0);
+  // Priorité 2 : Avancement physique explicitement saisi sur le projet (ex. 13% pour Bingerville, 7.1% pour Songon)
+  if (progressPct === 0 && (project?.progress !== undefined && project?.progress !== null && Number(project.progress) > 0)) {
+    progressPct = Number(project.progress || project.physicalProgress || 0);
+  }
+
+  // Priorité 3 : Consommation budgétaire de secours uniquement si aucun avancement physique n'a été trouvé
+  if (progressPct === 0 && contractAmount > 0 && actualCost > 0) {
+    progressPct = Number(((actualCost / contractAmount) * 100).toFixed(1));
   }
 
   progressPct = Math.min(100, Math.max(0, progressPct));

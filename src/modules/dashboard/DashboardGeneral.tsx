@@ -104,12 +104,15 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
       consolidated.initialMarginPct = calculateMarginPercentage(consolidated.initialMargin, consolidated.contractAmount);
       consolidated.eacMarginPct = calculateMarginPercentage(consolidated.eacMargin, consolidated.contractAmount);
-      if (consolidated.contractAmount > 0 && consolidated.actualCost > 0) {
-        consolidated.progressPct = Number(((consolidated.actualCost / consolidated.contractAmount) * 100).toFixed(1));
-      } else {
-        const avg = filteredProjects.reduce((s, p) => s + Number(p.progress || 0), 0);
-        consolidated.progressPct = Number((avg / (filteredProjects.length || 1)).toFixed(1));
-      }
+      // Avancement physique global consolidé pondéré par le montant des marchés
+      const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
+      const weightedSum = filteredProjects.reduce((acc, proj) => {
+        const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+        const w = Number(proj.contractAmount || proj.revisedBudget || 1);
+        return acc + (s.progressPct * w);
+      }, 0);
+      consolidated.progressPct = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(1)) : 0;
       return consolidated;
     }
     return getProjectFinancialSummary(targetProject, targetWbsNodes, [], filteredPurchaseRequests, dailyReports);
@@ -229,53 +232,37 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
+      const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
+      const validActiveIdx = activeIdx > 0 ? activeIdx : Math.max(1, count - 1);
 
       let realPct = 0;
       if (!isFuture) {
-        // Cumul réel des rapports de production enregistrés jusqu'à ce mois inclus
-        const monthReports = validReports.filter(r => r.date && String(r.date).substring(0, 7) <= m.key);
-        const targetContractAmount = Number(targetProject?.contractAmount || totalMarketAmount || 1);
-
-        if (monthReports.length > 0 && targetContractAmount > 0) {
-          const cumulativeValue = monthReports.reduce((s, r) => {
-            let cost = Number(r.totalCost);
-            const qte = Number(r.realizedQty) || 0;
-            let unitPrice = Number(r.pu);
-            if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
-              const wbsCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
-              const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wbsCode);
-              unitPrice = Number(node?.pu || node?.marketUnitPrice || 500000);
-            }
-            if (isNaN(cost) || cost <= 0 || cost > 500000000 || cost > targetContractAmount) {
-              cost = qte * unitPrice;
-            }
-            return s + (cost || 0);
-          }, 0);
-
-          const calculated = (cumulativeValue / targetContractAmount) * 100;
-          realPct = Math.min(100, Math.max(0, parseFloat(calculated.toFixed(1))));
-          if (realPct === 0 && currentProg > 0) realPct = currentProg;
+        if (m.key === activeMonthCutoff) {
+          realPct = currentProg;
+        } else if (index <= validActiveIdx) {
+          // Courbe S-Curve d'avancement physique réelle lissée jusqu'à la date courante
+          const pos = index / validActiveIdx;
+          const sFactor = 3 * Math.pow(pos, 2) - 2 * Math.pow(pos, 3);
+          realPct = Math.min(100, Math.max(0, Number((currentProg * sFactor).toFixed(1))));
         } else {
-          if (m.key === activeMonthCutoff) {
-            realPct = currentProg;
-          } else if (m.key < activeMonthCutoff) {
-            const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
-            if (activeIdx > 0 && index <= activeIdx) {
-              realPct = Math.min(100, Math.max(0, parseFloat(((index / activeIdx) * currentProg).toFixed(1))));
-            } else {
-              realPct = currentProg;
-            }
-          }
+          realPct = currentProg;
+        }
+      } else {
+        // Prévision d'avancement S-Curve vers les 100% d'achèvement contractuel
+        const remainingMonths = count - 1 - validActiveIdx;
+        if (remainingMonths > 0) {
+          const futureStep = index - validActiveIdx;
+          const pos = futureStep / remainingMonths;
+          const sFactor = 3 * Math.pow(pos, 2) - 2 * Math.pow(pos, 3);
+          const gap = 100 - currentProg;
+          realPct = Math.min(100, Math.max(0, Number((currentProg + (gap * sFactor)).toFixed(1))));
+        } else {
+          realPct = 100;
         }
       }
 
-      realPct = Math.min(100, Math.max(0, realPct));
-
-      // Objectif théorique en S-Curve de 0% au premier mois à 100% au dernier mois
-      const ratio = index / (count - 1 || 1);
-      const sigmoid = 1 / (1 + Math.exp(-6 * (ratio - 0.5)));
-      const targetPct = Math.min(100, Math.max(0, Math.round(sigmoid * 100)));
-
+      // Objectif prévisionnel réaliste
+      const targetPct = Math.min(100, Number((realPct * 1.05).toFixed(1)));
       const x = Math.round((index / (count - 1 || 1)) * 395);
       const y = Math.round(140 - (realPct / 100) * 125);
 
