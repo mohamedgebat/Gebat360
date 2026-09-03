@@ -6,11 +6,24 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 
+process.on('unhandledRejection', (reason) => {
+  console.warn('⚠️ Unhandled Rejection intercepted on Railway server:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.warn('⚠️ Uncaught Exception intercepted on Railway server:', err);
+});
+
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'gebat_360_secure_jwt_secret_key_2026_btp';
+
+// Health Check pour Railway Healthcheck probe
+app.get(['/', '/health', '/api/v1/health'], (req, res) => {
+  res.status(200).json({ status: 'UP', service: 'GEBAT 360 API', timestamp: new Date().toISOString() });
+});
 
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
@@ -76,13 +89,18 @@ const loginLimiter = rateLimit({
 // Initialisation et Seeding de la base de données MySQL
 async function initDatabase() {
   try {
-    const dbName = process.env.DB_NAME || 'gebat_360_db';
+    const dbName = process.env.MYSQLDATABASE || process.env.DB_NAME || 'gebat_360_db';
+    const dbHost = process.env.MYSQLHOST || process.env.DB_HOST || 'localhost';
+    const dbPort = Number(process.env.MYSQLPORT || process.env.DB_PORT) || 3306;
+    const dbUser = process.env.MYSQLUSER || process.env.DB_USER || 'root';
+    const dbPassword = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || '';
+
     try {
       const tempConn = await mysql.createConnection({
-        host: process.env.DB_HOST || 'localhost',
-        port: Number(process.env.DB_PORT) || 3306,
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
+        host: dbHost,
+        port: dbPort,
+        user: dbUser,
+        password: dbPassword,
       });
       await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
       await tempConn.end();
@@ -90,7 +108,13 @@ async function initDatabase() {
       console.warn('Auto-create DB notice:', createErr.message);
     }
 
-    const conn = await pool.getConnection();
+    let conn;
+    try {
+      conn = await pool.getConnection();
+    } catch (connErr) {
+      console.warn('⚠️ Connexion au pool MySQL en attente ou non disponible:', connErr.message);
+      return;
+    }
 
     // 1. Table users
     await conn.query(`
