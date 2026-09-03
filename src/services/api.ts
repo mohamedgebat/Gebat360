@@ -5,8 +5,7 @@
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL || 
-  (typeof window !== 'undefined' && localStorage.getItem('gebat_api_url')) ||
-  'https://serene-elegance-production.up.railway.app/api/v1'
+  'https://gebat360-production.up.railway.app/api/v1'
 ).replace(/\/$/, '');
 
 export class ApiService {

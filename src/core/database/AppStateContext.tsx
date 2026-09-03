@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v372 - 5s Ultra-Fast Real-Time Multi-Profile MySQL Database Sync Engine)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v375 - Active Railway URL gebat360-production.up.railway.app Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_5s_ultrafast_mysql_sync_v372';
+      const DATA_VERSION = 'v2026_09_03_active_railway_url_gebat360_v375';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
