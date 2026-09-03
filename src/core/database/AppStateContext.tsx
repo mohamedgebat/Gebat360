@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v393 - Strict Real Values on Avancement Global Graph)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v394 - Fully Functional Period Selector Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_strict_real_values_avancement_global_graph_v393';
+      const DATA_VERSION = 'v2026_09_03_fully_functional_period_selector_v394';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

@@ -40,7 +40,14 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   // Sélection du projet affiché sur le Dashboard Général (Par défaut: Projet Songon)
   const songonProj = projects.find(p => p.code?.includes('SON') || p.id?.includes('SON') || p.id === 'CIV-2026-ASS-SON-001');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(songonProj?.id || projects[0]?.id || 'ALL');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('Juin 2026');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
+    return (sessionStorage.getItem('gebat_dashboard_period') as string) || 'TOUS';
+  });
+
+  const handlePeriodChange = (newPeriod: string) => {
+    setSelectedPeriod(newPeriod);
+    sessionStorage.setItem('gebat_dashboard_period', newPeriod);
+  };
 
   const filteredProjects = useMemo(() => {
     if (selectedProjectId === 'ALL') return projects;
@@ -52,14 +59,50 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   const targetProject = filteredProjects[0] || projects[0];
 
   const filteredDailyReports = useMemo(() => {
-    if (selectedProjectId === 'ALL') return dailyReports;
-    return dailyReports.filter(r => isReportForProject(r, targetProject));
-  }, [dailyReports, selectedProjectId, targetProject]);
+    let reports = selectedProjectId === 'ALL' 
+      ? dailyReports 
+      : dailyReports.filter(r => isReportForProject(r, targetProject));
+
+    if (!reports || reports.length === 0 || selectedPeriod === 'TOUS') return reports;
+
+    return reports.filter(r => {
+      if (!r.date) return true;
+      const rDate = String(r.date);
+      const rMonth = rDate.substring(0, 7);
+
+      if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
+        return rMonth === selectedPeriod;
+      }
+      if (selectedPeriod === 'T3-2026') return rDate >= '2026-07-01' && rDate <= '2026-09-30';
+      if (selectedPeriod === 'T2-2026') return rDate >= '2026-04-01' && rDate <= '2026-06-30';
+      if (selectedPeriod === '2026') return rDate.startsWith('2026');
+      if (selectedPeriod === '2027') return rDate.startsWith('2027');
+      return true;
+    });
+  }, [dailyReports, selectedProjectId, targetProject, selectedPeriod]);
 
   const filteredPurchaseRequests = useMemo(() => {
-    if (selectedProjectId === 'ALL') return purchaseRequests;
-    return purchaseRequests.filter(da => isProjectMatch(da.projectId, targetProject?.id) || isProjectMatch(da.projectId, targetProject?.code));
-  }, [purchaseRequests, selectedProjectId, targetProject]);
+    let das = selectedProjectId === 'ALL'
+      ? purchaseRequests
+      : purchaseRequests.filter(da => isProjectMatch(da.projectId, targetProject?.id) || isProjectMatch(da.projectId, targetProject?.code));
+
+    if (!das || das.length === 0 || selectedPeriod === 'TOUS') return das;
+
+    return das.filter(da => {
+      const dateStr = String(da.createdAt || da.desiredDate || '');
+      if (!dateStr) return true;
+      const daMonth = dateStr.substring(0, 7);
+
+      if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
+        return daMonth === selectedPeriod;
+      }
+      if (selectedPeriod === 'T3-2026') return dateStr >= '2026-07-01' && dateStr <= '2026-09-30';
+      if (selectedPeriod === 'T2-2026') return dateStr >= '2026-04-01' && dateStr <= '2026-06-30';
+      if (selectedPeriod === '2026') return dateStr.startsWith('2026');
+      if (selectedPeriod === '2027') return dateStr.startsWith('2027');
+      return true;
+    });
+  }, [purchaseRequests, selectedProjectId, targetProject, selectedPeriod]);
 
   const targetWbsNodes = useMemo(() => {
     if (selectedProjectId === 'ALL') return Object.values(wbsMap).flat();
@@ -464,19 +507,23 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             </select>
           </div>
 
-          <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 sm:py-1.5 text-xs font-bold text-slate-700">
+          <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 sm:py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
             <span className="text-slate-400 shrink-0">Période :</span>
             <select
               value={selectedPeriod}
-              onChange={e => setSelectedPeriod(e.target.value)}
-              className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer truncate"
+              onChange={e => handlePeriodChange(e.target.value)}
+              className="bg-transparent font-extrabold text-slate-900 focus:outline-none cursor-pointer truncate"
             >
-              <option value="Juin 2026">Ce mois-ci (Juin 2026 OS)</option>
-              <option value="T3 2026">Trimestre T3 2026</option>
-              <option value="Année 2026">Année 2026</option>
-              <option value="Année 2027">Année 2027 (Livraison STBV)</option>
+              <option value="TOUS">Toute la durée (Cumul Global)</option>
+              <option value="2026-08">Août 2026 (Mois en cours)</option>
+              <option value="2026-07">Juillet 2026</option>
+              <option value="2026-06">Juin 2026 (Ordre de Service OS)</option>
+              <option value="T3-2026">Trimestre T3 2026</option>
+              <option value="T2-2026">Trimestre T2 2026</option>
+              <option value="2026">Année Globale 2026</option>
+              <option value="2027">Année Globale 2027 (Livraison STBV)</option>
             </select>
-            <Calendar size={14} className="text-slate-400 shrink-0" />
+            <Calendar size={14} className="text-blue-600 shrink-0" />
           </div>
 
           <button className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer shrink-0">
