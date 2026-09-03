@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v370 - Total Cross-Profile Global Data Uniformity Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v371 - Guaranteed Unconditional MySQL Persistence Engine)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_total_cross_profile_data_uniformity_v370';
+      const DATA_VERSION = 'v2026_09_03_guaranteed_unconditional_mysql_persistence_v371';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -1149,30 +1149,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setWarehouses(prev => [...prev, projectWarehouse]);
 
-    if (isBackendConnected) {
-      try {
-        await ApiService.createProject({
-          ...project,
-          siteId: targetSiteId,
+    try {
+      await ApiService.createProject({
+        ...project,
+        siteId: targetSiteId,
+      });
+      console.log(`✅ Projet ${id} persisté avec succès dans MySQL (Site ID: ${targetSiteId})`);
+
+      if (initialNodes.length > 0) {
+        await ApiService.request(`/projects/${id}/wbs/import`, {
+          method: 'POST',
+          body: JSON.stringify({
+            nodes: initialNodes,
+            user: currentUser,
+          }),
         });
-        console.log(`✅ Projet ${id} persisté avec succès dans MySQL (Site ID: ${targetSiteId})`);
-
-        if (initialNodes.length > 0) {
-          await ApiService.request(`/projects/${id}/wbs/import`, {
-            method: 'POST',
-            body: JSON.stringify({
-              nodes: initialNodes,
-              user: currentUser,
-            }),
-          });
-          console.log(`✅ ${initialNodes.length} nœuds WBS persistés dans MySQL pour le projet ${id}`);
-        }
-
-        // Synchronisation immédiate de l'état global depuis MySQL
-        await loadDatabaseData();
-      } catch (err) {
-        console.error(`⚠️ Erreur lors de la persistance MySQL du projet ${id}:`, err);
+        console.log(`✅ ${initialNodes.length} nœuds WBS persistés dans MySQL pour le projet ${id}`);
       }
+
+      // Synchronisation immédiate de l'état global depuis MySQL
+      await loadDatabaseData();
+    } catch (err) {
+      console.error(`⚠️ Erreur lors de la persistance MySQL du projet ${id}:`, err);
     }
 
     addAuditLog('CREATION_PROJET', 'PROJECTS', project.code, `Projet ${project.name} créé avec budget ${project.initialBudget} XOF`);
@@ -2031,15 +2029,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setAlerts(prev => [alertItem, ...prev]);
     }
 
-    if (isBackendConnected) {
-      ApiService.request('/daily_reports', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...report,
-          user: currentUser,
-        }),
-      }).catch(err => console.warn('⚠️ Imp. sauvegarde rapport MySQL:', err));
-    }
+    ApiService.request('/daily_reports', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...report,
+        user: currentUser,
+      }),
+    }).catch(err => console.warn('⚠️ Imp. sauvegarde rapport MySQL:', err));
 
     // 4. Traçabilité Observations & Photos ➔ Audit Trail & Historique
     const logDetails = `Rapport ${reportCode} [${reportData.activityName || reportData.wbsCode}]: Qte ${reportData.realizedQty} ${reportData.unit || 'U'} (Taux ${rate}%). Personnel: ${reportData.workersCount || 0} p., Engins: ${reportData.equipmentCount || 0} u., Météo: ${reportData.weather || 'NC'}. Obs: ${reportData.notes || 'R.A.S.'}`;
