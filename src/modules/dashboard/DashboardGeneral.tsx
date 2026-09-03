@@ -442,27 +442,44 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       // 1. Budget prévu cumulé au prorata des mois du projet
       const budget = Math.round(totalBudgetDs * Math.min(1, (index + 1) / 12));
 
-      // 2. Engagements réels créés jusqu'à cette date
+      // 2. Engagements réels créés jusqu'à cette date (DAs / POs)
       const monthEngaged = filteredPurchaseRequests
-        .filter(da => da.createdAt && da.createdAt <= `${m.key}-31`)
-        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount) || 0), 0);
+        .filter(da => {
+          const dateStr = String(da.createdAt || da.desiredDate || '');
+          if (!dateStr) return true;
+          return dateStr.substring(0, 7) <= m.key;
+        })
+        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
 
-      // 3. Coût réel cumulé (0 pour les mois futurs non échus)
+      const finalEngaged = !isFuture && m.key === activeMonthCutoff && monthEngaged === 0 ? engagedAmount : monthEngaged;
+
+      // 3. Coût réel cumulé (0 strict s'il n'y a pas de rapports de production validés à cette date)
       let actual = 0;
       if (!isFuture) {
-        const monthReports = filteredDailyReports.filter(r => r.date && r.date <= `${m.key}-31`);
-        actual = monthReports.reduce((s, r) => {
-          let cost = Number(r.totalCost);
-          const qte = Number(r.realizedQty) || 0;
-          const pu = Number(r.pu) || 0;
-          if (isNaN(cost) || cost <= 0) cost = qte * pu;
-          return s + (cost || 0);
-        }, 0);
+        const monthReports = filteredDailyReports.filter(r => r.date && String(r.date).substring(0, 7) <= m.key);
+        const validReports = monthReports.filter(r => {
+          const s = (r.status || '').toUpperCase();
+          return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+        });
+
+        if (validReports.length === 0) {
+          actual = 0; // Strictement 0 si aucun rapport validé n'est enregistré à cette date
+        } else if (m.key === activeMonthCutoff) {
+          actual = actualCostAmount;
+        } else {
+          actual = validReports.reduce((s, r) => {
+            let cost = Number(r.totalCost);
+            const qte = Number(r.realizedQty) || 0;
+            const pu = Number(r.pu) || 0;
+            if (isNaN(cost) || cost <= 0) cost = qte * pu;
+            return s + (cost || 0);
+          }, 0);
+        }
       }
 
       const x = Math.round((index / 11) * 360);
       const yBudget = Math.round(115 - (budget / maxCostScale) * 100);
-      const yEngaged = Math.round(115 - (monthEngaged / maxCostScale) * 100);
+      const yEngaged = Math.round(115 - (finalEngaged / maxCostScale) * 100);
       const yActual = Math.round(115 - (actual / maxCostScale) * 100);
 
       return {
@@ -470,7 +487,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         monthName: m.monthName,
         year: m.year,
         budget,
-        engaged: monthEngaged,
+        engaged: finalEngaged,
         actual,
         x,
         yBudget: Math.max(10, Math.min(115, yBudget)),
@@ -479,7 +496,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff]);
+  }, [filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff, engagedAmount, actualCostAmount]);
 
   // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Agrégation 100% réelle par nature de coût (SSOT)
   const performanceByNature = useMemo(() => {
@@ -1184,7 +1201,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         {/* BLOC 1: ÉVOLUTION DES COÛTS (MULTI-LINE SVG DÉGRADÉ ET POINTS IDENTIQUE À L'EXEMPLE) */}
         <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-center">
-            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">ÉVOLUTION DES COÛTS (12 DERNIERS MOIS)</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">ÉVOLUTION DES COÛTS (12 DERNIERS MOIS)</h3>
+              <DataInsight metricId="suivi_depenses" title="Évolution Chronologique des Coûts & Engagements" context={{ totalBudgetDs, engagedAmount, actualCostAmount }} onNavigate={onNavigate} />
+            </div>
             <div className="flex items-center gap-4 text-[11px] font-bold">
               <div className="flex items-center gap-1.5"><span className="w-3 h-0.5 border-b-2 border-dashed border-blue-900"></span><span className="text-slate-800">Budget (DS)</span></div>
               <div className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-emerald-600 rounded"></span><span className="text-slate-800">Engagé</span></div>
@@ -1298,9 +1318,9 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                     const isRight = hoveredIndex >= 6;
                     const formatAmt = (amt: number) => {
                       if (amt >= 1000000000) return `${(amt / 1e9).toFixed(2)} Mds FCFA`;
-                      if (amt >= 1000000) return `${(amt / 1e6).toFixed(2)} M FCFA`;
-                      if (amt > 0) return `${amt.toLocaleString('fr-FR')} FCFA`;
-                      return `0.00 M FCFA`;
+                      if (amt >= 1000000) return `${(amt / 1e6).toFixed(1)} M FCFA`;
+                      if (amt > 0) return `${new Intl.NumberFormat('fr-FR').format(Math.round(amt))} FCFA`;
+                      return `0 FCFA`;
                     };
                     return (
                       <div
