@@ -14,7 +14,7 @@ interface PortfolioProps {
 }
 
 export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, onNewProjectClick }) => {
-  const { projects, wbsMap, purchaseRequests, dailyReports, alerts, addAuditLog, updateProject, deleteProject, createProject, addAlert } = useAppState();
+  const { projects, wbsMap, purchaseRequests, dailyReports, alerts, users, addAuditLog, updateProject, deleteProject, createProject, addAlert } = useAppState();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState<string>('TOUS');
@@ -34,6 +34,25 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   const [starredProjects, setStarredProjects] = useState<Record<string, boolean>>({
     'CIV-2026-ASS-001': true,
   });
+
+  // DÉDUCTION DYNAMIQUE DE LA LISTE DES RESPONSABLES À PARTIR DES PROJETS ET DES UTILISATEURS
+  const availableManagers = useMemo(() => {
+    const managerSet = new Set<string>();
+    (projects || []).forEach(p => {
+      if (p.manager && p.manager.trim()) {
+        managerSet.add(p.manager.trim());
+      }
+    });
+    if (Array.isArray(users)) {
+      users.forEach(u => {
+        const role = (u.role || '').toLowerCase();
+        if (u.name && (role.includes('directeur') || role.includes('projet') || role.includes('conducteur') || role.includes('dp'))) {
+          managerSet.add(u.name.trim());
+        }
+      });
+    }
+    return Array.from(managerSet).sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [projects, users]);
 
   // CALCULS 100% DYNAMIQUES ET RÉELS SANS AUCUNE VALEUR EN DUR (NO HARDCODED FALLBACKS)
   const portfolioKpis = useMemo(() => {
@@ -526,9 +545,9 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs"
             >
               <option value="TOUS">Tous les responsables</option>
-              <option value="SEA Alphonse">SEA Alphonse</option>
-              <option value="KOUADIO Marc">KOUADIO Marc</option>
-              <option value="YOBOUET Franck">YOBOUET Franck</option>
+              {availableManagers.map(mgr => (
+                <option key={mgr} value={mgr}>{mgr}</option>
+              ))}
             </select>
           </div>
 
