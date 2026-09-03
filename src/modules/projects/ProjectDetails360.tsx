@@ -563,7 +563,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MONTANT MARCHÉ (HT)</span>
-              <DataInsight metricId="marge_eac" title="Montant Marché Contractuel (HT)" context={{ contractAmount, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="marge_eac" title="Montant Marché Contractuel (HT)" context={{ contractAmount, projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Briefcase size={18} />
@@ -578,7 +578,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">BUDGET (DS) RÉVISÉ</span>
-              <DataInsight metricId="budget_revised" title="Budget Déboursé Sec (DS) Révisé" context={{ revisedBudget, initialBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="budget_revised" title="Budget Déboursé Sec (DS) Révisé" context={{ revisedBudget, initialBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <PieChart size={18} />
@@ -593,7 +593,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">ENGAGÉ</span>
-              <DataInsight metricId="engaged" title="Montant Total Engagé (Achats Validés)" context={{ committed: totalCommitted, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="engaged" title="Montant Total Engagé (Achats Validés)" context={{ committed: totalCommitted, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-orange-500 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <ShoppingBag size={18} />
@@ -610,7 +610,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">COÛT RÉEL À DATE</span>
-              <DataInsight metricId="cost_real" title="Coût Réel Constaté à Date" context={{ actualCost: totalActualCost, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="cost_real" title="Coût Réel Constaté à Date" context={{ actualCost: totalActualCost, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Coins size={18} />
@@ -627,7 +627,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">AVANCEMENT PHYSIQUE</span>
-              <DataInsight metricId="avancement_moyen" title="Avancement Physique Global" context={{ progressRate: Number(progressPct), projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="avancement_moyen" title="Avancement Physique Global" context={{ progressRate: Number(progressPct), projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Percent size={18} />
@@ -645,7 +645,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MARGE (EAC)</span>
-              <DataInsight metricId="marge_eac" title="Marge Prévisionnelle EAC à Terminaison" context={{ contractAmount, eac: totalEac, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+              <DataInsight metricId="marge_eac" title="Marge Prévisionnelle EAC à Terminaison" context={{ contractAmount, eac: totalEac, projectName: project.name, projectId: project.id }} onNavigate={onNavigateView} />
             </div>
             <div className="w-9 h-9 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <TrendingUp size={18} />
