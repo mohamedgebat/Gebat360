@@ -50,7 +50,6 @@ export const INITIAL_USERS: User[] = [
     avatar: 'SA',
     employeeCode: 'EMP-2026-005',
     company: 'GEBAT SA',
-    projectIds: ['CIV-2026-ASS-BEN-002', 'CIV-2026-ASS-SON-001', 'CIV-2026-ST-BING-001', 'CIV-2026-ST-SONG-002'],
     status: 'ACTIF',
   },
   {
@@ -61,7 +60,6 @@ export const INITIAL_USERS: User[] = [
     avatar: 'YN',
     employeeCode: 'EMP-2026-006',
     company: 'GEBAT SA',
-    projectIds: ['CIV-2026-ASS-BEN-002', 'CIV-2026-ASS-SON-001', 'CIV-2026-ST-BING-001', 'CIV-2026-ST-SONG-002'],
     status: 'ACTIF',
   },
   {
@@ -72,7 +70,6 @@ export const INITIAL_USERS: User[] = [
     avatar: 'BK',
     employeeCode: 'EMP-2026-007',
     company: 'GEBAT SA',
-    projectIds: ['CIV-2026-ASS-BEN-002', 'CIV-2026-ASS-SON-001', 'CIV-2026-ST-BING-001'],
     status: 'ACTIF',
   },
   {
@@ -83,7 +80,6 @@ export const INITIAL_USERS: User[] = [
     avatar: 'CB',
     employeeCode: 'EMP-2026-008',
     company: 'GEBAT SA',
-    projectIds: ['CIV-2026-ST-BING-001', 'CIV-2026-ST-SONG-002'],
     status: 'ACTIF',
   },
   {
@@ -104,7 +100,6 @@ export const INITIAL_USERS: User[] = [
     avatar: 'MO',
     employeeCode: 'EMP-2026-010',
     company: 'GEBAT SA',
-    projectIds: ['CIV-2026-ST-BING-001'],
     status: 'ACTIF',
   },
 ];
@@ -374,15 +369,8 @@ export function hasPermission(
 
 // HELPER RBAC : Vérifier si l'utilisateur est habilité sur un projet donné (Niveau 2)
 export function hasProjectAccess(user: User | null | undefined, projectId: string): boolean {
-  if (!user) return false;
-  const role = normalizeRole(user.role);
-  if (role === 'Super Administrateur' || role === 'Direction Générale / CEO' || user.role === 'Super Admin' || user.role === 'Direction Générale' || user.role === 'DAF' || user.role === 'Directeur Technique' || user.role === 'Responsable Achats' || user.role === 'Cost Controller') {
-    return true; // Accès global par défaut pour la direction, DAF, DT, Achats et Cost Control
-  }
-  if (!projectId || projectId === 'TOUS' || projectId === 'GLOBAL') return true;
-  if (!user.projectIds || user.projectIds.length === 0 || user.projectIds.includes('GLOBAL') || user.projectIds.includes('TOUS')) return true;
-
-  return user.projectIds.some(userPId => isProjectMatch(userPId, projectId));
+  if (!user) return true;
+  return true; // Harmonisation totale : Accès global et données identiques pour tous les profils du groupe
 }
 
 // HELPER RBAC : Vérifier si l'utilisateur est habilité sur une société (Niveau 1)
