@@ -40,6 +40,7 @@ import {
   CreditCard,
   FileCheck
 } from 'lucide-react';
+import { DataInsight } from '../../shared/components/DataInsight';
 
 const formatFrenchDate = (dateStr?: string): string => {
   if (!dateStr) return '';
@@ -560,7 +561,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 1: MONTANT MARCHÉ (HT) */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MONTANT MARCHÉ (HT)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MONTANT MARCHÉ (HT)</span>
+              <DataInsight metricId="marge_eac" title="Montant Marché Contractuel (HT)" context={{ contractAmount, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Briefcase size={18} />
             </div>
@@ -572,7 +576,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 2: BUDGET (DS) RÉVISÉ */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">BUDGET (DS) RÉVISÉ</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">BUDGET (DS) RÉVISÉ</span>
+              <DataInsight metricId="budget_revised" title="Budget Déboursé Sec (DS) Révisé" context={{ revisedBudget, initialBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <PieChart size={18} />
             </div>
@@ -584,7 +591,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 3: ENGAGÉ */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">ENGAGÉ</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">ENGAGÉ</span>
+              <DataInsight metricId="engaged" title="Montant Total Engagé (Achats Validés)" context={{ committed: totalCommitted, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-orange-500 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <ShoppingBag size={18} />
             </div>
@@ -598,7 +608,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 4: COÛT RÉEL À DATE */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">COÛT RÉEL À DATE</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">COÛT RÉEL À DATE</span>
+              <DataInsight metricId="cost_real" title="Coût Réel Constaté à Date" context={{ actualCost: totalActualCost, revisedBudget, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Coins size={18} />
             </div>
@@ -612,7 +625,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 5: AVANCEMENT PHYSIQUE */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">AVANCEMENT PHYSIQUE</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">AVANCEMENT PHYSIQUE</span>
+              <DataInsight metricId="avancement_moyen" title="Avancement Physique Global" context={{ progressRate: Number(progressPct), projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <Percent size={18} />
             </div>
@@ -627,7 +643,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         {/* CARD 6: MARGE (EAC) */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MARGE (EAC)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">MARGE (EAC)</span>
+              <DataInsight metricId="marge_eac" title="Marge Prévisionnelle EAC à Terminaison" context={{ contractAmount, eac: totalEac, projectName: project.name, projectId: project.id }} onNavigate={onNavigate} />
+            </div>
             <div className="w-9 h-9 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md shrink-0">
               <TrendingUp size={18} />
             </div>
