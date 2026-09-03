@@ -24,7 +24,10 @@ import {
   CreditCard,
   Building2,
   Bell,
-  Maximize2
+  Maximize2,
+  X,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 
 import { SiteSelector } from '../../shared/components/SiteSelector';
@@ -37,6 +40,7 @@ interface DashboardGeneralProps {
 
 export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, onSelectProject }) => {
   const { projects, alerts, purchaseRequests, wbsMap, dailyReports } = useAppState();
+
   // Sélection du projet affiché sur le Dashboard Général (Par défaut: Projet Songon)
   const songonProj = projects.find(p => p.code?.includes('SON') || p.id?.includes('SON') || p.id === 'CIV-2026-ASS-SON-001');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(songonProj?.id || projects[0]?.id || 'ALL');
@@ -49,12 +53,43 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     sessionStorage.setItem('gebat_dashboard_period', newPeriod);
   };
 
+  // ÉTAT DE LA MODALE DES FILTRES ET DES CRITÈRES AVANCÉS
+  const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
+  const [statusFilter, setStatusFilter] = useState<string>('TOUS');
+  const [riskFilter, setRiskFilter] = useState<string>('TOUS');
+  const [natureFilter, setNatureFilter] = useState<string>('TOUS');
+  const [minProgress, setMinProgress] = useState<number>(0);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (statusFilter !== 'TOUS') count++;
+    if (riskFilter !== 'TOUS') count++;
+    if (natureFilter !== 'TOUS') count++;
+    if (minProgress > 0) count++;
+    return count;
+  }, [statusFilter, riskFilter, natureFilter, minProgress]);
+
+  const resetAllFilters = () => {
+    setStatusFilter('TOUS');
+    setRiskFilter('TOUS');
+    setNatureFilter('TOUS');
+    setMinProgress(0);
+  };
+
   const filteredProjects = useMemo(() => {
-    if (selectedProjectId === 'ALL') return projects;
-    const matched = projects.filter(p => isProjectMatch(p.id, selectedProjectId) || isProjectMatch(p.code, selectedProjectId));
-    if (matched.length > 0) return matched;
-    return projects.filter(p => p.id === selectedProjectId || p.code === selectedProjectId);
-  }, [projects, selectedProjectId]);
+    let list = projects;
+    if (selectedProjectId !== 'ALL') {
+      const matched = projects.filter(p => isProjectMatch(p.id, selectedProjectId) || isProjectMatch(p.code, selectedProjectId));
+      list = matched.length > 0 ? matched : projects.filter(p => p.id === selectedProjectId || p.code === selectedProjectId);
+    }
+    
+    return list.filter(p => {
+      if (statusFilter !== 'TOUS' && p.status !== statusFilter) return false;
+      if (riskFilter !== 'TOUS' && p.risk !== riskFilter) return false;
+      if (minProgress > 0 && Number(p.progress || 0) < minProgress) return false;
+      return true;
+    });
+  }, [projects, selectedProjectId, statusFilter, riskFilter, minProgress]);
 
   const targetProject = filteredProjects[0] || projects[0];
 
@@ -526,9 +561,22 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             <Calendar size={14} className="text-blue-600 shrink-0" />
           </div>
 
-          <button className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer shrink-0">
-            <Filter size={14} />
+          <button
+            onClick={() => setShowFilterModal(true)}
+            className={`text-white text-xs font-extrabold px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer shrink-0 ${
+              activeFiltersCount > 0 
+                ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400/40' 
+                : 'bg-slate-900 hover:bg-slate-800'
+            }`}
+            title="Ouvrir le panneau de filtres avancés"
+          >
+            <Filter size={14} className={activeFiltersCount > 0 ? 'text-amber-400 animate-pulse' : 'text-white'} />
             <span>Filtres</span>
+            {activeFiltersCount > 0 && (
+              <span className="bg-amber-400 text-slate-950 font-black text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow-2xs">
+                {activeFiltersCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -1294,6 +1342,123 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         <span className="font-bold text-slate-600">GEBAT 360° — Construction Operating System</span>
         <span>Version MVP 1.0.0</span>
       </div>
+
+      {/* MODALE DE FILTRES AVANCÉS INTERACTIVE & FONCTIONNELLE */}
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* EN-TÊTE MODALE */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Filter size={18} className="text-amber-400" />
+                <h3 className="font-extrabold text-sm uppercase tracking-wide">Filtres Avancés du Tableau de Bord</h3>
+              </div>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* CORPS DE LA MODALE */}
+            <div className="p-5 space-y-4 text-xs font-medium text-slate-700">
+              
+              {/* FILTRE 1 : STATUT PROJET */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-900 block text-xs">Statut du Projet :</label>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="TOUS">Tous les statuts (Actifs, En Préparation, Suspendus)</option>
+                  <option value="ACTIF">● Projets Actifs</option>
+                  <option value="EN_PREPARATION">○ En Préparation</option>
+                  <option value="SUSPENDU">⏸ Suspendus</option>
+                  <option value="TERMINE">✓ Terminés</option>
+                </select>
+              </div>
+
+              {/* FILTRE 2 : NIVEAU DE RISQUE */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-900 block text-xs">Niveau de Risque Projet :</label>
+                <select
+                  value={riskFilter}
+                  onChange={e => setRiskFilter(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="TOUS">Tous niveaux de risque</option>
+                  <option value="FAIBLE">FAIBLE (Vert)</option>
+                  <option value="MOYEN">MOYEN (Orange)</option>
+                  <option value="ÉLEVÉ">ÉLEVÉ (Rouge)</option>
+                  <option value="CRITIQUE">⚠️ CRITIQUE (Alerte Rouge)</option>
+                </select>
+              </div>
+
+              {/* FILTRE 3 : NATURE DE DÉPENSE BTP */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-900 block text-xs">Ventilation par Nature BTP :</label>
+                <select
+                  value={natureFilter}
+                  onChange={e => setNatureFilter(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="TOUS">Toutes natures de coût (MO + MAT + MTL + ST + FGC)</option>
+                  <option value="MO">Main-d'œuvre (MO)</option>
+                  <option value="MAT">Matériaux (MAT)</option>
+                  <option value="MTL">Matériel & Engins (MTL)</option>
+                  <option value="ST">Sous-traitance (ST)</option>
+                  <option value="FGC">Frais Généraux (FGC / DIV)</option>
+                </select>
+              </div>
+
+              {/* FILTRE 4 : SEUIL D'AVANCEMENT MINIMUM */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="font-bold text-slate-900 block text-xs">Avancement Physique Minimum :</label>
+                  <span className="font-mono font-black text-blue-700 text-sm">{minProgress}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="90"
+                  step="5"
+                  value={minProgress}
+                  onChange={e => setMinProgress(Number(e.target.value))}
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                  <span>75%</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* PIED DE LA MODALE */}
+            <div className="bg-slate-50 p-4 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={resetAllFilters}
+                className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <RotateCcw size={14} />
+                <span>Réinitialiser</span>
+              </button>
+
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+              >
+                <Check size={14} />
+                <span>Appliquer ({activeFiltersCount})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
