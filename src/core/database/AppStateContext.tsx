@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v396 - Fully Dynamic Performance Financière Consolidée SSOT)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v397 - Sorted Dynamic Top Projects Par Marge EAC)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_fully_dynamic_performance_financiere_v396';
+      const DATA_VERSION = 'v2026_09_03_sorted_dynamic_top_projects_marge_v397';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');

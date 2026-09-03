@@ -550,6 +550,26 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     }));
   }, [targetWbsNodes, filteredPurchaseRequests, filteredDailyReports, totalBudgetDs]);
 
+  // 4. TOP PROJETS CLASSÉS PAR MARGE (EAC) RÉELLE (SSOT)
+  const sortedTopProjects = useMemo(() => {
+    return projects.map(p => {
+      const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+      const projectDAs = purchaseRequests.filter(da => isProjectMatch(da.projectId, p.id) || isProjectMatch(da.projectId, p.code));
+      const projectReports = dailyReports.filter(r => isReportForProject(r, p));
+
+      const pSummary = getProjectFinancialSummary(p, pNodes, [], projectDAs, projectReports);
+      const marginAmt = pSummary.eacMargin;
+      const marginPct = pSummary.eacMarginPct;
+
+      return {
+        project: p,
+        pSummary,
+        marginAmt,
+        marginPct
+      };
+    }).sort((a, b) => b.marginAmt - a.marginAmt);
+  }, [projects, wbsMap, purchaseRequests, dailyReports]);
+
   return (
     <div className="space-y-5 text-slate-800 font-sans w-full pb-10">
 
@@ -1012,9 +1032,12 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
           </button>
         </div>
 
-        {/* BLOC 2: TOP 5 PROJETS DYNAMIQUES PAR MARGE (EAC) */}
+        {/* BLOC 2: TOP PROJETS DYNAMIQUES PAR MARGE (EAC) */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">TOP PROJETS PAR MARGE (EAC)</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">TOP PROJETS PAR MARGE (EAC)</h3>
+            <DataInsight metricId="marge_finale" title="Classement des Projets par Marge EAC" context={{ topProjectsCount: sortedTopProjects.length }} onNavigate={onNavigate} />
+          </div>
 
           <div className="overflow-x-auto my-2">
             <table className="w-full text-left text-xs">
@@ -1026,22 +1049,35 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[11px] font-medium">
-                {projects.map((p, idx) => {
-                  const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
-                  const pSummary = getProjectFinancialSummary(p, pNodes, [], purchaseRequests, dailyReports);
-                  const marginAmt = pSummary.eacMargin;
-                  const marginPct = pSummary.eacMarginPct.toFixed(1);
+                {sortedTopProjects.map((item, idx) => {
+                  const { project: p, marginAmt, marginPct } = item;
 
                   const formatMarginText = (val: number) => {
                     if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(2) + ' Mds FCFA';
-                    return (val / 1e6).toFixed(1) + ' M FCFA';
+                    if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(1) + ' M FCFA';
+                    return new Intl.NumberFormat('fr-FR').format(Math.round(val)) + ' FCFA';
                   };
 
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => { if(onSelectProject) onSelectProject(p.id); if(onNavigate) onNavigate('vue-projet-360'); }}>
-                      <td className="py-2.5 font-bold text-slate-900">{idx + 1} &nbsp; {p.name} ({p.code})</td>
-                      <td className="text-right font-mono font-bold text-slate-900">{formatMarginText(marginAmt)}</td>
-                      <td className={`text-right font-bold ${Number(marginPct) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{marginPct}%</td>
+                    <tr
+                      key={p.id}
+                      className="hover:bg-slate-50 transition cursor-pointer"
+                      onClick={() => { if(onSelectProject) onSelectProject(p.id); if(onNavigate) onNavigate('vue-projet-360'); }}
+                    >
+                      <td className="py-2.5 font-bold text-slate-900 flex items-center gap-2">
+                        <span className={`w-4 h-4 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 ${
+                          idx === 0 ? 'bg-amber-400 text-slate-950' : idx === 1 ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className="truncate max-w-[190px]" title={`${p.name} (${p.code})`}>
+                          {p.name} <span className="text-slate-400 text-[10px] font-medium">({p.code})</span>
+                        </span>
+                      </td>
+                      <td className="text-right font-mono font-bold text-slate-900 whitespace-nowrap">{formatMarginText(marginAmt)}</td>
+                      <td className={`text-right font-bold whitespace-nowrap ${marginPct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {marginPct.toFixed(1)}%
+                      </td>
                     </tr>
                   );
                 })}
