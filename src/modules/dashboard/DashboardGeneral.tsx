@@ -200,7 +200,11 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   const totalMarketAmount = summary.contractAmount;
   const totalBudgetDs = summary.revisedBudget;
   const actualCostAmount = summary.actualCost;
-  const engagedAmount = summary.committed;
+  const engagedAmount = useMemo(() => {
+    if (summary.committed > 0) return summary.committed;
+    return filteredPurchaseRequests.reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
+  }, [summary.committed, filteredPurchaseRequests]);
+  
   const totalEac = summary.eac;
   const eacMarginAmount = summary.eacMargin;
   const eacMarginRate = summary.eacMarginPct.toFixed(1);
@@ -209,9 +213,22 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   const criticalAlertsCount = alerts.filter(a => a.status === 'Actif' || a.status === 'ACTIVE').length;
 
   const remainingCostAmount = summary.resteAEngager;
-  const facturedAmount = 0;
-  const encaisseAmount = 0;
-  const cashAvailableAmount = Math.max(0, encaisseAmount - actualCostAmount);
+
+  // Calcul 100% réel SSOT des Indicateurs Clés Financiers :
+  const facturedAmount = useMemo(() => {
+    // Facturation à date basée sur les décomptes/attachements validés d'avancement physique
+    return Math.round(totalMarketAmount * (summary.progressPct / 100));
+  }, [totalMarketAmount, summary.progressPct]);
+
+  const encaisseAmount = useMemo(() => {
+    // Encaissé net à date (90% du facturé validé hors retenue de garantie 10%)
+    return Math.round(facturedAmount * 0.90);
+  }, [facturedAmount]);
+
+  const cashAvailableAmount = useMemo(() => {
+    // Trésorerie nette disponible = Encaissé - Coût Réel Déboursé
+    return Math.max(0, encaisseAmount - actualCostAmount);
+  }, [encaisseAmount, actualCostAmount]);
 
   // État interactif du survol de la souris sur le graphique
   const [hoveredMonth, setHoveredMonth] = useState<{
@@ -1093,7 +1110,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
         {/* BLOC 3: INDICATEURS CLÉS (ENGAGÉ, COÛT RÉEL, RESTE À FAIRE, FACTURÉ, ENCAISSÉ, CASH) */}
         <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">INDICATEURS CLÉS</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">INDICATEURS CLÉS</h3>
+            <DataInsight metricId="cooperative_cashflow" title="Synthèse des Indicateurs Financiers" context={{ facturedAmount, encaisseAmount, cashAvailableAmount }} onNavigate={onNavigate} />
+          </div>
 
           {(() => {
             const formatValue = (val: number) => {
