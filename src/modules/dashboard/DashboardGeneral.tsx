@@ -67,8 +67,53 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   }, [wbsMap, selectedProjectId, targetProject]);
 
   const summary = useMemo(() => {
+    if (selectedProjectId === 'ALL') {
+      const initial = {
+        contractAmount: 0,
+        initialBudget: 0,
+        revisedBudget: 0,
+        committed: 0,
+        actualCost: 0,
+        resteAEngager: 0,
+        eac: 0,
+        initialMargin: 0,
+        eacMargin: 0,
+        initialMarginPct: 0,
+        eacMarginPct: 0,
+        progressPct: 0
+      };
+      
+      const consolidated = filteredProjects.reduce((acc, proj) => {
+        const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+        return {
+          contractAmount: acc.contractAmount + s.contractAmount,
+          initialBudget: acc.initialBudget + s.initialBudget,
+          revisedBudget: acc.revisedBudget + s.revisedBudget,
+          committed: acc.committed + s.committed,
+          actualCost: acc.actualCost + s.actualCost,
+          resteAEngager: acc.resteAEngager + s.resteAEngager,
+          eac: acc.eac + s.eac,
+          initialMargin: acc.initialMargin + s.initialMargin,
+          eacMargin: acc.eacMargin + s.eacMargin,
+          initialMarginPct: 0,
+          eacMarginPct: 0,
+          progressPct: 0
+        };
+      }, initial);
+
+      consolidated.initialMarginPct = calculateMarginPercentage(consolidated.initialMargin, consolidated.contractAmount);
+      consolidated.eacMarginPct = calculateMarginPercentage(consolidated.eacMargin, consolidated.contractAmount);
+      if (consolidated.contractAmount > 0 && consolidated.actualCost > 0) {
+        consolidated.progressPct = Number(((consolidated.actualCost / consolidated.contractAmount) * 100).toFixed(1));
+      } else {
+        const avg = filteredProjects.reduce((s, p) => s + Number(p.progress || 0), 0);
+        consolidated.progressPct = Number((avg / (filteredProjects.length || 1)).toFixed(1));
+      }
+      return consolidated;
+    }
     return getProjectFinancialSummary(targetProject, targetWbsNodes, [], filteredPurchaseRequests, dailyReports);
-  }, [targetProject, targetWbsNodes, filteredPurchaseRequests, dailyReports]);
+  }, [selectedProjectId, filteredProjects, targetProject, targetWbsNodes, filteredPurchaseRequests, dailyReports, purchaseRequests, wbsMap]);
 
   const totalProjectsCount = filteredProjects.length;
   const totalMarketAmount = summary.contractAmount;

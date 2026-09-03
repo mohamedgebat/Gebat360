@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v381 - Fix LoginPage Form Submission State Persistence Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v382 - Single Source of Truth Portfolio Consolidation Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_fix_login_form_submission_persistence_v381';
+      const DATA_VERSION = 'v2026_09_03_ssot_portfolio_consolidation_v382';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
