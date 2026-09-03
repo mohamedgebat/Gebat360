@@ -74,50 +74,24 @@ const MainApp: React.FC = () => {
 
   React.useEffect(() => {
     async function checkExistingAuth() {
-      // Détection des requêtes SSO (Single Sign-On depuis pilot360)
+      // Détection stricte des requêtes SSO (Single Sign-On depuis pilot360.gebat-sa.com)
       const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const hasSso = urlParams ? (urlParams.has('sso_user') || urlParams.has('user_email') || urlParams.has('email') || urlParams.has('sso_token') || urlParams.has('sso')) : false;
+      const ssoUserParam = urlParams ? (urlParams.get('sso_user') || urlParams.get('sso_token') || urlParams.get('sso')) : null;
+      const hasExplicitSso = Boolean(ssoUserParam);
 
-      let token = localStorage.getItem('gebat_jwt_token');
-
-      // Si l'utilisateur vient directement du portail SSO
-      if (hasSso) {
-        if (!token) {
-          token = 'sso_active_token_gebat_360';
-          localStorage.setItem('gebat_jwt_token', token);
-        }
+      // Si l'utilisateur provient d'un clic explicite depuis pilot360 (SSO)
+      if (hasExplicitSso) {
+        let token = localStorage.getItem('gebat_jwt_token') || 'sso_active_token_gebat_360';
+        localStorage.setItem('gebat_jwt_token', token);
         setIsAuthenticated(true);
         setIsVerifyingAuth(false);
         return;
       }
 
-      // Si pas de jeton ou pas d'utilisateur enregistré, forcer l'écran de connexion
-      if (!token || !currentUser || !currentUser.email) {
-        setIsAuthenticated(false);
-        setIsVerifyingAuth(false);
-        return;
-      }
-
-      try {
-        const res = await ApiService.getMe();
-        if (res && res.user) {
-          setCurrentUser(res.user);
-          localStorage.setItem('gebat_current_user', JSON.stringify(res.user));
-          setIsAuthenticated(true);
-        } else {
-          setIsAuthenticated(true);
-        }
-      } catch (e) {
-        if (currentUser && currentUser.email) {
-          setIsAuthenticated(true);
-        } else {
-          localStorage.removeItem('gebat_jwt_token');
-          localStorage.removeItem('gebat_current_user');
-          setIsAuthenticated(false);
-        }
-      } finally {
-        setIsVerifyingAuth(false);
-      }
+      // Pour tout accès direct à l'URL sans paramètres SSO explicites :
+      // Exiger la saisie des identifiants (pas de reconnexion automatique silencieuse)
+      setIsAuthenticated(false);
+      setIsVerifyingAuth(false);
     }
 
     const timer = setTimeout(() => {
