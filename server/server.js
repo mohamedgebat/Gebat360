@@ -35,13 +35,13 @@ app.options('*', cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Pool de connexion MySQL
+// Pool de connexion MySQL (Support variables Railway MYSQLHOST et DB_HOST)
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'gebat_360_db',
+  host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
+  port: Number(process.env.MYSQLPORT || process.env.DB_PORT) || 3306,
+  user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+  password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'gebat_360_db',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -1881,8 +1881,12 @@ app.get(['/api/v1/audit-logs', '/api/audit-logs', '/api/v1/audit'], requireAuth,
   }
 });
 
-// Lancement du Serveur REST API et Initialisation de la Base de Données
-app.listen(PORT, async () => {
-  console.log(`🚀 Serveur Backend REST API GEBAT 360° démarré sur http://localhost:${PORT}`);
-  await initDatabase();
+// Lancement du Serveur REST API (0.0.0.0 pour Railway) et Initialisation de la Base de Données
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`🚀 Serveur Backend REST API GEBAT 360° démarré sur http://0.0.0.0:${PORT}`);
+  try {
+    await initDatabase();
+  } catch (err) {
+    console.warn('⚠️ Avertissement initialisation base MySQL:', err.message);
+  }
 });
