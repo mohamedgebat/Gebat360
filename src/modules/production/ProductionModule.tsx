@@ -127,22 +127,29 @@ export const ProductionModule: React.FC = () => {
     return rProjId === pId || rProjId === pCode;
   };
 
-  // Rapports d'étapes (Soumis / Validé / Verrouillé) filtrés strictement pour le site sélectionné
+  // Filtre de statut maître pour le tableau (Défaut: 'ALL' pour afficher TOUS les rapports sans disparition)
+  const [masterStatusFilter, setMasterStatusFilter] = useState<string>('ALL');
+
+  // Rapports d'étapes filtrés strictement pour le site sélectionné et le statut maître
   const stepReports = useMemo(() => {
     return dailyReports.filter(r => {
       const matchProj = isProjectReportMatch(r, selectedProject);
+      if (!matchProj) return false;
+
       const normReportStatus = (r.status || 'Soumis').toUpperCase().trim();
-      const normCurrentStatus = (reportStatus || 'Soumis').toUpperCase().trim();
+      const normFilterStatus = (masterStatusFilter || 'ALL').toUpperCase().trim();
 
-      const isStatusMatch =
-        normReportStatus === normCurrentStatus ||
-        (normCurrentStatus.includes('SOUMIS') && (normReportStatus.includes('SOUMIS') || normReportStatus.includes('ATTENTE') || normReportStatus.includes('PENDING'))) ||
-        (normCurrentStatus.includes('VALID') && (normReportStatus.includes('VALID') || normReportStatus.includes('APPROVED'))) ||
-        (normCurrentStatus.includes('VERROU') && (normReportStatus.includes('VERROU') || normReportStatus.includes('CLOSED')));
+      if (normFilterStatus === 'ALL') return true;
 
-      return matchProj && isStatusMatch;
+      if (normFilterStatus.includes('BROUILLON')) return normReportStatus.includes('BROUILLON');
+      if (normFilterStatus.includes('SOUMIS')) return normReportStatus.includes('SOUMIS') || normReportStatus.includes('ATTENTE') || normReportStatus.includes('PENDING');
+      if (normFilterStatus.includes('VALID')) return normReportStatus.includes('VALID') || normReportStatus.includes('APPROVED');
+      if (normFilterStatus.includes('VERROU')) return normReportStatus.includes('VERROU') || normReportStatus.includes('CLOSED');
+      if (normFilterStatus.includes('REFUS')) return normReportStatus.includes('REFUS') || normReportStatus.includes('REJECTED');
+
+      return normReportStatus === normFilterStatus;
     });
-  }, [dailyReports, selectedProject, reportStatus]);
+  }, [dailyReports, selectedProject, masterStatusFilter]);
   const [reportDate, setReportDate] = useState<string>(getTodayIso());
   const [creationTime, setCreationTime] = useState<string>(getNowTimeStr());
   const [lastSaveTime, setLastSaveTime] = useState<string>(getNowTimeStr());
@@ -610,7 +617,7 @@ export const ProductionModule: React.FC = () => {
     ]);
   };
 
-  // Enregistrement Brouillon Multi-Activités Progressivement
+  // Enregistrement Brouillon (RJC-AAAA-XXXXX persistent)
   const handleSaveDraft = () => {
     handleStatusChange('Brouillon');
 
@@ -634,40 +641,47 @@ export const ProductionModule: React.FC = () => {
     }
 
     if (createDailyReport) {
-      itemsToSave.forEach(item => {
-        const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
+      const primaryItem = itemsToSave[0];
+      const rowAdvancePct = primaryItem.targetQty > 0 ? parseFloat(((primaryItem.realizedQty / primaryItem.targetQty) * 100).toFixed(1)) : 0;
 
-        createDailyReport({
-          projectId: selectedProject.id,
-          date: reportDate,
-          wbsCode: item.wbsCode,
-          activityName: item.activityName || 'Activité',
-          weather,
-          temperature,
-          workShift,
-          locationZone,
-          generalComment,
-          teamLeader,
-          unit: item.unit,
-          targetQty: item.targetQty,
-          realizedQty: item.realizedQty,
-          cumulDate: item.cumulDate,
-          totalPlanned: item.totalPlanned,
-          advancePct: rowAdvancePct,
-          personnel: personnelRows,
-          consummations: consommationsRows,
-          problems,
-          photos,
-          observations,
-          status: 'Brouillon'
-        });
+      const currentYear = new Date().getFullYear();
+      const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + 1).padStart(5, '0')}`;
+
+      createDailyReport({
+        id: rjcCode,
+        code: rjcCode,
+        reportCode: rjcCode,
+        projectId: selectedProject.id,
+        date: reportDate,
+        wbsCode: primaryItem.wbsCode,
+        wbsId: primaryItem.wbsCode,
+        activityName: primaryItem.activityName || 'Activité',
+        weather,
+        temperature,
+        workShift,
+        locationZone,
+        generalComment,
+        teamLeader,
+        unit: primaryItem.unit,
+        targetQty: primaryItem.targetQty,
+        plannedQty: primaryItem.targetQty,
+        realizedQty: primaryItem.realizedQty,
+        cumulDate: primaryItem.cumulDate,
+        totalPlanned: primaryItem.totalPlanned,
+        advancePct: rowAdvancePct,
+        personnel: personnelRows,
+        consummations: consommationsRows,
+        problems,
+        photos,
+        observations,
+        status: 'Brouillon'
       });
     }
 
     alert(`✅ Brouillon du Rapport Journalier (${itemsToSave.length} activité(s)) enregistré et persisté dans la base de données !`);
   };
 
-  // Soumission pour validation Multi-Activités Progressivement
+  // Soumission pour validation (RJC-AAAA-XXXXX persistent)
   const handleSubmitValidation = () => {
     handleStatusChange('Soumis');
 
@@ -691,40 +705,47 @@ export const ProductionModule: React.FC = () => {
     }
 
     if (createDailyReport) {
-      itemsToSave.forEach(item => {
-        const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
+      const primaryItem = itemsToSave[0];
+      const rowAdvancePct = primaryItem.targetQty > 0 ? parseFloat(((primaryItem.realizedQty / primaryItem.targetQty) * 100).toFixed(1)) : 0;
 
-        createDailyReport({
-          projectId: selectedProject.id,
-          date: reportDate,
-          wbsCode: item.wbsCode,
-          activityName: item.activityName || 'Activité',
-          weather,
-          temperature,
-          workShift,
-          locationZone,
-          generalComment,
-          teamLeader,
-          unit: item.unit,
-          targetQty: item.targetQty,
-          realizedQty: item.realizedQty,
-          cumulDate: item.cumulDate,
-          totalPlanned: item.totalPlanned,
-          advancePct: rowAdvancePct,
-          personnel: personnelRows,
-          consummations: consommationsRows,
-          problems,
-          photos,
-          observations,
-          status: 'Soumis'
-        });
+      const currentYear = new Date().getFullYear();
+      const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + 1).padStart(5, '0')}`;
+
+      createDailyReport({
+        id: rjcCode,
+        code: rjcCode,
+        reportCode: rjcCode,
+        projectId: selectedProject.id,
+        date: reportDate,
+        wbsCode: primaryItem.wbsCode,
+        wbsId: primaryItem.wbsCode,
+        activityName: primaryItem.activityName || 'Activité',
+        weather,
+        temperature,
+        workShift,
+        locationZone,
+        generalComment,
+        teamLeader,
+        unit: primaryItem.unit,
+        targetQty: primaryItem.targetQty,
+        plannedQty: primaryItem.targetQty,
+        realizedQty: primaryItem.realizedQty,
+        cumulDate: primaryItem.cumulDate,
+        totalPlanned: primaryItem.totalPlanned,
+        advancePct: rowAdvancePct,
+        personnel: personnelRows,
+        consummations: consommationsRows,
+        problems,
+        photos,
+        observations,
+        status: 'Soumis'
       });
     }
 
     setRecordedActivities([]);
     setCurrentRealizedQty('');
     setReportStatus('Soumis');
-    alert(`🚀 Rapport Journalier (${itemsToSave.length} activité(s)) envoyé pour validation et persisté dans la base de données ! Visible immédiatement dans l'onglet Étape 2 (SOUMIS) et dans le Centre de Validation.`);
+    alert(`🚀 Rapport Journalier (${itemsToSave.length} activité(s)) envoyé pour validation et persisté dans la base de données ! Identifiant officiel : RJC-${new Date().getFullYear()}-${String(dailyReports.length + 1).padStart(5, '0')}`);
   };
 
   if (!selectedProject) {
@@ -1047,24 +1068,37 @@ export const ProductionModule: React.FC = () => {
         )}
       </div>
 
-      {/* 2B. PANNEAU DYNAMIQUE WORKFLOW POUR LES ÉTAPES 2 (SOUMIS), 3 (VALIDÉ), 4 (VERROUILLÉ) */}
-      {reportStatus !== 'Brouillon' && (
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-                <span>Rapports Journaliers Terrain — Étape {reportStatus === 'Soumis' ? '2 (Soumis)' : reportStatus === 'Validé' ? '3 (Validés)' : '4 (Verrouillés)'}</span>
-                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[11px]">
-                  {stepReports.length}
-                </span>
-              </h2>
-              <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
-                {reportStatus === 'Soumis' && "Rapports en attente de revue par le Conducteur de Travaux et le Directeur de Projet."}
-                {reportStatus === 'Validé' && "Rapports approuvés par la Direction Technique, prêts pour la consolidation financière."}
-                {reportStatus === 'Verrouillé' && "Rapports verrouillés et certifiés pour le Cost Control et l'audit comptable."}
-              </p>
-            </div>
+      {/* 2B. PANNEAU DE SUIVI & DE VALIDATION DES RAPPORTS JOURNALIERS (SUIVI CONTINU ET PERMANENT SANS DISPARITION) */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+              <span>Rapports Journaliers de Chantier — Registre Officiel Persistant</span>
+              <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[11px]">
+                {stepReports.length} rapport(s)
+              </span>
+            </h2>
+            <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
+              Historique inaltérable de la production terrain pour le chantier {selectedProject.name}. Suivi des validations et traçabilité.
+            </p>
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-500">Filtrer par statut :</span>
+            <select
+              value={masterStatusFilter}
+              onChange={e => setMasterStatusFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-300 text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-xl focus:bg-white focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">📋 Tous les statuts ({dailyReports.filter(r => isProjectReportMatch(r, selectedProject)).length})</option>
+              <option value="Brouillon">📝 Brouillons (Étape 1)</option>
+              <option value="Soumis">⏳ Soumis (Étape 2)</option>
+              <option value="Validé">✅ Validés (Étape 3)</option>
+              <option value="Verrouillé">🔒 Verrouillés (Étape 4)</option>
+              <option value="Refusé">❌ Refusés / En correction</option>
+            </select>
+          </div>
+        </div>
 
           {stepReports.length === 0 ? (
             <div className="p-8 text-center text-slate-400 font-medium border border-dashed border-slate-200 rounded-2xl text-xs space-y-1">
@@ -1106,84 +1140,97 @@ export const ProductionModule: React.FC = () => {
                             <Eye size={13} />
                             <span>Détails</span>
                           </button>
-                          {reportStatus === 'Soumis' && (
-                            isValidatorRole ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                          {(() => {
+                            const normRepS = (rep.status || 'Soumis').toUpperCase();
+                            const isSoumis = normRepS.includes('SOUMIS') || normRepS.includes('ATTENTE') || normRepS.includes('PENDING');
+                            const isValid = normRepS.includes('VALID') || normRepS.includes('APPROVED');
+                            const isLocked = normRepS.includes('VERROU') || normRepS.includes('CLOSED');
+
+                            if (isSoumis) {
+                              return isValidatorRole ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      const targetId = rep.id;
+                                      const targetCode = rep.code || rep.reportCode;
+                                      if (updateDailyReportStatus) {
+                                        updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                        if (targetCode && targetCode !== targetId) {
+                                          updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                        }
+                                      }
+                                      if (updateValidationTaskStatus) {
+                                        updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                      }
+                                      alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! (Étape 3: VALIDÉ).`);
+                                    }}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition flex items-center gap-1"
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    <span>✅ Valider</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
+                                      if (!reason.trim()) return;
+                                      const targetId = rep.id;
+                                      const targetCode = rep.code || rep.reportCode;
+                                      if (updateDailyReportStatus) {
+                                        updateDailyReportStatus(targetId, 'Brouillon', reason);
+                                        if (targetCode && targetCode !== targetId) {
+                                          updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                                        }
+                                      }
+                                      if (updateValidationTaskStatus) {
+                                        updateValidationTaskStatus(targetId, 'RETURNED', reason);
+                                      }
+                                      alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-amber-100 text-amber-900 hover:bg-amber-200 font-bold rounded-lg text-xs cursor-pointer transition"
+                                  >
+                                    ↩️ Correction
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-amber-50 text-amber-800 font-bold rounded-lg text-[10.5px] border border-amber-200">
+                                  ⏳ En attente de validation
+                                </span>
+                              );
+                            }
+
+                            if (isValid) {
+                              return isValidatorRole ? (
                                 <button
                                   onClick={() => {
-                                    const targetId = rep.id;
-                                    const targetCode = rep.code || rep.reportCode;
-                                    if (updateDailyReportStatus) {
-                                      updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                      if (targetCode && targetCode !== targetId) {
-                                        updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                      }
-                                    }
-                                    if (updateValidationTaskStatus) {
-                                      updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                    }
-                                    setReportStatus('Validé');
-                                    alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! Transféré à l'Étape 3 (VALIDÉ).`);
+                                    if (updateDailyReportStatus) updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
+                                    alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
                                   }}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition flex items-center gap-1"
+                                  className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition"
                                 >
-                                  <CheckCircle2 size={13} />
-                                  <span>✅ Valider (Étape 3)</span>
+                                  🔒 Verrouiller
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
-                                    if (!reason.trim()) return;
-                                    const targetId = rep.id;
-                                    const targetCode = rep.code || rep.reportCode;
-                                    if (updateDailyReportStatus) {
-                                      updateDailyReportStatus(targetId, 'Brouillon', reason);
-                                      if (targetCode && targetCode !== targetId) {
-                                        updateDailyReportStatus(targetCode, 'Brouillon', reason);
-                                      }
-                                    }
-                                    if (updateValidationTaskStatus) {
-                                      updateValidationTaskStatus(targetId, 'RETURNED', reason);
-                                    }
-                                    setReportStatus('Brouillon');
-                                    alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
-                                  }}
-                                  className="px-2.5 py-1.5 bg-amber-100 text-amber-900 hover:bg-amber-200 font-bold rounded-lg text-xs cursor-pointer transition"
-                                >
-                                  ↩️ Correction
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="px-2.5 py-1 bg-amber-50 text-amber-800 font-bold rounded-lg text-[10.5px] border border-amber-200">
-                                ⏳ En attente de validation (Conducteur / DP)
-                              </span>
-                            )
-                          )}
+                              ) : (
+                                <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold rounded-lg text-xs border border-emerald-300 shadow-2xs inline-flex items-center gap-1">
+                                  <CheckCircle2 size={13} className="text-emerald-700" />
+                                  <span>✅ Validé par {rep.validatedBy || 'DP / DT'}</span>
+                                </span>
+                              );
+                            }
 
-                          {reportStatus === 'Validé' && (
-                            isValidatorRole ? (
-                              <button
-                                onClick={() => {
-                                  if (updateDailyReportStatus) updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
-                                  alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
-                                }}
-                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition"
-                              >
-                                🔒 Verrouiller (Étape 4)
-                              </button>
-                            ) : (
-                              <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold rounded-lg text-xs border border-emerald-300 shadow-2xs inline-flex items-center gap-1">
-                                <CheckCircle2 size={13} className="text-emerald-700" />
-                                <span>✅ Validé par {rep.validatedBy || 'DP / DT'}</span>
-                              </span>
-                            )
-                          )}
+                            if (isLocked) {
+                              return (
+                                <span className="px-3 py-1 bg-purple-100 text-purple-900 font-black rounded-lg text-[11px] border border-purple-200">
+                                  🔒 Certifié & Conduite
+                                </span>
+                              );
+                            }
 
-                          {reportStatus === 'Verrouillé' && (
-                            <span className="px-3 py-1 bg-purple-100 text-purple-900 font-black rounded-lg text-[11px] border border-purple-200">
-                              🔒 Certifié & Conduite
-                            </span>
-                          )}
+                            return (
+                              <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[10.5px] border border-slate-200">
+                                📝 {rep.status || 'Brouillon'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -1193,7 +1240,6 @@ export const ProductionModule: React.FC = () => {
             </div>
           )}
         </div>
-      )}
 
       {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (EXCLUSIF AU MODE BROUILLON) */}
       {reportStatus === 'Brouillon' && (

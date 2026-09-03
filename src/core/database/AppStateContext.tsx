@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v385 - Fix calculateMarginPercentage ReferenceError Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v386 - Production RJC Persistent Lifecycle & Site Isolation Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_fix_calculatemarginpercentage_import_v385';
+      const DATA_VERSION = 'v2026_09_03_production_rjc_persistent_lifecycle_v386';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -1945,27 +1945,50 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const createDailyReport = (reportData: Omit<DailyReport, 'id' | 'code' | 'productivityRate'>) => {
+  const createDailyReport = (reportData: Partial<DailyReport> & Omit<DailyReport, 'id' | 'productivityRate'> & { id?: string; code?: string }) => {
     const planned = Number(reportData.plannedQty || reportData.targetQty || 1);
     const realized = Number(reportData.realizedQty || 0);
     const rate = planned > 0 ? Math.round((realized / planned) * 100) : 100;
-    const randCode = String(Math.floor(100 + Math.random() * 900));
-    const reportCode = (reportData as any).code || `CR-${reportData.date || new Date().toISOString().substring(0, 10)}-${String(dailyReports.length + 1).padStart(2, '0')}-${randCode}`;
+
+    const existingId = (reportData as any).id || (reportData as any).reportId;
+    const existingCode = (reportData as any).code || (reportData as any).reportCode;
+
+    const currentYear = new Date().getFullYear();
+    const nextSeq = String(dailyReports.length + 1).padStart(5, '0');
+    const defaultRjcCode = `RJC-${currentYear}-${nextSeq}`;
+
+    const reportCode = existingCode || defaultRjcCode;
+    const reportId = existingId || reportCode;
 
     const report: DailyReport = {
       ...reportData,
-      id: `CR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      id: reportId,
       code: reportCode,
+      reportCode: reportCode,
       plannedQty: planned,
       targetQty: planned,
       realizedQty: realized,
       productivityRate: rate,
       status: reportData.status || 'Soumis',
       createdBy: reportData.createdBy || currentUser?.name || 'Chef de Chantier',
+      createdAt: reportData.createdAt || new Date().toISOString()
     };
 
     setDailyReports(prev => {
-      const updated = [report, ...prev];
+      const existsIndex = prev.findIndex(r => r.id === reportId || r.code === reportCode || r.reportCode === reportCode);
+      let updated: DailyReport[];
+      if (existsIndex >= 0) {
+        updated = [...prev];
+        updated[existsIndex] = {
+          ...updated[existsIndex],
+          ...report,
+          // Preserver l'historique existant
+          historyLogs: reportData.historyLogs || updated[existsIndex].historyLogs || [],
+          rejectionHistory: reportData.rejectionHistory || updated[existsIndex].rejectionHistory || []
+        };
+      } else {
+        updated = [report, ...prev];
+      }
       safeSaveToStorage('gebat_daily_reports', updated);
       const userCreated = updated.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
       safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
