@@ -22,7 +22,9 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   const [managerFilter, setManagerFilter] = useState<string>('TOUS');
   const [statusFilter, setStatusFilter] = useState<string>('TOUS');
   const [riskFilter, setRiskFilter] = useState<string>('TOUS');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    return (sessionStorage.getItem('gebat_projects_view_mode') as 'list' | 'grid') || 'list';
+  });
 
   // MODALES D'ACTION
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -326,22 +328,43 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
           >
             <Download size={14} /> Exporter
           </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-              viewMode === 'list' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-600'
-            }`}
-          >
-            <List size={14} /> Vue Tableau
-          </button>
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-              viewMode === 'grid' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-600'
-            }`}
-          >
-            <LayoutGrid size={14} /> Vue Cartes
-          </button>
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 shadow-2xs gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = viewMode === 'list' ? 'grid' : 'list';
+                setViewMode(nextMode);
+                sessionStorage.setItem('gebat_projects_view_mode', nextMode);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'list' 
+                  ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-xs ring-2 ring-blue-500/20' 
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+              }`}
+              title="Basculer vers la Vue Tableau / Liste des projets"
+            >
+              <List size={14} className={viewMode === 'list' ? 'text-blue-600' : 'text-slate-500'} />
+              <span>Vue Tableau</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = viewMode === 'grid' ? 'list' : 'grid';
+                setViewMode(nextMode);
+                sessionStorage.setItem('gebat_projects_view_mode', nextMode);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'grid' 
+                  ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-xs ring-2 ring-blue-500/20' 
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+              }`}
+              title="Basculer vers la Vue Cartes du portefeuille"
+            >
+              <LayoutGrid size={14} className={viewMode === 'grid' ? 'text-blue-600' : 'text-slate-500'} />
+              <span>Vue Cartes</span>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v388 - Fix onNavigate ReferenceError DataInsight)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v389 - Vue Tableau Toggle & Persistent ViewMode)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_fix_onnavigate_reference_error_v388';
+      const DATA_VERSION = 'v2026_09_03_vue_tableau_toggle_fix_v389';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
