@@ -5,7 +5,8 @@ import { Project, ProjectStatus, RiskLevel } from '../../types';
 import {
   Briefcase, Coins, TrendingUp, PieChart, Percent, AlertTriangle, Info,
   Plus, Search, Filter, RotateCcw, Download, Upload, Settings, List, LayoutGrid,
-  MoreVertical, Calendar, Clock, Calculator, FileCheck, Star, Eye, Edit3, Copy, Archive, Trash2, CheckCircle2, ShieldAlert, FileSpreadsheet, X, Save
+  MoreVertical, Calendar, Clock, Calculator, FileCheck, Star, Eye, Edit3, Copy, Archive, Trash2, CheckCircle2, ShieldAlert, FileSpreadsheet, X, Save,
+  Building2, User, MapPin
 } from 'lucide-react';
 
 interface PortfolioProps {
@@ -716,75 +717,126 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
           </div>
         </div>
       ) : (
-        /* VUE CARTES DU PORTEFEUILLE */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {filteredProjects.map(p => (
-            <div
-              key={p.id}
-              onClick={() => onSelectProject(p.id)}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md cursor-pointer space-y-3 transition flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <span className="font-mono font-bold text-blue-700">{p.code}</span>
-                  {getStatusBadge(p.status || 'ACTIF')}
-                </div>
-                <h3 className="font-black text-slate-900 text-sm line-clamp-2">{p.name}</h3>
-                <div className="text-slate-500 text-[11px] space-y-1">
-                  <div>Client : <strong className="text-slate-800">{p.client}</strong></div>
-                  <div>Directeur : <strong className="text-slate-800">{p.manager}</strong></div>
-                  <div>Localisation : <strong className="text-slate-800">{p.location}</strong></div>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t font-mono text-xs">
-                  <span>Montant : <strong>{p.contractAmount ? `${Math.round(p.contractAmount).toLocaleString('fr-FR')} FCFA` : '—'}</strong></span>
-                  <span className="text-blue-600 font-bold">Avancement : {p.progress}%</span>
-                </div>
-              </div>
+        /* VUE CARTES DU PORTEFEUILLE (CONCEPTION BTB ERGONOMIQUE, MODERNE & OPTIMISÉE) */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredProjects.map(p => {
+            const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+            const pSummary = getProjectFinancialSummary(p, pNodes, [], purchaseRequests, dailyReports);
+            const contract = pSummary.contractAmount;
+            const progVal = pSummary.progressPct.toFixed(1);
 
-              {/* BOUTONS ACTIONS SUR VUE CARTES */}
-              <div className="pt-3 border-t flex items-center justify-between gap-1" onClick={e => e.stopPropagation()}>
-                <button
-                  onClick={() => onSelectProject(p.id)}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded text-xs flex items-center gap-1 transition cursor-pointer"
-                >
-                  <Eye size={12} /> Voir
-                </button>
-                <div className="flex items-center gap-1">
+            return (
+              <div
+                key={p.id}
+                onClick={() => onSelectProject(p.id)}
+                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md cursor-pointer space-y-4 transition flex flex-col justify-between hover:border-blue-300 group"
+              >
+                <div className="space-y-3.5">
+                  {/* EN-TÊTE CODE ET BADGES STATUT / RISQUE */}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <button onClick={e => toggleStar(p.id, e)} className="text-amber-400 hover:scale-110 transition cursor-pointer">
+                        <Star size={15} fill={starredProjects[p.id] ? '#f59e0b' : 'transparent'} />
+                      </button>
+                      <span className="font-mono font-extrabold text-blue-700 text-xs bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/60">
+                        {p.code}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {getRiskBadge(p.risk || 'FAIBLE')}
+                      {getStatusBadge(p.status || 'ACTIF')}
+                    </div>
+                  </div>
+
+                  {/* TITRE PROJET */}
+                  <h3 className="font-black text-slate-900 text-sm tracking-tight group-hover:text-blue-700 transition line-clamp-2" title={p.name}>
+                    {p.name}
+                  </h3>
+
+                  {/* DETAILS CLIENT, DIRECTEUR, LOCALISATION */}
+                  <div className="text-[11.5px] space-y-1.5 text-slate-600 font-medium">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={14} className="text-slate-400 shrink-0" />
+                      <span className="truncate">Client : <strong className="text-slate-800 font-bold">{p.client}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <User size={14} className="text-slate-400 shrink-0" />
+                      <span className="truncate">Directeur : <strong className="text-slate-800 font-bold">{p.manager || 'SEA Alphonse'}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} className="text-slate-400 shrink-0" />
+                      <span className="truncate">Localisation : <strong className="text-slate-800 font-bold">{p.location || "Côte d'Ivoire"}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* ENCADRÉ AVANCEMENT & MONTANT MARCHÉ (CLEAN & SANS WRAP BUG) */}
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">Montant Marché (HT)</span>
+                      <span className="font-mono font-extrabold text-slate-900 text-xs whitespace-nowrap">
+                        {contract ? `${Math.round(contract).toLocaleString('fr-FR')} FCFA` : '—'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10.5px]">
+                        <span className="font-bold text-slate-600">Avancement Physique</span>
+                        <span className="font-mono font-extrabold text-blue-700">{progVal}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, Number(progVal))}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOUTONS ACTIONS SUR VUE CARTES */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   <button
-                    onClick={() => setEditingProject(p)}
-                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer"
-                    title="Modifier"
+                    onClick={() => onSelectProject(p.id)}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
                   >
-                    <Edit3 size={14} />
+                    <Eye size={13} />
+                    <span>Voir Fiche 360°</span>
                   </button>
-                  <button
-                    onClick={e => handleDuplicateProject(p, e)}
-                    className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded transition cursor-pointer"
-                    title="Dupliquer"
-                  >
-                    <Copy size={14} />
-                  </button>
-                  <button
-                    onClick={e => handleArchiveProject(p, e)}
-                    className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded transition cursor-pointer"
-                    title="Archiver"
-                  >
-                    <Archive size={14} />
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      setDeletingProject(p);
-                    }}
-                    className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                    title="Supprimer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setEditingProject(p)}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                      title="Modifier les données du projet"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      onClick={e => handleDuplicateProject(p, e)}
+                      className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition cursor-pointer"
+                      title="Dupliquer ce projet"
+                    >
+                      <Copy size={14} />
+                    </button>
+                    <button
+                      onClick={e => handleArchiveProject(p, e)}
+                      className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                      title="Changer le statut (Archiver/Activer)"
+                    >
+                      <Archive size={14} />
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setDeletingProject(p);
+                      }}
+                      className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                      title="Supprimer définitivement ce projet"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
