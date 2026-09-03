@@ -74,33 +74,33 @@ const MainApp: React.FC = () => {
 
   React.useEffect(() => {
     async function checkExistingAuth() {
-      // Détection stricte des requêtes SSO (Single Sign-On depuis pilot360.gebat-sa.com)
       const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
       const ssoUserParam = urlParams ? (urlParams.get('sso_user') || urlParams.get('sso_token') || urlParams.get('sso')) : null;
       const hasExplicitSso = Boolean(ssoUserParam);
 
-      // Si l'utilisateur provient d'un clic explicite depuis pilot360 (SSO)
-      if (hasExplicitSso) {
-        let token = localStorage.getItem('gebat_jwt_token') || 'sso_active_token_gebat_360';
-        localStorage.setItem('gebat_jwt_token', token);
-        setIsAuthenticated(true);
-        setIsVerifyingAuth(false);
-        return;
-      }
+      const savedToken = localStorage.getItem('gebat_jwt_token');
+      const savedUserStr = localStorage.getItem('gebat_current_user');
 
-      // Pour tout accès direct à l'URL sans paramètres SSO explicites :
-      // Exiger la saisie des identifiants (pas de reconnexion automatique silencieuse)
-      setIsAuthenticated(false);
+      if (hasExplicitSso || (savedToken && savedUserStr)) {
+        if (!savedToken) {
+          localStorage.setItem('gebat_jwt_token', 'sso_active_token_gebat_360');
+        }
+        if (savedUserStr && !currentUser) {
+          try {
+            setCurrentUser(JSON.parse(savedUserStr));
+          } catch (e) {
+            console.warn('Erreur lecture gebat_current_user:', e);
+          }
+        }
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
       setIsVerifyingAuth(false);
     }
 
-    const timer = setTimeout(() => {
-      setIsVerifyingAuth(false);
-    }, 500);
-
     checkExistingAuth();
-    return () => clearTimeout(timer);
-  }, [isBackendConnected, currentUser]);
+  }, []);
 
   // Connexion automatique et fluide au serveur API Backend & MySQL
   if (isVerifyingAuth) {
