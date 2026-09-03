@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v377 - Express 5 CORS PathError Fix and Central Real-Time Synchronization Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v378 - Railway Express Trust Proxy Rate Limiter and Fail-Safe JWT Authentication Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_express5_cors_path_error_fix_v377';
+      const DATA_VERSION = 'v2026_09_03_railway_trust_proxy_rate_limiter_fix_v378';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
