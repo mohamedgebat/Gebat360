@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
-import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
+import { getProjectFinancialSummary, calculateMarginPercentage } from '../../core/utils/financialFormulas';
 import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import {
   Briefcase,

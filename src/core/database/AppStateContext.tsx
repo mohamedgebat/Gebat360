@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v384 - Cross-Profile Unified Data Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v385 - Fix calculateMarginPercentage ReferenceError Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_cross_profile_unified_data_v384';
+      const DATA_VERSION = 'v2026_09_03_fix_calculatemarginpercentage_import_v385';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
