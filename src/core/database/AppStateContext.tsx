@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v378 - Railway Express Trust Proxy Rate Limiter and Fail-Safe JWT Authentication Stream)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v379 - MySQL Schema default_password Column Fix and Fail-Safe Fallback Stream)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_railway_trust_proxy_rate_limiter_fix_v378';
+      const DATA_VERSION = 'v2026_09_03_mysql_schema_default_password_fix_v379';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
