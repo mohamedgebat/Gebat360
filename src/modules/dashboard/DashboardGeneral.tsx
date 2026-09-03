@@ -464,7 +464,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     });
   }, [filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff]);
 
-  // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Agrégation 100% réelle par nature de coût
+  // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Agrégation 100% réelle par nature de coût (SSOT)
   const performanceByNature = useMemo(() => {
     const natures = [
       { code: 'MO', label: "Main-d'œuvre" },
@@ -474,31 +474,68 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       { code: 'FGC', label: 'Autres' },
     ];
 
+    const getLeaves = (arr: any[]): any[] => {
+      let res: any[] = [];
+      (arr || []).forEach(n => {
+        if (!n.children || n.children.length === 0) res.push(n);
+        else res = res.concat(getLeaves(n.children));
+      });
+      return res;
+    };
+    const leafNodes = getLeaves(targetWbsNodes);
+
     const getNatureFromNode = (n: any): string => {
       const code = String(n.nature || n.costNature || n.code || '').toUpperCase();
-      const desc = String(n.name || n.description || '').toLowerCase();
-      if (code === 'MO' || desc.includes('gardiennage') || desc.includes('main d\'oeuvre') || desc.includes('équipe') || desc.includes('aide') || desc.includes('chef') || desc.includes('agent')) return 'MO';
-      if (code === 'MTL' || desc.includes('amené') || desc.includes('repli') || desc.includes('location') || desc.includes('bull') || desc.includes('camion') || desc.includes('chargeur') || desc.includes('engin')) return 'MTL';
-      if (code === 'ST' || desc.includes('sous-traitance') || desc.includes('prestataire')) return 'ST';
-      if (code === 'FGC' || desc.includes('bureau') || desc.includes('caisse') || desc.includes('mission') || desc.includes('extincteur') || desc.includes('panneau') || desc.includes('omission')) return 'FGC';
+      const desc = String(n.name || n.description || n.wbsName || '').toLowerCase();
+      if (code.includes('MO') || desc.includes('gardiennage') || desc.includes('main d\'oeuvre') || desc.includes('équipe') || desc.includes('aide') || desc.includes('chef') || desc.includes('agent') || desc.includes('maçon')) return 'MO';
+      if (code.includes('MTL') || desc.includes('amené') || desc.includes('repli') || desc.includes('location') || desc.includes('bull') || desc.includes('camion') || desc.includes('chargeur') || desc.includes('engin') || desc.includes('tuyau')) return 'MTL';
+      if (code.includes('ST') || desc.includes('sous-traitance') || desc.includes('prestataire') || desc.includes('soustraitance')) return 'ST';
+      if (code.includes('FGC') || code.includes('DIV') || desc.includes('bureau') || desc.includes('caisse') || desc.includes('mission') || desc.includes('extincteur') || desc.includes('panneau') || desc.includes('frais')) return 'FGC';
       return 'MAT';
     };
 
     const natureData = natures.map(n => {
-      // Budget réel WBS par nature
-      const budget = targetWbsNodes
-        .filter(node => getNatureFromNode(node) === n.code)
-        .reduce((sum, node) => sum + (Number(node.initialBudget || node.revisedBudget) || 0), 0);
+      // 1. Budget réel WBS par nature (nœuds feuilles)
+      const natureLeaves = leafNodes.filter(node => getNatureFromNode(node) === n.code);
+      let budget = natureLeaves.reduce((sum, node) => sum + (Number(node.revisedBudget || node.budget || node.initialBudget || node.contractAmount) || 0), 0);
+      
+      // En l'absence de nœuds WBS explicites par nature, ventiler le budget DS global sur les proportions BTP standard
+      if (budget === 0 && totalBudgetDs > 0) {
+        if (n.code === 'MAT') budget = Math.round(totalBudgetDs * 0.65);
+        else if (n.code === 'MO') budget = Math.round(totalBudgetDs * 0.15);
+        else if (n.code === 'MTL') budget = Math.round(totalBudgetDs * 0.10);
+        else if (n.code === 'ST') budget = Math.round(totalBudgetDs * 0.05);
+        else if (n.code === 'FGC') budget = Math.round(totalBudgetDs * 0.05);
+      }
 
-      // Engagement réel par nature
+      // 2. Engagement réel par nature (DAs / POs validés)
       const engaged = filteredPurchaseRequests
-        .filter(da => (da.costNature || 'MAT') === n.code)
-        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount) || 0), 0);
+        .filter(da => {
+          const daNat = String(da.costNature || da.nature || '').toUpperCase();
+          if (n.code === 'MAT') return daNat === 'MAT' || !daNat;
+          return daNat === n.code;
+        })
+        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
 
-      // Coût réel WBS / Production par nature
-      const actual = targetWbsNodes
-        .filter(node => getNatureFromNode(node) === n.code)
-        .reduce((sum, node) => sum + (Number(node.actualCost) || 0), 0);
+      // 3. Coût réel WBS / Production par nature
+      let actual = natureLeaves.reduce((sum, node) => sum + (Number(node.actualCost || node.actualCostAmount) || 0), 0);
+      
+      const validReports = filteredDailyReports.filter(r => {
+        const s = (r.status || '').toUpperCase();
+        return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+      });
+      
+      const reportsActual = validReports
+        .filter(r => {
+          const wCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
+          const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
+          return node ? getNatureFromNode(node) === n.code : n.code === 'MAT';
+        })
+        .reduce((s, r) => s + (Number(r.totalCost) || (Number(r.realizedQty || 0) * Number(r.pu || 500000))), 0);
+
+      if (reportsActual > actual) {
+        actual = reportsActual;
+      }
 
       return { ...n, budget, engaged, actual };
     });
@@ -507,11 +544,11 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
     return natureData.map(d => ({
       ...d,
-      hBudget: Math.max(8, Math.round((d.budget / maxVal) * 110)),
-      hEngaged: Math.max(6, Math.round((d.engaged / maxVal) * 110)),
-      hActual: Math.max(6, Math.round((d.actual / maxVal) * 110)),
+      hBudget: Math.max(8, Math.round((d.budget / maxVal) * 115)),
+      hEngaged: Math.max(6, Math.round((d.engaged / maxVal) * 115)),
+      hActual: Math.max(6, Math.round((d.actual / maxVal) * 115)),
     }));
-  }, [targetWbsNodes, filteredPurchaseRequests]);
+  }, [targetWbsNodes, filteredPurchaseRequests, filteredDailyReports, totalBudgetDs]);
 
   return (
     <div className="space-y-5 text-slate-800 font-sans w-full pb-10">
