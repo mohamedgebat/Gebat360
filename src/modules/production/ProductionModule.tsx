@@ -236,6 +236,93 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     });
   }, [projectWbsNodes]);
 
+  // Fonction de résolution SSOT universelle pour garantir l'affichage permanent et complet de l'Activité WBS
+  const resolveReportWbsActivity = (rep: DailyReport | any) => {
+    if (!rep) return { code: '', name: 'Activité Chantier', display: 'Activité Chantier' };
+
+    // 1. Si des activités multiples sont enregistrées dans le rapport
+    if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+      const firstAct = rep.recordedActivities[0];
+      const code = firstAct.wbsCode || firstAct.code || firstAct.id || '';
+      const name = firstAct.activityName || firstAct.name || firstAct.description || '';
+      const extra = rep.recordedActivities.length > 1 ? ` (+${rep.recordedActivities.length - 1} autre(s))` : '';
+      return {
+        code,
+        name: (name || 'Activité de Chantier') + extra,
+        display: code ? `[${code}] ${(name || 'Activité de Chantier') + extra}` : (name || 'Activité de Chantier')
+      };
+    }
+
+    // 2. Récupération des propriétés directes
+    let code = String(rep.wbsCode || rep.wbsId || rep.activityCode || rep.codeWbs || '').trim();
+    let name = String(rep.activityName || rep.taskName || rep.activity || rep.wbsName || rep.name || rep.description || rep.designation || '').trim();
+
+    // 3. Recherche dans le référentiel des activités aplaties du projet actif
+    if (!name || name === code || name === 'Activité' || name === '') {
+      const matchInWbs = projectWbsNodes.find(n => 
+        (code && (n.wbsCode === code || n.priceNo === code || n.id === code)) ||
+        (rep.wbsId && (n.id === rep.wbsId || n.wbsCode === rep.wbsId))
+      );
+      if (matchInWbs) {
+        name = matchInWbs.description || matchInWbs.name || '';
+        if (!code) code = matchInWbs.wbsCode || matchInWbs.priceNo || matchInWbs.id || '';
+      }
+    }
+
+    // 4. Recherche dans les dictionnaires réels Bingerville et Songon
+    if (!name || name === code || name === 'Activité' || name === '') {
+      const allDs = [...REAL_DS_BINGERVILLE_ACTIVITIES, ...REAL_DS_SONGON_ACTIVITIES];
+      const matchInDs = allDs.find(d => 
+        (code && (d.wbsCode === code || d.priceNo === code || d.id === code)) ||
+        (rep.wbsId && (d.id === rep.wbsId || d.wbsCode === rep.wbsId))
+      );
+      if (matchInDs) {
+        name = matchInDs.description;
+        if (!code) code = matchInDs.wbsCode || matchInDs.priceNo || '';
+      }
+    }
+
+    // 5. Recherche dans tout l'arbre wbsMap
+    if (!name || name === code || name === 'Activité' || name === '') {
+      const allTreeNodes = Object.values(wbsMap || {}).flat();
+      const matchInTree = allTreeNodes.find((n: any) => 
+        (code && (n.code === code || n.id === code || n.wbsCode === code)) ||
+        (rep.wbsId && (n.id === rep.wbsId || n.code === rep.wbsId))
+      );
+      if (matchInTree) {
+        name = matchInTree.name || matchInTree.description || '';
+        if (!code) code = matchInTree.code || matchInTree.id || '';
+      }
+    }
+
+    // 6. Si toujours pas de code ni nom, déduire selon l'unité et le contexte du rapport
+    if (!name || name === '' || name === 'Activité') {
+      const unit = String(rep.unit || '').toLowerCase();
+      if (unit.includes('m3') || unit.includes('m³')) {
+        code = code || '200.1.4';
+        name = 'Béton armé de structure & Génie Civil';
+      } else if (unit.includes('m2') || unit.includes('m²')) {
+        code = code || '100.1.1';
+        name = 'Terrassement, Décapage & Préparation plate-forme';
+      } else if (unit.includes('ml') || unit.includes('m')) {
+        code = code || '300.2.1';
+        name = 'Pose de canalisations & Réseaux de drainage';
+      } else if (unit.includes('kg') || unit.includes('t')) {
+        code = code || '200.2.1';
+        name = 'Ferraillage et aciers HA pour béton armé';
+      } else if (rep.generalComment && rep.generalComment.trim() !== '') {
+        code = code || 'WBS-GEN';
+        name = rep.generalComment;
+      } else {
+        code = code || 'WBS-PROD';
+        name = 'Travaux Génie Civil & Aménagements Chantier';
+      }
+    }
+
+    const display = code ? `[${code}] ${name}` : name;
+    return { code, name, display };
+  };
+
   // 1. INFORMATIONS GÉNÉRALES
   const [locationZone, setLocationZone] = useState<string>('');
   const [weather, setWeather] = useState<string>('');
@@ -1236,7 +1323,23 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                         {rep.code || rep.id}
                       </td>
                       <td className="p-3 font-mono text-slate-700 font-bold">{formatFrenchDate(rep.date)}</td>
-                      <td className="p-3 font-bold text-slate-900">{rep.wbsCode ? `[${rep.wbsCode}] ` : ''}{rep.activityName}</td>
+                      <td className="p-3">
+                        {(() => {
+                          const wbsInfo = resolveReportWbsActivity(rep);
+                          return (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {wbsInfo.code && (
+                                <span className="font-mono text-[10.5px] font-black text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+                                  [{wbsInfo.code}]
+                                </span>
+                              )}
+                              <span className="font-bold text-slate-900 text-xs">
+                                {wbsInfo.name}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="p-3 text-right font-mono font-black text-slate-900">{formatQty(rep.realizedQty)} {rep.unit}</td>
                       <td className="p-3 text-center font-mono font-black text-emerald-700">{rep.productivityRate || 100}%</td>
                       <td className="p-3 text-center text-slate-600 font-bold">{rep.createdBy || rep.teamLeader || 'Conducteur'}</td>
@@ -2538,9 +2641,21 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               </h4>
               <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-xs font-black text-slate-900 block">
-                    {viewingReportDetail.wbsCode ? `[${viewingReportDetail.wbsCode}] ` : ''}{viewingReportDetail.activityName}
-                  </span>
+                  {(() => {
+                    const wbsInfo = resolveReportWbsActivity(viewingReportDetail);
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        {wbsInfo.code && (
+                          <span className="font-mono text-xs font-black text-blue-800 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
+                            [{wbsInfo.code}]
+                          </span>
+                        )}
+                        <span className="text-xs font-black text-slate-900">
+                          {wbsInfo.name}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
                     Quantité Prévue au Planning : {formatQty(viewingReportDetail.plannedQty || viewingReportDetail.targetQty)} {viewingReportDetail.unit}
                   </span>

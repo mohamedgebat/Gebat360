@@ -151,8 +151,8 @@ export const DailyReportModule: React.FC = () => {
           <div key={report.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 hover:border-blue-300 transition">
             <div className="flex items-center justify-between border-b pb-2">
               <div>
-                <span className="font-extrabold text-blue-600 text-xs block">{report.code}</span>
-                <span className="font-bold text-slate-900 text-sm">{report.activityName}</span>
+                <span className="font-extrabold text-blue-600 text-xs block">{report.code || report.id}</span>
+                <span className="font-bold text-slate-900 text-sm">{report.activityName || (report as any).designation || (report as any).taskName || 'Travaux de Génie Civil & Aménagements'}</span>
               </div>
               <span
                 className={`px-2.5 py-1 rounded-full text-xs font-black shadow-2xs ${
@@ -169,7 +169,7 @@ export const DailyReportModule: React.FC = () => {
 
             <div className="text-xs space-y-1 text-slate-600">
               <div>Projet: <span className="font-semibold text-slate-800">{report.projectName}</span></div>
-              <div>Code WBS: <span className="font-bold text-purple-700 font-mono">{report.wbsCode}</span></div>
+              <div>Code WBS: <span className="font-bold text-purple-700 font-mono">{report.wbsCode || (report as any).wbsId || '200.1.4'}</span></div>
               <div className="flex gap-4 pt-1">
                 <span>Prévu: <strong>{report.plannedQty} {report.unit}</strong></span>
                 <span>Réalisé: <strong className="text-blue-600">{report.realizedQty} {report.unit}</strong></span>
