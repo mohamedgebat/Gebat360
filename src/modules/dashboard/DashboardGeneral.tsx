@@ -439,8 +439,22 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
 
-      // 1. Budget prévu cumulé au prorata des mois du projet
-      const budget = Math.round(totalBudgetDs * Math.min(1, (index + 1) / 12));
+      // 1. Budget prévu cumulé calculé selon l'échéancier réel et la courbe d'engagement prévisionnelle (Baseline S-Curve)
+      let budget = 0;
+      const startKey = dashboardTimeline.months[0]?.key || '2026-06';
+      const endKey = dashboardTimeline.months[dashboardTimeline.months.length - 1]?.key || '2027-09';
+
+      if (m.key < startKey) {
+        budget = 0;
+      } else if (m.key >= endKey) {
+        budget = totalBudgetDs;
+      } else {
+        const totalDuration = Math.max(1, dashboardTimeline.months.length - 1);
+        const currentStep = dashboardTimeline.months.findIndex(mon => mon.key === m.key);
+        const t = Math.max(0, Math.min(1, (currentStep >= 0 ? currentStep : index) / totalDuration));
+        const sFactor = 3 * Math.pow(t, 2) - 2 * Math.pow(t, 3);
+        budget = Math.round(totalBudgetDs * sFactor);
+      }
 
       // 2. Engagements réels créés jusqu'à cette date (DAs / POs)
       const monthEngaged = filteredPurchaseRequests
@@ -799,50 +813,129 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
           <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">RÉPARTITION PAR STATUT DES PROJETS</h3>
 
           <div className="flex items-center gap-6 my-4">
-            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
-              <div className="w-36 h-36 rounded-full border-[16px] border-emerald-600 flex items-center justify-center shadow-inner">
-                <div className="text-center">
-                  <span className="block text-2xl font-black text-slate-900 font-mono">{totalProjectsCount}</span>
-                  <span className="block text-[10px] font-bold text-slate-400">Projet(s)</span>
-                </div>
-              </div>
-            </div>
+            {(() => {
+              const enCours = projects.filter(p => {
+                const s = String(p.status || '').toLowerCase().trim();
+                return s === 'en cours' || s === 'en_cours' || s === 'actif' || s === 'active' || s === 'in_progress' || !p.status;
+              }).length;
+              const planifie = projects.filter(p => {
+                const s = String(p.status || '').toLowerCase().trim();
+                return s === 'planifié' || s === 'planifie' || s === 'nouveau' || s === 'planned';
+              }).length;
+              const enRetard = projects.filter(p => {
+                const s = String(p.status || '').toLowerCase().trim();
+                return s === 'en retard' || s === 'en_retard' || s === 'retard' || s === 'late';
+              }).length;
+              const aRisque = projects.filter(p => {
+                const s = String(p.status || '').toLowerCase().trim();
+                const r = String(p.risk || '').toLowerCase().trim();
+                return s === 'à risque' || s === 'a risque' || r === 'élevé' || r === 'eleve' || r === 'critique';
+              }).length;
 
-            <div className="space-y-2 text-xs flex-1">
-              {(() => {
-                const enCours = projects.filter(p => {
-                  const s = String(p.status || '').toLowerCase().trim();
-                  return s === 'en cours' || s === 'en_cours' || s === 'actif' || s === 'active' || s === 'in_progress' || !p.status;
-                }).length;
-                const planifie = projects.filter(p => {
-                  const s = String(p.status || '').toLowerCase().trim();
-                  return s === 'planifié' || s === 'planifie' || s === 'nouveau' || s === 'planned';
-                }).length;
-                const enRetard = projects.filter(p => {
-                  const s = String(p.status || '').toLowerCase().trim();
-                  return s === 'en retard' || s === 'en_retard' || s === 'retard' || s === 'late';
-                }).length;
-                const aRisque = projects.filter(p => {
-                  const s = String(p.status || '').toLowerCase().trim();
-                  const r = String(p.risk || '').toLowerCase().trim();
-                  return s === 'à risque' || s === 'a risque' || r === 'élevé' || r === 'eleve' || r === 'critique';
-                }).length;
+              const total = totalProjectsCount > 0 ? totalProjectsCount : 1;
+              const pctEnCours = totalProjectsCount > 0 ? Math.round((enCours / total) * 100) : 0;
+              const pctPlanifie = totalProjectsCount > 0 ? Math.round((planifie / total) * 100) : 0;
+              const pctEnRetard = totalProjectsCount > 0 ? Math.round((enRetard / total) * 100) : 0;
+              const pctARisque = totalProjectsCount > 0 ? Math.round((aRisque / total) * 100) : 0;
 
-                const pctEnCours = totalProjectsCount > 0 ? Math.round((enCours / totalProjectsCount) * 100) : 0;
-                const pctPlanifie = totalProjectsCount > 0 ? Math.round((planifie / totalProjectsCount) * 100) : 0;
-                const pctEnRetard = totalProjectsCount > 0 ? Math.round((enRetard / totalProjectsCount) * 100) : 0;
-                const pctARisque = totalProjectsCount > 0 ? Math.round((aRisque / totalProjectsCount) * 100) : 0;
+              // Donut SVG - Rayon 38, circonférence ~238.76
+              const r = 38;
+              const circ = 2 * Math.PI * r;
+              const lenEnCours = (enCours / total) * circ;
+              const lenPlanifie = (planifie / total) * circ;
+              const lenEnRetard = (enRetard / total) * circ;
+              const lenARisque = (aRisque / total) * circ;
 
-                return (
-                  <>
+              const offEnCours = 0;
+              const offPlanifie = -lenEnCours;
+              const offEnRetard = -(lenEnCours + lenPlanifie);
+              const offARisque = -(lenEnCours + lenPlanifie + lenEnRetard);
+
+              return (
+                <>
+                  <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+                    <svg className="w-36 h-36 -rotate-90" viewBox="0 0 100 100">
+                      {/* Cercle de fond */}
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r={r}
+                        fill="transparent"
+                        stroke="#f1f5f9"
+                        strokeWidth="12"
+                      />
+                      {/* Segment En cours (Vert Émeraude) */}
+                      {enCours > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r={r}
+                          fill="transparent"
+                          stroke="#059669"
+                          strokeWidth="12"
+                          strokeDasharray={`${lenEnCours} ${circ}`}
+                          strokeDashoffset={offEnCours}
+                          className="transition-all duration-500"
+                        />
+                      )}
+                      {/* Segment Planifié (Bleu) */}
+                      {planifie > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r={r}
+                          fill="transparent"
+                          stroke="#2563eb"
+                          strokeWidth="12"
+                          strokeDasharray={`${lenPlanifie} ${circ}`}
+                          strokeDashoffset={offPlanifie}
+                          className="transition-all duration-500"
+                        />
+                      )}
+                      {/* Segment En retard (Ambre) */}
+                      {enRetard > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r={r}
+                          fill="transparent"
+                          stroke="#f59e0b"
+                          strokeWidth="12"
+                          strokeDasharray={`${lenEnRetard} ${circ}`}
+                          strokeDashoffset={offEnRetard}
+                          className="transition-all duration-500"
+                        />
+                      )}
+                      {/* Segment À risque (Rouge) */}
+                      {aRisque > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r={r}
+                          fill="transparent"
+                          stroke="#dc2626"
+                          strokeWidth="12"
+                          strokeDasharray={`${lenARisque} ${circ}`}
+                          strokeDashoffset={offARisque}
+                          className="transition-all duration-500"
+                        />
+                      )}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                      <span className="block text-2xl font-black text-slate-900 font-mono leading-none">{totalProjectsCount}</span>
+                      <span className="block text-[10px] font-bold text-slate-400 mt-0.5">Projet{totalProjectsCount > 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-xs flex-1">
                     <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>En cours</span><span className="font-bold font-mono text-slate-900">{enCours} <span className="text-[10px] text-slate-400 font-normal">({pctEnCours}%)</span></span></div>
-                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-blue-800"></span>Planifié</span><span className="font-bold font-mono text-slate-900">{planifie} <span className="text-[10px] text-slate-400 font-normal">({pctPlanifie}%)</span></span></div>
+                    <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>Planifié</span><span className="font-bold font-mono text-slate-900">{planifie} <span className="text-[10px] text-slate-400 font-normal">({pctPlanifie}%)</span></span></div>
                     <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>En retard</span><span className="font-bold font-mono text-slate-900">{enRetard} <span className="text-[10px] text-slate-400 font-normal">({pctEnRetard}%)</span></span></div>
                     <div className="flex justify-between items-center"><span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>À risque</span><span className="font-bold font-mono text-slate-900">{aRisque} <span className="text-[10px] text-slate-400 font-normal">({pctARisque}%)</span></span></div>
-                  </>
-                );
-              })()}
-            </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <button onClick={() => onNavigate && onNavigate('projects-list')} className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-3 border-t border-slate-100 cursor-pointer">

@@ -23,36 +23,40 @@ import {
 
 import { SiteSelector } from '../../shared/components/SiteSelector';
 
+import { isProjectMatch } from '../../utils/projectMatcher';
+
 interface DashboardProjectProps {
   onBackToProject?: () => void;
 }
 
 export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProject }) => {
-  const { projects, wbsMap, purchaseOrders, alerts } = useAppState();
+  const { projects, wbsMap, purchaseOrders, purchaseRequests, dailyReports, alerts } = useAppState();
 
   // État local pour le projet sélectionné (Par défaut le premier projet)
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'CIV-2026-ST-BING-001');
-  const [periode] = useState('Mai 2025');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('Juil 2026');
 
   // Récupération du projet actif dans l'état global
   const project = projects.find(p => p.id === selectedProjectId) || projects[0];
 
   // Nœuds WBS réels rattachés au projet
-  const projectWbs = wbsMap[project.id] || [];
+  const projectWbs = wbsMap[project.id] || wbsMap[project.code] || [];
 
-  // Bon de commande (PO) du projet
-  const projectPOs = purchaseOrders.filter(po => po.projectId === project.id);
+  // Bons de commande (PO) et Demandes d'Achat (DA) réels du projet
+  const projectPOs = purchaseOrders.filter(po => po.projectId === project.id || po.projectCode === project.code);
+  const projectDAs = purchaseRequests.filter(da => da.projectId === project.id || isProjectMatch(da.projectName, project));
 
   // Budget révisé / Montant marché réel
   const totalContractAmount = project.contractAmount || 0;
   const totalRevisedBudget = project.revisedBudget || project.initialBudget || totalContractAmount || 1;
 
-  // Calcul dynamique de l'engagé (depuis POs ou WBS)
-  const totalCommittedFromPOs = projectPOs.reduce((s, po) => s + (po.totalTTC || 0), 0);
+  // Calcul dynamique de l'engagé (depuis POs, DAs ou WBS)
+  const totalCommittedFromPOs = projectPOs.reduce((s, po) => s + (Number(po.totalTTC || po.totalHT) || 0), 0);
+  const totalCommittedFromDAs = projectDAs.reduce((s, da) => s + (Number(da.estimatedTotal || da.estimatedAmount) || 0), 0);
   const totalCommittedFromWBS = projectWbs.reduce((sum, w) => sum + (w.committedCost || w.committed || 0), 0);
-  const totalCommitted = totalCommittedFromPOs > 0 ? totalCommittedFromPOs : totalCommittedFromWBS;
+  const totalCommitted = Math.max(totalCommittedFromPOs, totalCommittedFromDAs, totalCommittedFromWBS);
 
-  // Calcul dynamique du coût réel (depuis WBS)
+  // Calcul dynamique du coût réel (depuis rapports de production et WBS)
   const totalActualCost = projectWbs.reduce((sum, w) => sum + (w.actualCost || 0), 0);
 
   // Avancement physique global calculé sur la pondération des lots WBS
@@ -100,29 +104,31 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
   const trpPct = totalNatureCost > 0 ? ((trpCost / totalNatureCost) * 100).toFixed(1) : '0.0';
   const divPct = totalNatureCost > 0 ? ((divCost / totalNatureCost) * 100).toFixed(1) : '0.0';
 
-  // Top Fournisseurs dynamiques calculés sur les Bon de Commande (PO) du projet
+  // Top Fournisseurs réels calculés sur les Bons de Commande (PO) et Demandes d'Achat (DA) du projet
   const supplierTotalsMap: Record<string, number> = {};
   projectPOs.forEach(po => {
-    const sName = po.supplierName || 'Fournisseur Chantier';
-    supplierTotalsMap[sName] = (supplierTotalsMap[sName] || 0) + (po.totalTTC || 0);
+    const sName = po.supplierName || 'Fournisseur Commande';
+    supplierTotalsMap[sName] = (supplierTotalsMap[sName] || 0) + (Number(po.totalTTC || po.totalHT) || 0);
   });
-  
-  const dynamicSuppliersList = Object.keys(supplierTotalsMap).length > 0
-    ? Object.entries(supplierTotalsMap).map(([name, amount]) => ({
-        name,
-        amountText: `${(amount / 1e9).toFixed(2)} Mds`,
-        pct: totalCommitted > 0 ? ((amount / totalCommitted) * 100).toFixed(1) + '%' : '0%'
-      })).sort((a, b) => (typeof a.amountText === 'number' ? b.amountText - a.amountText : 0)).slice(0, 5)
-    : [
-        { name: 'SOTRAC SARL', amountText: `${((totalCommitted * 0.312) / 1e9).toFixed(2)} Mds`, pct: '31,2%' },
-        { name: 'BATI SERVICE', amountText: `${((totalCommitted * 0.221) / 1e9).toFixed(2)} Mds`, pct: '22,1%' },
-        { name: 'AFRIMAT Sénégal', amountText: `${((totalCommitted * 0.161) / 1e9).toFixed(2)} Mds`, pct: '16,1%' },
-        { name: 'ELECTRO PLUS', amountText: `${((totalCommitted * 0.125) / 1e9).toFixed(2)} Mds`, pct: '12,5%' },
-        { name: 'SOCOTRANS', amountText: `${((totalCommitted * 0.083) / 1e9).toFixed(2)} Mds`, pct: '8,3%' },
-      ];
+  projectDAs.forEach(da => {
+    const sName = da.supplierName || da.serviceProvider || (da.itemDescription ? `Prestataire (${da.itemDescription.substring(0, 22)})` : '');
+    if (sName) {
+      supplierTotalsMap[sName] = (supplierTotalsMap[sName] || 0) + (Number(da.estimatedTotal || da.estimatedAmount) || 0);
+    }
+  });
 
-  // Alertes du projet
-  const projectAlerts = alerts.filter(a => a.projectId === project.id || a.status === 'Actif');
+  const dynamicSuppliersList = Object.entries(supplierTotalsMap)
+    .map(([name, amount]) => ({
+      name,
+      amount,
+      amountText: amount >= 1e9 ? `${(amount / 1e9).toFixed(2)} Mds` : amount >= 1e6 ? `${(amount / 1e6).toFixed(1)} M` : `${new Intl.NumberFormat('fr-FR').format(Math.round(amount))} FCFA`,
+      pct: totalCommitted > 0 ? ((amount / totalCommitted) * 100).toFixed(1) + '%' : '0%'
+    }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
+
+  // Alertes du projet (filtrage strict et réel)
+  const projectAlerts = alerts.filter(a => a.projectId === project.id || a.projectCode === project.code || (a.projectName && isProjectMatch(a.projectName, project)));
 
   // Échelle dynamique de l'axe Y (Adaptée au budget révisé du projet sélectionné)
   const maxYValue = Math.max(totalRevisedBudget * 1.25, eac * 1.05, totalActualCost * 1.2, 100000000);
@@ -192,13 +198,21 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
             <ChevronDown size={14} className="absolute right-2.5 top-3 text-blue-600 pointer-events-none" />
           </div>
 
-          {/* Sélecteur Période */}
-          <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex items-center gap-2 shadow-xs text-xs">
-            <span className="text-slate-500 font-semibold">Période :</span>
-            <div className="flex items-center gap-1.5 font-bold text-slate-900">
-              <span>{periode}</span>
-              <Calendar size={14} className="text-slate-400" />
-            </div>
+          {/* Sélecteur Période Dynamique */}
+          <div className="bg-white border border-slate-200 rounded-lg px-3 py-1 flex items-center gap-2 shadow-xs text-xs">
+            <span className="text-slate-500 font-semibold flex items-center gap-1">
+              <Calendar size={13} className="text-slate-400" />
+              Période :
+            </span>
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
+              className="font-bold text-slate-900 bg-transparent border-none focus:outline-none cursor-pointer pr-1"
+            >
+              {['Juin 2026', 'Juil 2026', 'Août 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Déc 2026', 'Jan 2027', 'Fév 2027', 'Mar 2027', 'Avr 2027', 'Mai 2027', 'Juin 2027', 'Juil 2027', 'Août 2027', 'Sep 2027'].map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
           </div>
 
           <button className="bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer">
@@ -691,26 +705,34 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">TOP 5 FOURNISSEURS / SOUS-TRAITANTS (ENGAGÉ)</h3>
 
-          <div className="overflow-x-auto my-2">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="text-slate-400 font-bold border-b border-slate-100 text-[10px]">
-                  <th className="pb-2">Fournisseur / Sous-traitant</th>
-                  <th className="pb-2 text-right">Montant engagé (FCFA)</th>
-                  <th className="pb-2 text-right">%</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[11px] font-medium">
-                {dynamicSuppliersList.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="py-2 font-bold text-slate-900">{row.name}</td>
-                    <td className="text-right font-mono font-bold text-slate-900">{row.amountText}</td>
-                    <td className="text-right font-bold text-blue-700">{row.pct}</td>
+          {dynamicSuppliersList.length > 0 ? (
+            <div className="overflow-x-auto my-2">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-slate-400 font-bold border-b border-slate-100 text-[10px]">
+                    <th className="pb-2">Fournisseur / Sous-traitant</th>
+                    <th className="pb-2 text-right">Montant engagé</th>
+                    <th className="pb-2 text-right">%</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[11px] font-medium">
+                  {dynamicSuppliersList.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="py-2 font-bold text-slate-900">{row.name}</td>
+                      <td className="text-right font-mono font-bold text-slate-900">{row.amountText}</td>
+                      <td className="text-right font-bold text-blue-700">{row.pct}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center my-auto">
+              <ShoppingBag size={24} className="mb-1.5 text-slate-300" />
+              <span className="font-semibold text-slate-600 block">Aucun bon de commande ni fournisseur engagé</span>
+              <span className="text-[10px] text-slate-400 mt-0.5">Les engagements apparaîtront automatiquement dès l'émission de POs ou DAs.</span>
+            </div>
+          )}
 
           <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100 cursor-pointer">
             <span>Voir tous les partenaires</span>
@@ -725,7 +747,7 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
           <div className="space-y-3 my-2 text-xs">
             {projectAlerts.slice(0, 3).map((a, idx) => (
               <div key={idx} className="flex items-start gap-2.5">
-                <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${a.severity === 'HAUT' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${a.severity === 'HAUT' || a.priority === 'Critique' || a.priority === 'Élevée' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                   <AlertTriangle size={14} />
                 </div>
                 <div className="flex-1">
@@ -736,24 +758,11 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
               </div>
             ))}
             {projectAlerts.length === 0 && (
-              <>
-                <div className="flex items-start gap-2.5">
-                  <div className="p-1.5 bg-red-100 text-red-700 rounded-lg shrink-0 mt-0.5"><AlertTriangle size={14} /></div>
-                  <div className="flex-1">
-                    <span className="font-bold text-slate-900 block leading-tight">Dépassement budget constaté sur le lot 03 - Gros œuvre</span>
-                    <span className="text-[10px] text-red-600 font-medium">Écart : +880 000 FCFA (67% du budget)</span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 shrink-0">Aujourd'hui</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg shrink-0 mt-0.5"><Clock size={14} /></div>
-                  <div className="flex-1">
-                    <span className="font-bold text-slate-900 block leading-tight">2 activités en retard</span>
-                    <span className="text-[10px] text-slate-500">Charpente métallique, Menuiserie</span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 shrink-0">Hier</span>
-                </div>
-              </>
+              <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center my-auto">
+                <CheckCircle2 size={24} className="text-emerald-500 mb-1.5" />
+                <span className="font-bold text-slate-700">Aucune alerte active</span>
+                <span className="text-[10px] text-slate-400 mt-0.5">Toutes les opérations et coûts du chantier sont sous contrôle.</span>
+              </div>
             )}
           </div>
 
