@@ -166,41 +166,75 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       const section = String(n.section || n.category || '').trim();
       const manager = n.manager || project.manager || 'SEA Alphonse';
 
+      const codeUpper = code.toUpperCase();
+      const nameLower = name.toLowerCase();
+
+      // 1. Budget Déboursé Sec Révisé
+      const revisedBudgetVal = Number(
+        n.revisedBudget ||
+        n.calculatedDsAmount ||
+        n.importedDsAmount ||
+        n.budget ||
+        n.plannedBudget ||
+        n.initialBudget ||
+        n.marketAmount ||
+        ((Number(n.contractQty || n.plannedQty || n.quantity || 0)) * (Number(n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 0))) ||
+        0
+      );
+
+      // 2. Engagé Réel (DAs et Bons de commande pour ce nœud WBS)
+      const matchingDAs = projectDAs.filter(da => {
+        const daWbsCode = String(da.wbsCode || da.wbsId || da.code || '').toUpperCase().trim();
+        const daWbsName = String(da.wbsName || da.designation || da.activityName || da.taskName || '').toLowerCase().trim();
+        return (codeUpper && (daWbsCode === codeUpper || daWbsCode.includes(codeUpper) || codeUpper.includes(daWbsCode))) ||
+               (nameLower && (daWbsName.includes(nameLower) || nameLower.includes(daWbsName)));
+      });
+      const daCommittedVal = matchingDAs.reduce((sum, da) => sum + Number(da.estimatedTotal || da.totalAmount || da.estimatedAmount || 0), 0);
+      const committedVal = Number(n.committed || 0) > 0 ? Number(n.committed) : daCommittedVal;
+
+      // 3. Réalisé à date (Actual Cost) extrait des Rapports Journaliers validés
+      const matchingReps = projectReports.filter(r => {
+        const rCode = String(r.wbsCode || r.wbsId || r.code || '').trim().toUpperCase();
+        const rName = String(r.activityName || r.taskName || '').trim().toLowerCase();
+        return (codeUpper && (rCode === codeUpper || rCode.includes(codeUpper) || codeUpper.includes(rCode))) ||
+               (nameLower && rName && (rName.includes(nameLower) || nameLower.includes(rName)));
+      });
+
+      const repActualCostVal = matchingReps.reduce((sum, r) => {
+        let cost = Number(r.totalCost);
+        const qte = Number(r.realizedQty) || 0;
+        const pu = Number(r.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 5000);
+        if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
+        return sum + (cost || 0);
+      }, 0);
+      const actualCostVal = Number(n.actualCost || 0) > 0 ? Number(n.actualCost) : repActualCostVal;
+
+      // 4. Avancement physique réel
+      let calcProgress = 0;
+      if (matchingReps.length > 0) {
+        const targetQty = Number(n.plannedQty || n.contractQty || n.targetQty || 0);
+        const totalRealized = matchingReps.reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
+        if (targetQty > 0) {
+          calcProgress = Math.min(100, Math.round((totalRealized / targetQty) * 100));
+        } else {
+          const avgRate = Math.round(matchingReps.reduce((sum, r) => sum + (Number(r.productivityRate) || 100), 0) / matchingReps.length);
+          calcProgress = Math.min(100, avgRate);
+        }
+      }
+      if (calcProgress === 0 && Number(n.progress) > 0) {
+        calcProgress = Number(n.progress);
+      }
+
+      // 5. EAC Prévisionnel
+      const explicitEac = Number(n.eac || 0);
+      const eacVal = explicitEac > 0 ? explicitEac : Math.max(revisedBudgetVal, actualCostVal);
+
       // Recherche correspondante dans les tâches du planning réel
       const matchedPlanningTask = planningTasksList.find(pt => {
         const ptName = String(pt.name || '').trim().toLowerCase();
         const nName = name.toLowerCase();
         return ptName === nName || nName.includes(ptName) || ptName.includes(nName);
       });
-
-      // Calcul dynamique de l'avancement physique réel depuis les rapports journaliers validés
-      let calcProgress = 0;
-      if (projectReports.length > 0) {
-        const matchingReps = projectReports.filter(r => {
-          const rCode = String(r.wbsCode || r.wbsId || r.code || '').trim().toUpperCase();
-          const rName = String(r.activityName || r.taskName || '').trim().toLowerCase();
-          const nCodeUpper = code.toUpperCase();
-          const nNameLower = name.toLowerCase();
-          return (code && (rCode === nCodeUpper || rCode.includes(nCodeUpper) || nCodeUpper.includes(rCode))) ||
-                 (name && rName && (rName.includes(nNameLower) || nNameLower.includes(rName)));
-        });
-
-        if (matchingReps.length > 0) {
-          const targetQty = Number(n.plannedQty || n.contractQty || n.targetQty || 0);
-          const totalRealized = matchingReps.reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
-          if (targetQty > 0) {
-            calcProgress = Math.min(100, Math.round((totalRealized / targetQty) * 100));
-          } else {
-            const avgRate = Math.round(matchingReps.reduce((sum, r) => sum + (Number(r.productivityRate) || 100), 0) / matchingReps.length);
-            calcProgress = Math.min(100, avgRate);
-          }
-        }
-      }
-
-      // Si le nœud a déjà un progress explicite dans ses données
-      if (calcProgress === 0 && Number(n.progress) > 0) {
-        calcProgress = Number(n.progress);
-      }
 
       return {
         ...n,
@@ -216,14 +250,14 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         endDate: matchedPlanningTask?.endDate || project.endDate || '2027-09-01',
         duration: matchedPlanningTask?.duration || 4,
         durationUnit: matchedPlanningTask?.durationUnit || 'Mois',
-        revisedBudget: Number(n.revisedBudget || n.calculatedDsAmount || n.initialBudget || n.marketAmount || 0),
-        initialBudget: Number(n.initialBudget || n.revisedBudget || n.calculatedDsAmount || n.marketAmount || 0),
-        committed: Number(n.committed || 0),
-        actualCost: Number(n.actualCost || 0),
-        eac: Number(n.eac || n.revisedBudget || n.calculatedDsAmount || 0),
+        revisedBudget: revisedBudgetVal,
+        initialBudget: Number(n.initialBudget || revisedBudgetVal || 0),
+        committed: committedVal,
+        actualCost: actualCostVal,
+        eac: eacVal,
       };
     });
-  }, [project, wbsMap, projectReports, isBingerville, isSongon, planningTasksList]);
+  }, [project, wbsMap, projectReports, projectDAs, isBingerville, isSongon, planningTasksList]);
 
   if (!project) {
     return (
@@ -1363,10 +1397,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                           </span>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">{fmtMds(n.revisedBudget || n.initialBudget || 0)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono">{fmtMds(n.committed || 0)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono">{fmtMds(nodeActual(n))}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-black text-blue-900">{fmtMds(n.eac || n.revisedBudget || 0)}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">{fmtMds(n.revisedBudget)}</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-purple-700">{fmtMds(n.committed)}</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-900">{fmtMds(n.actualCost)}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-black text-blue-900">{fmtMds(n.eac)}</td>
                       <td className="py-2.5 px-3 text-center">
                         <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-black inline-block ${
                           n.progress >= 75 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
@@ -1379,6 +1413,28 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-xs">
+                  <tr>
+                    <td className="py-3 px-3 uppercase text-slate-900 font-black">
+                      Total Consolidé ({projectWbsNodes.length} sous-lots)
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-slate-900">
+                      {fmtMds(projectWbsNodes.reduce((s, n) => s + (n.revisedBudget || 0), 0) || revisedBudget)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-800">
+                      {fmtMds(totalCommitted)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-slate-900">
+                      {fmtMds(totalActualCost)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-blue-950">
+                      {fmtMds(totalEac)}
+                    </td>
+                    <td className="py-3 px-3 text-center font-mono font-black text-emerald-800">
+                      {progressPct}%
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
