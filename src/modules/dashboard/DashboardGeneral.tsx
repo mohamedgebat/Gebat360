@@ -770,15 +770,20 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         </div>
 
         {/* KPI 5: TAUX D'AVANCEMENT */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
+        <div 
+          onClick={() => onNavigate && onNavigate(selectedProjectId === 'ALL' ? 'projects-list' : 'btp-production')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between cursor-pointer hover:border-teal-500 transition"
+        >
+          <div className="min-w-0 flex-1 mr-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">AVANCEMENT</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block truncate">AVANCEMENT</span>
               <DataInsight metricId="avancement_moyen" context={{ progressRate: globalProgressRate, totalProductionCost: actualCostAmount, totalBudgetDs: totalBudgetDs }} onNavigate={onNavigate} />
             </div>
             <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">{globalProgressRate}%</span>
-            <span className="text-[10px] text-emerald-600 font-bold block mt-1">
-              {projects.length > 0 ? `${projects.length} projet(s) consolidé(s)` : 'Aucun projet'}
+            <span className="text-[10px] text-emerald-600 font-bold block mt-1 truncate" title={selectedProjectId === 'ALL' ? `${filteredProjects.length} projet(s) consolidé(s)` : (targetProject?.name || targetProject?.code)}>
+              {selectedProjectId === 'ALL' 
+                ? (filteredProjects.length > 0 ? `${filteredProjects.length} projet(s) consolidé(s)` : 'Aucun projet')
+                : (targetProject?.code || targetProject?.name || '1 chantier')}
             </span>
           </div>
           <div className="w-11 h-11 bg-teal-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-teal-600/20 shrink-0">

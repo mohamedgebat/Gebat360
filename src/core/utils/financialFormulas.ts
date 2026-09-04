@@ -269,8 +269,32 @@ export const getProjectFinancialSummary = (
   // 8. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
   let progressPct = 0;
 
-  // Priorité 1 : Avancement physique pondéré des nœuds WBS
-  if (Array.isArray(wbsNodes) && wbsNodes.length > 0) {
+  // Priorité 1 : Avancement physique réel calculé à partir des rapports de production validés
+  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
+    const validReports = dailyReports.filter(r => {
+      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
+      const s = (r.status || '').toUpperCase();
+      const isValid = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+      return isValid && (rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj));
+    });
+
+    if (validReports.length > 0 && revisedBudget > 0) {
+      const totalReportCost = validReports.reduce((sum, r) => {
+        let cost = Number(r.totalCost);
+        const qte = Number(r.realizedQty || 0);
+        const pu = Number(r.pu || 0);
+        if (isNaN(cost) || cost <= 0) cost = qte * pu;
+        return sum + (cost || 0);
+      }, 0);
+
+      if (totalReportCost > 0) {
+        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
+      }
+    }
+  }
+
+  // Priorité 2 : Avancement physique pondéré des nœuds WBS
+  if (progressPct === 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
     const getLeaves = (arr: any[]): any[] => {
       let res: any[] = [];
       arr.forEach(n => {
@@ -280,37 +304,20 @@ export const getProjectFinancialSummary = (
       return res;
     };
     const leafNodes = getLeaves(wbsNodes);
-    const totalPlanned = leafNodes.reduce((acc, n) => acc + Number(n.revisedBudget || n.contractAmount || n.initialBudget || 1), 0);
-    const totalDone = leafNodes.reduce((acc, n) => acc + (Number(n.revisedBudget || n.contractAmount || n.initialBudget || 1) * (Number(n.progress || 0) / 100)), 0);
+    const totalPlanned = leafNodes.reduce((acc, n) => acc + Number(n.revisedBudget || n.contractAmount || n.initialBudget || 0), 0);
+    const totalDone = leafNodes.reduce((acc, n) => {
+      const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || 0);
+      const prog = Number(n.progress || n.progressPct || n.physicalProgress || 0);
+      return acc + (budget * (prog / 100));
+    }, 0);
     if (totalPlanned > 0 && totalDone > 0) {
       progressPct = Number(((totalDone / totalPlanned) * 100).toFixed(1));
     }
   }
 
-  // Priorité 2 : Avancement physique issu des rapports de production validés
-  if (progressPct === 0 && Array.isArray(dailyReports) && dailyReports.length > 0) {
-    const validReports = dailyReports.filter(r => {
-      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
-      const s = (r.status || '').toUpperCase();
-      return (s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED')) &&
-             (rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj));
-    });
-    if (validReports.length > 0 && revisedBudget > 0) {
-      const totalReportCost = validReports.reduce((sum, r) => sum + Number(r.totalCost || (Number(r.realizedQty || 0) * Number(r.pu || 0))), 0);
-      if (totalReportCost > 0) {
-        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
-      }
-    }
-  }
-
-  // Priorité 3 : Avancement physique explicitement saisi sur le projet (ex. 13% pour Bingerville, 7.1% pour Songon)
+  // Priorité 3 : Avancement physique explicitement renseigné sur le projet
   if (progressPct === 0 && (project?.progress !== undefined && project?.progress !== null && Number(project.progress) > 0)) {
     progressPct = Number(project.progress || project.physicalProgress || 0);
-  }
-
-  // Priorité 4 : Consommation budgétaire de secours uniquement si aucun avancement physique n'a été trouvé
-  if (progressPct === 0 && contractAmount > 0 && actualCost > 0) {
-    progressPct = Number(((actualCost / contractAmount) * 100).toFixed(1));
   }
 
   progressPct = Math.min(100, Math.max(0, progressPct));
