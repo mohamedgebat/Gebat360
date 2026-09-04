@@ -280,7 +280,13 @@ const MainApp: React.FC = () => {
 
       case 'procurement-da':
       case 'procurement-receptions':
-        return <ProcurementDAModule onNavigateView={view => setCurrentView(view)} />;
+        return (
+          <ProcurementDAModule
+            onNavigateView={view => setCurrentView(view)}
+            onBackToProject={() => setCurrentView('project-detail')}
+            initialProjectId={selectedProjectId || activeProject?.id || activeProject?.code}
+          />
+        );
 
       case 'procurement-validation':
         return <ProcurementValidationModule />;

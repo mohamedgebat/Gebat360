@@ -374,6 +374,7 @@ export interface PurchaseRequest {
   createdBy: string;
   createdAt: string;
   status: DARequestStatus;
+  items?: PurchaseRequestItem[];
   attachments?: string[];
   
   // Section 20 : Contrôle Budgétaire & Réservations

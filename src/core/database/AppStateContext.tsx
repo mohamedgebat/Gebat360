@@ -1433,9 +1433,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // 1. CREATION DEMANDE D'ACHAT (avec Règle Métier : Budget Révisé - Engagé - Réservé)
-  const createDA = (daData: Omit<PurchaseRequest, 'id' | 'code' | 'createdAt' | 'status' | 'budgetCheck' | 'approvalChain'>): PurchaseRequest => {
+  const createDA = (daData: Partial<PurchaseRequest> & Omit<PurchaseRequest, 'budgetCheck' | 'approvalChain'> & { id?: string; code?: string }): PurchaseRequest => {
     const projectWBSList = wbsMap[daData.projectId] || [];
-    const targetWBS = findWBSNode(projectWBSList, daData.wbsId);
+    const targetWBS = findWBSNode(projectWBSList, daData.wbsId || daData.wbsCode);
 
     const budget = targetWBS ? (targetWBS.revisedBudget || targetWBS.initialBudget || 0) : 10000000;
     const committed = targetWBS ? (targetWBS.committed || 0) : 0;
@@ -1447,17 +1447,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const overBudgetAmount = isOverBudget ? estimatedTotal - availableToCommit : 0;
 
     const countNext = purchaseRequests.length + 1;
-    const daId = `DA-2026-${String(countNext).padStart(6, '0')}`;
-    const code = daId;
+    const defaultDaCode = `DA-2026-${String(countNext).padStart(6, '0')}`;
+    const daId = (daData as any).id || (daData as any).code || defaultDaCode;
+    const code = (daData as any).code || daId;
 
-    const approvalChain = getDAApprovalChain(estimatedTotal, isOverBudget);
+    const approvalChain = daData.approvalChain || getDAApprovalChain(estimatedTotal, isOverBudget);
 
     const newDA: PurchaseRequest = {
       ...daData,
       id: daId,
       code,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'SOUMISE',
+      createdAt: daData.createdAt || new Date().toISOString().replace('T', ' ').substring(0, 16),
+      status: (daData.status as any) || (isOverBudget ? 'EN_VALIDATION' : 'SOUMISE'),
       budgetCheck: {
         wbsBudget: budget,
         activeCommitments: committed,
@@ -1474,10 +1475,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setPurchaseRequests(prev => {
-      const updated = [newDA, ...prev];
+      const existsIdx = prev.findIndex(d => d.id === daId || d.code === code);
+      let updated: PurchaseRequest[];
+      if (existsIdx >= 0) {
+        updated = [...prev];
+        updated[existsIdx] = { ...updated[existsIdx], ...newDA };
+      } else {
+        updated = [newDA, ...prev];
+      }
       safeSaveToStorage('gebat_purchase_requests', updated);
       return updated;
     });
+
+    // Synchronisation MySQL
+    ApiService.createPurchaseRequest(newDA).catch(err => console.warn('⚠️ Imp. sauvegarde DA MySQL:', err));
+
+    // Diffusion temps réel multi-fenêtres / multi-onglets
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PURCHASE_REQUEST_CREATED', da: newDA, timestamp: new Date().toISOString() });
+        }
+      } catch (e) {}
+    }
 
     if (isOverBudget) {
       // Alerte automatique DÉPASSEMENT BUDGÉTAIRE
@@ -1619,6 +1641,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       safeSaveToStorage('gebat_purchase_requests', updated);
       return updated;
     });
+
+    // Synchronisation MySQL
+    ApiService.updatePurchaseRequest(daId, {
+      status,
+      comment,
+      user: currentUser?.name
+    }).catch(err => console.warn('⚠️ Imp. MAJ statut DA MySQL:', err));
+
+    // Diffusion temps réel multi-fenêtres / multi-onglets
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PURCHASE_REQUEST_STATUS_CHANGED', daId, status, timestamp: new Date().toISOString() });
+        }
+      } catch (e) {}
+    }
 
     if (updatedDaObj) {
       const da = updatedDaObj as PurchaseRequest;
