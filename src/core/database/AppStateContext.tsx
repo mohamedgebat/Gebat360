@@ -418,12 +418,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     async function loadDbData() {
       try {
-        const [dbProjects, dbReports, dbDA, dbStock, dbUsers] = await Promise.all([
-          ApiService.getProjects(),
-          ApiService.getDailyReports(),
-          ApiService.getPurchaseRequests(),
-          ApiService.getStockItems(),
-          ApiService.getUsers()
+        const [dbProjects, dbReports, dbDA, dbPO, dbStock, dbMovements, dbUsers, dbAlerts] = await Promise.all([
+          ApiService.getProjects().catch(() => null),
+          ApiService.getDailyReports().catch(() => null),
+          ApiService.getPurchaseRequests().catch(() => null),
+          ApiService.getPurchaseOrders().catch(() => null),
+          ApiService.getStockItems().catch(() => null),
+          ApiService.getStockMovements().catch(() => null),
+          ApiService.getUsers().catch(() => null),
+          ApiService.getAlerts().catch(() => null)
         ]);
 
         if (Array.isArray(dbProjects) && dbProjects.length > 0) {
@@ -438,13 +441,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setPurchaseRequests(dbDA);
           localStorage.setItem('gebat_purchase_requests', JSON.stringify(dbDA));
         }
+        if (Array.isArray(dbPO) && dbPO.length > 0) {
+          setPurchaseOrders(dbPO);
+          localStorage.setItem('gebat_purchase_orders', JSON.stringify(dbPO));
+        }
         if (Array.isArray(dbStock) && dbStock.length > 0) {
           setStockItems(dbStock);
           localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
         }
+        if (Array.isArray(dbMovements) && dbMovements.length > 0) {
+          setStockMovements(dbMovements);
+          localStorage.setItem('gebat_stock_movements', JSON.stringify(dbMovements));
+        }
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           setUsers(dbUsers);
           localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
+        }
+        if (Array.isArray(dbAlerts) && dbAlerts.length > 0) {
+          setAlerts(dbAlerts);
+          localStorage.setItem('gebat_alerts', JSON.stringify(dbAlerts));
         }
       } catch (err) {
         console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
@@ -502,9 +517,62 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       localStorage.setItem('gebat_warehouses', JSON.stringify(warehouses));
     }
   }, [warehouses]);
-  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [receipts, setReceipts] = useState<GoodsReceipt[]>([]);
+  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_purchase_requests');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return INITIAL_PURCHASE_REQUESTS;
+  });
+
+  useEffect(() => {
+    if (purchaseRequests.length > 0) {
+      safeSaveToStorage('gebat_purchase_requests', purchaseRequests);
+    }
+  }, [purchaseRequests]);
+
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_purchase_orders');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return INITIAL_PURCHASE_ORDERS;
+  });
+
+  useEffect(() => {
+    if (purchaseOrders.length > 0) {
+      safeSaveToStorage('gebat_purchase_orders', purchaseOrders);
+    }
+  }, [purchaseOrders]);
+
+  const [receipts, setReceipts] = useState<GoodsReceipt[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_receipts');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return INITIAL_RECEIPTS;
+  });
+
+  useEffect(() => {
+    if (receipts.length > 0) {
+      safeSaveToStorage('gebat_receipts', receipts);
+    }
+  }, [receipts]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem('gebat_stock_movements');
     if (saved) {
@@ -756,13 +824,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [alerts, setAlerts] = useState<SystemAlert[]>(() => {
     if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('gebat_alerts');
-        localStorage.removeItem('gebat_system_alerts');
-      } catch (e) {}
+      const saved = localStorage.getItem('gebat_alerts');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
     }
-    return [];
+    return INITIAL_ALERTS;
   });
+
+  useEffect(() => {
+    if (alerts.length > 0) {
+      safeSaveToStorage('gebat_alerts', alerts);
+    }
+  }, [alerts]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [costNatures, setCostNatures] = useState<CostNatureConfig[]>(DEFAULT_COST_NATURES);
 
