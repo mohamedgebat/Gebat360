@@ -1172,7 +1172,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Détermination du site_id d'imputation (par défaut Site 1 - STBV Bingerville)
     const targetSiteId = activeSiteId !== 'ALL' ? Number(activeSiteId) : (sites[0]?.id || 1);
 
-    setProjects(prev => [project, ...prev]);
+    setProjects(prev => {
+      const updated = [project, ...prev.filter(p => p.id !== id && p.code !== id)];
+      safeSaveToStorage('gebat_projects', updated);
+      return updated;
+    });
 
     const initialNodes: WBSNode[] = (wbsNodes && wbsNodes.length > 0) ? wbsNodes : [
       {
@@ -1207,11 +1211,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       },
     ];
 
-    setWbsMap(prev => ({
-      ...prev,
-      [id]: initialNodes,
-      [project.code]: initialNodes,
-    }));
+    setWbsMap(prev => {
+      const updated = {
+        ...prev,
+        [id]: initialNodes,
+        [project.code]: initialNodes,
+      };
+      safeSaveToStorage('gebat_wbs', updated);
+      return updated;
+    });
 
     // Créer automatiquement le magasin de chantier rattaché au projet et à son site
     const projectWarehouse: Warehouse = {
@@ -1224,7 +1232,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       siteId: targetSiteId,
     };
 
-    setWarehouses(prev => [...prev, projectWarehouse]);
+    setWarehouses(prev => {
+      const updated = [...prev.filter(w => w.id !== projectWarehouse.id), projectWarehouse];
+      safeSaveToStorage('gebat_warehouses', updated);
+      return updated;
+    });
+
+    // Diffusion temps réel inter-onglets et inter-fenêtres
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PROJECT_CREATED', projectId: id, timestamp: Date.now() });
+        }
+      } catch (e) {}
+    }
 
     try {
       await ApiService.createProject({
@@ -1257,11 +1280,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let updatedList: Project[] = [];
     setProjects(prev => {
       updatedList = prev.map(p => (p.id === projectId || p.code === projectId ? { ...p, ...updatedData } : p));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('gebat_projects', JSON.stringify(updatedList));
-      }
+      safeSaveToStorage('gebat_projects', updatedList);
       return updatedList;
     });
+
+    // Diffusion temps réel inter-onglets et inter-fenêtres
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PROJECT_UPDATED', projectId, timestamp: Date.now() });
+        }
+      } catch (e) {}
+    }
 
     try {
       await ApiService.request(`/projects/${projectId}`, {
@@ -1277,7 +1309,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteProject = async (projectId: string) => {
-    setProjects(prev => prev.filter(p => p.id !== projectId && p.code !== projectId));
+    setProjects(prev => {
+      const updated = prev.filter(p => p.id !== projectId && p.code !== projectId);
+      safeSaveToStorage('gebat_projects', updated);
+      return updated;
+    });
+
+    // Diffusion temps réel inter-onglets et inter-fenêtres
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PROJECT_DELETED', projectId, timestamp: Date.now() });
+        }
+      } catch (e) {}
+    }
+
     try {
       await ApiService.request(`/projects/${projectId}`, {
         method: 'DELETE',
