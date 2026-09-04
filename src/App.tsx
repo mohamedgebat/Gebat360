@@ -409,7 +409,7 @@ const MainApp: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900 overflow-x-hidden">
+    <div className="min-h-screen bg-slate-100 font-sans antialiased text-slate-900">
       <Sidebar
         currentView={currentView}
         setCurrentView={v => {
@@ -421,7 +421,7 @@ const MainApp: React.FC = () => {
         mobileOpen={mobileMenuOpen}
         setMobileOpen={setMobileMenuOpen}
       />
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <div className={`flex flex-col min-h-screen min-w-0 transition-[margin] duration-300 ${collapsed ? 'md:ml-20' : 'md:ml-72'}`}>
         <Header 
           currentViewTitle={getTitle()} 
           onNavigate={setCurrentView}
