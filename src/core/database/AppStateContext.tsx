@@ -2217,13 +2217,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setAlerts(prev => [alertItem, ...prev]);
     }
 
-    ApiService.request('/daily_reports', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...report,
-        user: currentUser,
-      }),
-    }).catch(err => console.warn('⚠️ Imp. sauvegarde rapport MySQL:', err));
+    // Synchronisation backend MySQL
+    ApiService.createDailyReport(report).catch(err => console.warn('⚠️ Imp. sauvegarde rapport MySQL:', err));
+
+    // Diffusion temps réel multi-fenêtres / multi-onglets
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PRODUCTION_REPORT_CREATED', report, timestamp: new Date().toISOString() });
+        }
+      } catch (e) {}
+    }
 
     // 4. Traçabilité Observations & Photos ➔ Audit Trail & Historique
     const logDetails = `Rapport ${reportCode} [${reportData.activityName || reportData.wbsCode}]: Qte ${reportData.realizedQty} ${reportData.unit || 'U'} (Taux ${rate}%). Personnel: ${reportData.workersCount || 0} p., Engins: ${reportData.equipmentCount || 0} u., Météo: ${reportData.weather || 'NC'}. Obs: ${reportData.notes || 'R.A.S.'}`;
@@ -2472,17 +2478,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         safeSaveToStorage('gebat_projects', updatedProjects);
         return updatedProjects;
       });
+    }
 
-      // Diffusion temps réel multi-fenêtres / multi-onglets
-      if (typeof window !== 'undefined') {
-        try {
-          window.dispatchEvent(new Event('gebat_state_updated'));
-          if (typeof BroadcastChannel !== 'undefined') {
-            const channel = new BroadcastChannel('gebat_360_channel');
-            channel.postMessage({ type: 'PRODUCTION_REPORT_VALIDATED', reportId, timestamp: timestampStr });
-          }
-        } catch (e) {}
-      }
+    // Synchronisation backend MySQL
+    ApiService.updateDailyReport(reportId, {
+      status: newStatus,
+      comment,
+      validatedBy: newStatus === 'Validé' ? actorName : undefined,
+      lockedBy: newStatus === 'Verrouillé' ? actorName : undefined
+    }).catch(err => console.warn('⚠️ Imp. MAJ statut rapport MySQL:', err));
+
+    // Diffusion temps réel multi-fenêtres / multi-onglets
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new Event('gebat_state_updated'));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('gebat_360_channel');
+          channel.postMessage({ type: 'PRODUCTION_REPORT_STATUS_CHANGED', reportId, status: newStatus, timestamp: timestampStr });
+        }
+      } catch (e) {}
     }
   };
 
