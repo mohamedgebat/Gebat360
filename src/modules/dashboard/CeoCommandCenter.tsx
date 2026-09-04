@@ -14,7 +14,18 @@ import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervi
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 
 export const CeoCommandCenter: React.FC = () => {
-  const { projects, wbsMap, purchaseRequests, dailyReports, alerts, auditLogs, activeSiteId } = useAppState();
+  const {
+    projects,
+    wbsMap,
+    purchaseRequests,
+    dailyReports,
+    alerts,
+    auditLogs,
+    activeSiteId,
+    updateDAStatus,
+    addAuditLog,
+    currentUser
+  } = useAppState();
 
   // FILTRES EXÉCUTIFS INTERACTIFS & PERSISTANTS (SECTION 15)
   const [selectedCompany, setSelectedCompany] = useState<string>('TOUTES');
@@ -75,14 +86,17 @@ export const CeoCommandCenter: React.FC = () => {
       const invoiced = Math.round(contractValue * (progress / 100));
       const collected = Math.round(invoiced * 0.85);
 
+      const isCriticalRisk = p.risk === 'Élevé' || p.risk === 'Critique';
+      const isModerateRisk = p.risk === 'Modéré' || p.risk === 'Moyen';
+
       return {
         id: p.id,
         code: p.code,
         name: p.name,
-        company: p.company || 'GEBAT SA',
-        client: p.client,
-        location: p.location,
-        manager: p.manager,
+        company: (p.company as any) || 'GEBAT SA',
+        client: p.client || 'Client Institutionnel',
+        location: p.location || 'Abidjan',
+        manager: p.manager || 'Chef de Projet BTP',
         contractValue: contractValue,
         budget: budget,
         committed: realCommitted,
@@ -96,11 +110,23 @@ export const CeoCommandCenter: React.FC = () => {
         progress: progress,
         timeProgress: Math.round(progress * 1.1),
         scheduleStatus: progress >= 70 ? 'On Track (Dans les délais)' : 'Vigilance (+5j)',
-        qualitySafetyScore: 92 + (idx % 5),
-        overallScore: Math.round(progress * 0.4 + eacMarginPct * 2 + 75),
-        riskLevel: p.risk === 'Élevé' ? 'Élevé' : p.risk === 'Modéré' ? 'Moyen' : 'Faible',
-        riskFactors: p.risk === 'Élevé' ? ['Approvisionnement Ciment', 'Glissement Sol'] : ['Normal'],
-        arbitrationCount: p.risk === 'Élevé' ? 1 : 0,
+        scheduleColor: progress >= 70 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-amber-100 text-amber-800 border-amber-200',
+        cashStatus: '🟢 Conforme',
+        riskLevel: isCriticalRisk ? 'Élevé' : isModerateRisk ? 'Moyen' : 'Faible',
+        riskColor: isCriticalRisk ? 'bg-rose-100 text-rose-800' : isModerateRisk ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800',
+        score: Math.min(100, Math.max(50, Math.round(progress * 0.4 + eacMarginPct * 2 + 55))),
+        lastUpdate: 'Aujourd’hui',
+        scoreBreakdown: {
+          finance: Math.min(100, Math.round(eacMarginPct * 5 + 20)),
+          planning: Math.min(100, Math.round(progress * 1.1 + 10)),
+          production: Math.min(100, Math.round(progress + 15)),
+          cash: 85,
+          procurement: 90,
+          qhse: 95,
+          risk: isCriticalRisk ? 60 : 88,
+        },
+        riskFactors: isCriticalRisk ? ['Approvisionnement Ciment', 'Glissement Sol'] : ['Normal'],
+        arbitrationCount: isCriticalRisk ? 1 : 0,
       };
     });
   }, [projects, wbsMap, purchaseRequests, dailyReports]);
@@ -108,35 +134,67 @@ export const CeoCommandCenter: React.FC = () => {
   // ALERTES RÉELLES AGREGÉES DE TOUS LES CHANTIERS (OU MOCK FALLBACK)
   const ceoAlertsList = useMemo<CeoExecutiveAlert[]>(() => {
     if (alerts.length > 0) {
-      return alerts.map((alt, idx) => ({
-        id: `ALT-${alt.id}`,
-        projectCode: alt.projectCode || 'PROJ-GEBAT',
-        company: 'GEBAT SA',
-        title: `${alt.category} : ${alt.message}`,
-        severity: alt.severity === 'Élevée' || alt.severity === 'Critique' ? 'Critique' : 'Moyen',
-        detail: `Dépassement ou anomalie détectée sur le WBS ${alt.wbsCode || 'Général'}. Action de régularisation requise.`,
-        impact: alt.impactAmount ? `${alt.impactAmount.toLocaleString()} FCFA` : 'Impact opérationnel',
-        manager: 'Conducteur de Travaux',
-        date: 'Aujourd’hui',
-      }));
+      return alerts.map((alt, idx) => {
+        const proj = projects.find(p => p.id === alt.projectId || p.code === alt.projectCode || p.code === alt.projectId);
+        return {
+          id: `ALT-${alt.id}`,
+          severity: (alt.severity === 'Élevée' || alt.severity === 'Critique' ? '🔴 CRITIQUE' : '🟠 VIGILANCE') as any,
+          projectCode: alt.projectCode || proj?.code || 'PROJ-GEBAT',
+          projectName: proj?.name || 'Projet GEBAT',
+          company: 'GEBAT SA',
+          title: `${alt.category} : ${alt.message || alt.title || 'Alerte opérationnelle'}`,
+          detail: `Dépassement ou anomalie détectée sur le WBS ${alt.wbsCode || 'Général'}. Action de régularisation requise.`,
+          impact: alt.observedValue ? `Observé: ${alt.observedValue} (Seuil: ${alt.thresholdValue || 'N/A'})` : 'Impact opérationnel',
+          threshold: alt.thresholdValue || 'Seuil contractuel',
+          manager: alt.assignedToRole || 'Conducteur de Travaux',
+          date: 'Aujourd’hui',
+          action: 'Audit et vérification sur site',
+          initialBudget: proj?.initialBudget || 200000000,
+          currentBudget: proj?.revisedBudget || 210000000,
+          actualCost: 95000000,
+          remainingToFinish: 115000000,
+          eac: 215000000,
+          initialMarginPct: 18.5,
+          eacMarginPct: 15.2,
+          mainCause: alt.message || 'Dérive sur coût des matériaux',
+          daysDelay: 4,
+          penaltyPerDay: '250 000 FCFA / jour',
+          impactedMilestones: [
+            { name: 'Coulage Radier & Voiles', plannedDate: '2026-08-15', forecastDate: '2026-08-19', delayDays: 4, wbsCode: alt.wbsCode || '03.02' }
+          ],
+          correctivePlan: [
+            { action: 'Doublement des équipes ferraillage', resource: 'Équipe Sous-traitant', costImpact: '+500 000 FCFA', targetRecoveryDays: 3 }
+          ]
+        };
+      });
     }
     return [];
-  }, [alerts]);
+  }, [alerts, projects]);
 
   // DÉCISIONS CEO RÉELLES DÉCOULANT DES DA EN DÉPASSEMENT
   const ceoDecisionsList = useMemo<CeoDecisionItem[]>(() => {
-    const overBudgetDAs = purchaseRequests.filter(da => da.budgetCheck?.isOverBudget || da.estimatedTotal > 10000000);
+    const overBudgetDAs = purchaseRequests.filter(da => da.budgetCheck?.isOverBudget || da.estimatedTotal > 10000000 || da.status === 'En attente' || da.status === 'Soumis');
     if (overBudgetDAs.length > 0) {
       return overBudgetDAs.map(da => ({
         id: `DEC-${da.id}`,
-        title: `Validation DA ${da.code} — ${da.itemDescription}`,
-        project: `${da.projectName} (${da.wbsCode})`,
-        description: `Demande d'achat dépassant le disponible à engager WBS. ${da.justification || 'Besoin urgent de matériel sur chantier.'}`,
-        amount: `${da.estimatedTotal.toLocaleString()} FCFA`,
-        severity: 'Haute Priorité',
+        severity: (da.estimatedTotal > 20000000 ? '🔴 URGENT' : '🟠 DECISION') as any,
+        title: `Validation DA ${da.code || da.id} — ${da.itemDescription || 'Fourniture Chantier'}`,
+        project: `${da.projectName || 'Chantier GEBAT'} (${da.wbsCode || 'Général'})`,
+        projectCode: da.projectId || 'PRJ',
+        wbsCode: da.wbsCode || 'WBS-01',
+        description: `Demande d'achat nécessitant l'arbitrage CEO. ${da.justification || 'Besoin urgent de réapprovisionnement pour continuité des travaux.'}`,
+        amount: `${(da.estimatedTotal || 0).toLocaleString('fr-FR')} FCFA`,
+        amountNumber: da.estimatedTotal || 0,
+        marginImpactPct: -0.4,
         deadline: da.desiredDate || 'Sous 24h',
+        justification: da.justification || 'Fourniture indispensable pour respect des cadences contractuelles.',
+        impactIfRefused: 'Arrêt de la chaîne de production et pénalités de retard journalières.',
+        dqePostes: [
+          { code: da.wbsCode || '01', description: da.itemDescription || 'Poste Matériaux', initial: (da.estimatedTotal || 0) * 0.9, revised: da.estimatedTotal || 0, diff: (da.estimatedTotal || 0) * 0.1 }
+        ],
+        attachments: ['DQE_Révisé.pdf', 'Offre_Fournisseur.pdf'],
         daDetails: da,
-      }));
+      } as any));
     }
     return [];
   }, [purchaseRequests]);
@@ -1145,7 +1203,23 @@ export const CeoCommandCenter: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-slate-100">
               <button
                 onClick={() => {
-                  alert(`🔴 Décision d'arbitrage refusée pour ${activeDecisionModal.title}`);
+                  if (activeDecisionModal.daDetails?.id && updateDAStatus) {
+                    updateDAStatus(
+                      activeDecisionModal.daDetails.id,
+                      'Rejeté',
+                      currentUser?.name || 'Directeur Général (CEO)',
+                      'Rejet par arbitrage CEO en Command Center'
+                    );
+                  }
+                  if (addAuditLog) {
+                    addAuditLog(
+                      'ARBITRAGE_DECISION_CEO_REJET',
+                      'CEO_COMMAND_CENTER',
+                      activeDecisionModal.id,
+                      `Rejet de l'arbitrage pour ${activeDecisionModal.title} (${activeDecisionModal.amount}) par le CEO.`
+                    );
+                  }
+                  alert(`🔴 Décision d'arbitrage rejetée pour ${activeDecisionModal.title}.\nStatut actualisé dans la base de données.`);
                   setActiveDecisionModal(null);
                 }}
                 className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold py-3 rounded-xl text-xs border border-slate-200 transition cursor-pointer"
@@ -1154,7 +1228,23 @@ export const CeoCommandCenter: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  alert(`✅ DÉCISION APPROUVÉE PAR LE CEO EN EXECUTIVE COMMAND CENTER !\nActé et inscrit dans l'Audit Trail.`);
+                  if (activeDecisionModal.daDetails?.id && updateDAStatus) {
+                    updateDAStatus(
+                      activeDecisionModal.daDetails.id,
+                      'Validé',
+                      currentUser?.name || 'Directeur Général (CEO)',
+                      'Arbitrage favorable CEO en Command Center'
+                    );
+                  }
+                  if (addAuditLog) {
+                    addAuditLog(
+                      'ARBITRAGE_DECISION_CEO_APPROBATION',
+                      'CEO_COMMAND_CENTER',
+                      activeDecisionModal.id,
+                      `Arbitrage favorable et scellé pour ${activeDecisionModal.title} (${activeDecisionModal.amount}) par le CEO.`
+                    );
+                  }
+                  alert(`✅ DÉCISION APPROUVÉE PAR LE CEO EN EXECUTIVE COMMAND CENTER !\nLa DA a été validée et enregistrée dans l'Audit Trail.`);
                   setActiveDecisionModal(null);
                 }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-xl text-xs shadow-md transition cursor-pointer"

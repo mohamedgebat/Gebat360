@@ -7,9 +7,10 @@ import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervi
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { REAL_BINGERVILLE_PLANNING_TASKS } from '../../core/database/realBingervillePlanningData';
 import { REAL_SONGON_PLANNING_TASKS } from '../../core/database/realSongonPlanningData';
+import * as XLSX from 'xlsx';
 import {
   Calculator, TrendingUp, DollarSign, ShieldCheck, CheckCircle2, AlertTriangle,
-  FileText, PieChart, Layers, RefreshCw, Lock, Edit3, ArrowRight, Settings, Info, Download, X, Eye, ChevronRight, Activity, Users, Truck
+  FileText, PieChart, Layers, RefreshCw, Lock, Edit3, ArrowRight, Settings, Info, Download, X, Eye, ChevronRight, Activity, Users, Truck, FileSpreadsheet
 } from 'lucide-react';
 
 export const CostControlModule: React.FC = () => {
@@ -194,6 +195,91 @@ export const CostControlModule: React.FC = () => {
   const totalInitialMargin = useMemo(() => contractValueRef - totalInitialBudget, [contractValueRef, totalInitialBudget]);
   const totalEACMargin = useMemo(() => projectedContractValue - totalEAC, [projectedContractValue, totalEAC]);
 
+  // CALCULS EVM & EARNED VALUE MANAGEMENT (VALEUR ACQUISE)
+  const evmMetrics = useMemo(() => {
+    const bac = totalRevisedBudget || 1;
+    const progress = Math.min(100, Math.max(0, Number(selectedProject?.progress || 45)));
+    const pv = Math.round(bac * (progress / 100));
+    const ev = Math.round(bac * (progress / 100));
+    const ac = totalActualCost || 1;
+    const cv = ev - ac;
+    const sv = ev - pv;
+    const cpi = ac > 0 ? Number((ev / ac).toFixed(2)) : 1.0;
+    const spi = pv > 0 ? Number((ev / pv).toFixed(2)) : 1.0;
+    const remainingWork = Math.max(0, bac - ev);
+    const remainingFunds = Math.max(1, bac - ac);
+    const tcpi = Number((remainingWork / remainingFunds).toFixed(2));
+    const eacEVM = cpi > 0 ? Math.round(bac / cpi) : totalEAC;
+    const vacEVM = bac - eacEVM;
+
+    return {
+      bac,
+      progress,
+      pv,
+      ev,
+      ac,
+      cv,
+      sv,
+      cpi,
+      spi,
+      tcpi,
+      eacEVM,
+      vacEVM,
+      healthStatus: cpi >= 1.0 && spi >= 1.0 ? 'Excellente Maîtrise' : cpi >= 0.95 ? 'Performance Conforme' : 'Alerte Dérive de Coûts',
+      healthColor: cpi >= 1.0 ? 'bg-emerald-100 text-emerald-800' : cpi >= 0.95 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+    };
+  }, [totalRevisedBudget, totalActualCost, totalEAC, selectedProject]);
+
+  const exportCostControlToExcel = () => {
+    const data = wbsCostData.map(w => ({
+      'Code WBS': w.code,
+      'Désignation Lot / Activité': w.name,
+      'Budget Initial (FCFA)': w.initialBudget,
+      'Budget Révisé DS (FCFA)': w.revisedBudget,
+      'Budget Réservé (FCFA)': w.reserved,
+      'Montant Engagé (FCFA)': w.committed,
+      'Montant Réceptionné (FCFA)': w.received,
+      'Coût Réel à Date (FCFA)': w.actualCost,
+      'Forecast Restant (FCFA)': w.forecast,
+      'EAC Terminaison (FCFA)': w.eac,
+      'Écart VAC (FCFA)': w.varianceAtCompletion,
+      'Marge EAC (FCFA)': w.eacMargin,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Cost_Control_WBS');
+    XLSX.writeFile(workbook, `GEBAT_Cost_Control_${selectedProject.code}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportCostControlToCSV = () => {
+    const headers = ['Code WBS', 'Désignation', 'Budget Initial', 'Budget Révisé', 'Réservé', 'Engagé', 'Réceptionné', 'Coût Réel', 'Forecast', 'EAC', 'Écart VAC', 'Marge EAC'];
+    const rows = wbsCostData.map(w => [
+      `"${w.code}"`,
+      `"${w.name.replace(/"/g, '""')}"`,
+      w.initialBudget,
+      w.revisedBudget,
+      w.reserved,
+      w.committed,
+      w.received,
+      w.actualCost,
+      w.forecast,
+      w.eac,
+      w.varianceAtCompletion,
+      w.eacMargin
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `GEBAT_Cost_Control_${selectedProject.code}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 text-xs text-slate-800">
       {/* HEADER COST CONTROL (PARTIE 5.23) */}
@@ -231,6 +317,18 @@ export const CostControlModule: React.FC = () => {
         >
           <Calculator size={16} />
           <span>Cockpit Financier & WBS ({wbsCostData.length} Lots)</span>
+        </button>
+
+        <button
+          onClick={() => setMainTab('evm')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs transition ${
+            mainTab === 'evm'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Activity size={16} />
+          <span>EVM & Valeur Acquise (CPI/SPI)</span>
         </button>
 
         <button
@@ -314,14 +412,29 @@ export const CostControlModule: React.FC = () => {
 
           {/* TABLEAU PRINCIPAL COST CONTROL (PARTIE 5.24 : TOUTES COLONNES OBLIGATOIRES) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-4">
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
               <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-2">
                 <Layers size={16} className="text-blue-600" /> Structure Arborescente WBS & Consolidated Cost Control
               </h2>
 
               <div className="flex items-center gap-2 text-[11px] font-mono">
                 <span className="text-slate-500 font-sans">Mode EAC :</span>
-                <span className="bg-purple-100 text-purple-900 font-black px-2 py-0.5 rounded uppercase">Mode Hybride Contrôlé</span>
+                <span className="bg-purple-100 text-purple-900 font-black px-2 py-0.5 rounded uppercase mr-2">Mode Hybride Contrôlé</span>
+
+                <button
+                  onClick={exportCostControlToExcel}
+                  className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold rounded-lg border border-emerald-200 text-xs flex items-center gap-1.5 transition"
+                  title="Exporter en fichier Excel .xlsx"
+                >
+                  <FileSpreadsheet size={13} /> Excel
+                </button>
+                <button
+                  onClick={exportCostControlToCSV}
+                  className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold rounded-lg border border-slate-200 text-xs flex items-center gap-1.5 transition"
+                  title="Exporter en fichier CSV .csv"
+                >
+                  <Download size={13} /> CSV
+                </button>
               </div>
             </div>
 
@@ -452,6 +565,118 @@ export const CostControlModule: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ONGLET 3 : EVM & EARNED VALUE MANAGEMENT (VALEUR ACQUISE) */}
+      {/* ========================================================================= */}
+      {mainTab === 'evm' && (
+        <div className="space-y-6">
+          {/* CARDS INDICATEURS EVM */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 font-mono">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center space-y-0.5">
+              <span className="text-[10px] text-slate-400 font-sans font-extrabold uppercase block">BAC (Budget Total)</span>
+              <span className="text-base font-black text-slate-900">{evmMetrics.bac.toLocaleString()} FCFA</span>
+              <span className="text-[10px] text-slate-500 font-sans block">Budget révisé à terminaison</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center space-y-0.5">
+              <span className="text-[10px] text-blue-600 font-sans font-extrabold uppercase block">PV (Valeur Planifiée)</span>
+              <span className="text-base font-black text-blue-800">{evmMetrics.pv.toLocaleString()} FCFA</span>
+              <span className="text-[10px] text-slate-500 font-sans block">Avancement théorique</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center space-y-0.5">
+              <span className="text-[10px] text-emerald-600 font-sans font-extrabold uppercase block">EV (Valeur Acquise)</span>
+              <span className="text-base font-black text-emerald-800">{evmMetrics.ev.toLocaleString()} FCFA</span>
+              <span className="text-[10px] text-slate-500 font-sans block">Travaux réellement exécutés</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center space-y-0.5">
+              <span className="text-[10px] text-purple-600 font-sans font-extrabold uppercase block">AC (Coût Réel)</span>
+              <span className="text-base font-black text-purple-900">{evmMetrics.ac.toLocaleString()} FCFA</span>
+              <span className="text-[10px] text-slate-500 font-sans block">Dépenses réelles constatées</span>
+            </div>
+
+            <div className={`p-3.5 rounded-2xl border text-center space-y-0.5 ${
+              evmMetrics.cpi >= 1.0 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}>
+              <span className="text-[10px] font-sans font-extrabold uppercase block">CPI (Indice Coût)</span>
+              <span className="text-base font-black block">{evmMetrics.cpi}</span>
+              <span className="text-[10px] font-sans font-bold block">
+                {evmMetrics.cpi >= 1.0 ? '✓ Coût maîtrisé' : '⚠ Surcoût constaté'}
+              </span>
+            </div>
+
+            <div className={`p-3.5 rounded-2xl border text-center space-y-0.5 ${
+              evmMetrics.spi >= 1.0 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'
+            }`}>
+              <span className="text-[10px] font-sans font-extrabold uppercase block">SPI (Indice Délais)</span>
+              <span className="text-base font-black block">{evmMetrics.spi}</span>
+              <span className="text-[10px] font-sans font-bold block">
+                {evmMetrics.spi >= 1.0 ? '✓ Dans les délais' : '⚠ Retard planning'}
+              </span>
+            </div>
+          </div>
+
+          {/* TABLEAU RÉSUMÉ ET FORMULES DES ÉCARTS EVM */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                  <Activity size={18} className="text-blue-600" /> Analyse des Écarts & Diagnostic de Performance
+                </h3>
+                <p className="text-slate-500 text-xs">Modélisation mathématique conforme aux standards PMI / EVM Earned Value Analysis</p>
+              </div>
+
+              <div className="flex items-center gap-2 font-mono">
+                <span className="text-slate-500 text-xs">Diagnostic :</span>
+                <span className={`px-3 py-1 rounded-xl text-xs font-black ${evmMetrics.healthColor}`}>
+                  {evmMetrics.healthStatus}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <span className="font-extrabold text-slate-900 block font-sans">Écart de Coût (Cost Variance) :</span>
+                <div className="flex justify-between items-center text-sm font-black">
+                  <span>CV = EV - AC</span>
+                  <span className={evmMetrics.cv >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
+                    {evmMetrics.cv >= 0 ? `+${evmMetrics.cv.toLocaleString()}` : evmMetrics.cv.toLocaleString()} FCFA
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-sans">
+                  {evmMetrics.cv >= 0 ? 'Le projet génère une économie par rapport au travail réalisé.' : 'Le projet dépense plus que la valeur produite.'}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <span className="font-extrabold text-slate-900 block font-sans">Écart de Délais (Schedule Variance) :</span>
+                <div className="flex justify-between items-center text-sm font-black">
+                  <span>SV = EV - PV</span>
+                  <span className={evmMetrics.sv >= 0 ? 'text-emerald-700' : 'text-amber-700'}>
+                    {evmMetrics.sv >= 0 ? `+${evmMetrics.sv.toLocaleString()}` : evmMetrics.sv.toLocaleString()} FCFA
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-sans">
+                  {evmMetrics.sv >= 0 ? 'L’avancement physique est en avance sur le planning prévisionnel.' : 'L’avancement physique accuse un retard par rapport au planning.'}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <span className="font-extrabold text-slate-900 block font-sans">Indice Requis (TCPI) :</span>
+                <div className="flex justify-between items-center text-sm font-black">
+                  <span>TCPI = (BAC - EV) / (BAC - AC)</span>
+                  <span className="text-blue-900">{evmMetrics.tcpi}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-sans">
+                  Efficience minimale requise sur les travaux restants pour tenir le budget contractuel.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
