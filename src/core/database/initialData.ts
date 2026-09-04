@@ -874,25 +874,7 @@ export const INITIAL_DAILY_REPORTS: DailyReport[] = [
   },
 ];
 
-export const INITIAL_ALERTS: SystemAlert[] = [
-  {
-    id: 'ALT-2026-001',
-    code: 'ALT-BUD-01',
-    category: 'Budget',
-    severity: 'Moyenne',
-    projectId: 'CIV-2026-ASS-001',
-    projectName: 'Construction Station de Traitement Bingerville',
-    wbsId: 'WBS-BGV-02.02',
-    wbsCode: 'WBS-BGV-02.02',
-    title: 'EAC supérieur au Budget Révisé',
-    message: 'Le coût à chevauchement EAC prévisionnel dépasse le budget alloué de 2,000,000 XOF.',
-    observedValue: '112 000 000 XOF',
-    thresholdValue: '110 000 000 XOF',
-    assignedToRole: 'Cost Controller',
-    createdAt: '2026-08-16 16:00',
-    status: 'Actif',
-  },
-];
+export const INITIAL_ALERTS: SystemAlert[] = [];
 
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   {

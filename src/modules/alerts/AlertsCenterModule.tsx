@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
+import { isProjectMatch } from '../../utils/projectMatcher';
 import {
   ArrowLeft,
   Bell,
@@ -17,7 +18,8 @@ import {
   PlusCircle,
   FileSpreadsheet,
   AlertOctagon,
-  Eye
+  Eye,
+  ShieldCheck
 } from 'lucide-react';
 import { SystemAlert } from '../../types';
 
@@ -26,32 +28,105 @@ interface AlertsCenterModuleProps {
 }
 
 export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackToProject }) => {
-  const { alerts, resolveAlert, addAuditLog, purchaseRequests, stockItems, projects } = useAppState();
+  const { alerts, resolveAlert, addAuditLog, purchaseRequests = [], stockItems = [], projects = [] } = useAppState();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('Tous');
   const [filterCategory, setFilterCategory] = useState<string>('Tous');
   const [resolvedIds, setResolvedIds] = useState<Record<string, boolean>>({});
-  const [selectedAlertForAction, setSelectedAlertForAction] = useState<SystemAlert | null>(null);
+  const [selectedAlertForAction, setSelectedAlertForAction] = useState<any | null>(null);
   const [resolutionComment, setResolutionComment] = useState('');
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
-  // ALERTES RÉELLES CONSOLIDÉES DE LA BASE DE DONNÉES
+  // ALERTES RÉELLES & DYNAMIQUES DÉTECTÉES EN TEMPS RÉEL SUR LA BASE
   const consolidatedAlerts = useMemo(() => {
-    return alerts || [];
-  }, [alerts]);
+    const list: any[] = [];
+
+    // 1. Alertes réelles stockées en base (filtrage strict de tout résidu de maquette)
+    (alerts || []).forEach(a => {
+      if (a.id === 'ALT-2026-001' || a.code === 'ALT-BUD-01' || String(a.projectName || '').includes('Lycée') || String(a.projectId || '').includes('P-003')) return;
+      
+      const matchedProj = projects.find(p => isProjectMatch(p.id, a.projectId) || isProjectMatch(p.code, a.projectId));
+      list.push({
+        id: a.id || a.code,
+        code: a.code || a.id,
+        category: a.category || 'Budget',
+        severity: a.severity || 'Moyenne',
+        title: a.title,
+        message: a.message,
+        project: a.projectName || matchedProj?.name || a.projectId || 'Chantier GEBAT',
+        wbs: a.wbsCode || a.wbsId || 'Général',
+        impact: a.observedValue ? `Constaté : ${a.observedValue} (Seuil : ${a.thresholdValue || 'N/A'})` : '',
+        date: a.createdAt || new Date().toLocaleDateString('fr-FR'),
+        status: a.status || 'Actif'
+      });
+    });
+
+    // 2. Détection dynamique en temps réel des dépassements sur Demandes d'Achat (DAs)
+    (purchaseRequests || []).forEach(da => {
+      if (da.budgetCheck?.isOverBudget && String(da.status || '').toUpperCase() !== 'REFUSEE' && String(da.status || '').toUpperCase() !== 'REFUSÉ') {
+        const overAmt = Number(da.budgetCheck.overBudgetAmount || 0);
+        const matchedProj = projects.find(p => isProjectMatch(p.id, da.projectId) || isProjectMatch(p.code, da.projectId));
+        list.push({
+          id: `ALT-DA-${da.id}`,
+          code: `ALT-DA-${da.code}`,
+          category: 'Achats',
+          severity: overAmt > 5000000 ? 'Critique' : 'Majeure',
+          title: `Dépassement Budgétaire sur Demande d'Achat (${da.code})`,
+          message: `La Demande d'Achat ${da.code} dépasse le budget disponible de ${overAmt.toLocaleString('fr-FR')} FCFA.`,
+          project: da.projectName || matchedProj?.name || da.projectId || 'Chantier GEBAT',
+          wbs: da.wbsCode || 'WBS',
+          impact: `Dépassement de budget : +${overAmt.toLocaleString('fr-FR')} FCFA`,
+          date: da.createdAt ? da.createdAt.substring(0, 10) : new Date().toLocaleDateString('fr-FR'),
+          status: 'Actif'
+        });
+      }
+    });
+
+    // 3. Détection dynamique en temps réel des ruptures critiques de stock
+    (stockItems || []).forEach(item => {
+      const current = Number(item.currentStock || 0);
+      const minTh = Number(item.minThreshold ?? (item as any).minQuantity ?? 0);
+      if (minTh > 0 && current < minTh) {
+        list.push({
+          id: `ALT-STK-${item.id}`,
+          code: `ALT-STK-${item.code || item.id}`,
+          category: 'Stock',
+          severity: current === 0 ? 'Critique' : 'Majeure',
+          title: current === 0 ? `Rupture Totale de Stock : ${item.name}` : `Stock sous Seuil d'Alerte : ${item.name}`,
+          message: `Stock actuel (${current} ${item.unit}) inférieur au seuil de sécurité minimum (${minTh} ${item.unit}).`,
+          project: item.warehouse || 'Magasin Central Chantier',
+          wbs: 'Logistique / Magasin',
+          impact: `Stock disponible : ${current} ${item.unit} (Seuil requis : ${minTh} ${item.unit})`,
+          date: new Date().toLocaleDateString('fr-FR'),
+          status: 'Actif'
+        });
+      }
+    });
+
+    return list;
+  }, [alerts, purchaseRequests, stockItems, projects]);
 
   const totalOverrunAmount = useMemo(() => {
     return purchaseRequests
-      .filter(da => da.budgetCheck?.isOverBudget)
-      .reduce((sum, da) => sum + (da.budgetCheck?.overBudgetAmount || 0), 0);
+      .filter(da => da.budgetCheck?.isOverBudget && String(da.status || '').toUpperCase() !== 'REFUSEE' && String(da.status || '').toUpperCase() !== 'REFUSÉ')
+      .reduce((sum, da) => sum + (Number(da.budgetCheck?.overBudgetAmount) || 0), 0);
   }, [purchaseRequests]);
 
-  const criticalStockName = useMemo(() => {
-    const found = stockItems.find(i => Number(i.currentStock || 0) <= Number(i.minQuantity || 0));
-    return found ? found.name : 'Aucune rupture';
+  const criticalStockItems = useMemo(() => {
+    return stockItems.filter(i => {
+      const minTh = Number(i.minThreshold ?? (i as any).minQuantity ?? 0);
+      return minTh > 0 && Number(i.currentStock || 0) < minTh;
+    });
   }, [stockItems]);
+
+  const criticalStockName = useMemo(() => {
+    if (criticalStockItems.length > 0) {
+      return `${criticalStockItems[0].name} (${criticalStockItems[0].currentStock} ${criticalStockItems[0].unit})`;
+    }
+    return 'Stocks conformes aux seuils';
+  }, [criticalStockItems]);
 
   // Marquer une alerte comme résolue
   const handleResolveAlert = (id: string, title: string) => {
@@ -88,7 +163,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
       a.category || a.module,
       a.severity,
       `"${a.title.replace(/"/g, '""')}"`,
-      `"${(a.project || 'GEBAT CI').replace(/"/g, '""')}"`,
+      `"${(a.project || 'GEBAT SA').replace(/"/g, '""')}"`,
       `"${(a.wbs || 'Général').replace(/"/g, '""')}"`,
       `"${(a.impact || '').replace(/"/g, '""')}"`,
       a.date || a.timestamp,
@@ -137,7 +212,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
             <CheckCircle2 size={20} />
             <span>{actionSuccessMsg}</span>
           </div>
-          <button onClick={() => setActionSuccessMsg(null)} className="hover:opacity-80">
+          <button onClick={() => setActionSuccessMsg(null)} className="hover:opacity-80 cursor-pointer">
             <X size={18} />
           </button>
         </div>
@@ -149,7 +224,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
           {onBackToProject && (
             <button
               onClick={onBackToProject}
-              className="text-xs font-extrabold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 mb-1.5 transition"
+              className="text-xs font-extrabold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 mb-1.5 transition cursor-pointer"
             >
               <ArrowLeft size={14} /> Retour à la vue projet 360°
             </button>
@@ -159,9 +234,9 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
               CENTRE D'ALERTES ET ANOMALIES MÉTIER
             </h1>
             <div className="relative">
-              <Bell size={22} className="text-red-500 animate-pulse" />
+              <Bell size={22} className={activeCount > 0 ? "text-red-500 animate-pulse" : "text-slate-400"} />
               {activeCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                   {activeCount}
                 </span>
               )}
@@ -190,7 +265,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
                     handleMarkAllAsRead();
                     setQuickActionsOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-100 rounded-xl flex items-center gap-2 text-emerald-700"
+                  className="w-full text-left px-3 py-2 hover:bg-slate-100 rounded-xl flex items-center gap-2 text-emerald-700 cursor-pointer"
                 >
                   <CheckSquare size={16} /> Acquitter toutes les alertes
                 </button>
@@ -199,7 +274,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
                     handleExportCSV();
                     setQuickActionsOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-100 rounded-xl flex items-center gap-2 text-blue-700"
+                  className="w-full text-left px-3 py-2 hover:bg-slate-100 rounded-xl flex items-center gap-2 text-blue-700 cursor-pointer"
                 >
                   <FileSpreadsheet size={16} /> Télécharger le rapport CSV
                 </button>
@@ -221,26 +296,40 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
         {/* KPI 1 : ALERTES ACTIVES */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-red-300 transition">
+        <div className={`bg-white p-4.5 rounded-2xl border shadow-sm flex items-center justify-between transition ${
+          activeCount > 0 ? 'border-red-200 hover:border-red-300' : 'border-slate-200'
+        }`}>
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">ALERTES ACTIVES</span>
             <span className="text-2xl sm:text-3xl font-black text-slate-900 block mt-1">{activeCount}</span>
-            <span className="text-[11px] text-red-600 font-bold flex items-center gap-1">
-              <AlertTriangle size={12} /> Nécessitent une action
+            <span className={`text-[11px] font-bold flex items-center gap-1 ${activeCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {activeCount > 0 ? (
+                <>
+                  <AlertTriangle size={12} /> Nécessitent une action
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={12} /> Tous les indicateurs sont au vert
+                </>
+              )}
             </span>
           </div>
-          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center font-bold shadow-xs">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold shadow-xs ${
+            activeCount > 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+          }`}>
             <Bell size={24} />
           </div>
         </div>
 
         {/* KPI 2 : DÉPASSEMENTS BUDGET */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-purple-300 transition">
+        <div className={`bg-white p-4.5 rounded-2xl border shadow-sm flex items-center justify-between transition ${
+          budgetOverrunCount > 0 ? 'border-purple-200 hover:border-purple-300' : 'border-slate-200'
+        }`}>
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">DÉPASSEMENTS BUDGET</span>
             <span className="text-2xl sm:text-3xl font-black text-purple-700 block mt-1">{budgetOverrunCount}</span>
-            <span className="text-[11px] text-purple-600 font-extrabold">
-              {totalOverrunAmount > 0 ? `Total : +${totalOverrunAmount.toLocaleString('fr-FR')} FCFA` : 'Aucun dépassement'}
+            <span className="text-[11px] text-purple-600 font-extrabold block">
+              {budgetOverrunCount > 0 && totalOverrunAmount > 0 ? `Total : +${totalOverrunAmount.toLocaleString('fr-FR')} FCFA` : 'Aucun dépassement'}
             </span>
           </div>
           <div className="w-12 h-12 bg-purple-100 text-purple-700 rounded-2xl flex items-center justify-center font-bold shadow-xs">
@@ -249,7 +338,9 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
         </div>
 
         {/* KPI 3 : RUPTURES DE STOCK */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-amber-300 transition">
+        <div className={`bg-white p-4.5 rounded-2xl border shadow-sm flex items-center justify-between transition ${
+          stockAlertsCount > 0 ? 'border-amber-200 hover:border-amber-300' : 'border-slate-200'
+        }`}>
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">RUPTURES DE STOCK</span>
             <span className="text-2xl sm:text-3xl font-black text-amber-600 block mt-1">{stockAlertsCount}</span>
@@ -265,7 +356,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase block tracking-wider">ALERTES RÉSOLUES</span>
             <span className="text-2xl sm:text-3xl font-black text-emerald-600 block mt-1">{resolvedCount}</span>
-            <span className="text-[11px] text-emerald-600 font-bold">Ce mois</span>
+            <span className="text-[11px] text-emerald-600 font-bold block">{resolvedCount > 0 ? `${resolvedCount} ce mois` : 'Historique à jour'}</span>
           </div>
           <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center font-bold shadow-xs">
             <CheckCircle2 size={24} />
@@ -298,7 +389,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
             <option value="Tous">Toutes les sévérités</option>
             <option value="Critique">Critique</option>
             <option value="Majeure">Majeure</option>
-            <option value="Modérée">Modérée</option>
+            <option value="Moyenne">Moyenne</option>
           </select>
 
           {/* FILTRE CATÉGORIE */}
@@ -317,21 +408,28 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
         </div>
 
         {/* TOUT MARQUER COMME LU */}
-        <button
-          onClick={handleMarkAllAsRead}
-          className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition shrink-0 cursor-pointer"
-        >
-          <Check size={16} className="text-emerald-600" />
-          <span>Tout marquer comme lu</span>
-        </button>
+        {activeCount > 0 && (
+          <button
+            onClick={handleMarkAllAsRead}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+          >
+            <Check size={16} className="text-emerald-600" />
+            <span>Tout marquer comme lu</span>
+          </button>
+        )}
       </div>
 
       {/* 4. LISTE DYNAMIQUE ET RÉELLE DES ALERTES MÉTIER */}
       <div className="space-y-3.5">
         {filteredAlerts.length === 0 ? (
-          <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-500 font-semibold">
-            <Bell size={32} className="mx-auto text-slate-300 mb-2" />
-            <p>Aucune alerte ne correspond à vos critères de recherche.</p>
+          <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
+            <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs border border-emerald-200">
+              <CheckCircle2 size={30} />
+            </div>
+            <h3 className="font-extrabold text-slate-900 text-base">Aucune anomalie ni alerte active</h3>
+            <p className="text-xs text-slate-500 max-w-lg mx-auto">
+              Tous les indicateurs de gestion de chantier (Budgets Déboursé Sec, Demandes d'Achat, Stocks Magasin et Planning) sont conformes aux objectifs prévisionnels.
+            </p>
           </div>
         ) : (
           filteredAlerts.map(a => {
@@ -392,15 +490,17 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
                     <h3 className="font-black text-slate-900 text-sm sm:text-base">{a.title}</h3>
                     
                     <div className="flex items-center gap-4 text-xs text-slate-600 font-semibold flex-wrap">
-                      <span>Projet : <strong className="text-slate-900">{a.project || 'P-003 Lycée Technique de Bouaké'}</strong></span>
+                      <span>Projet : <strong className="text-slate-900">{a.project || 'Chantier GEBAT'}</strong></span>
                       <span>WBS : <strong className="text-slate-900">{a.wbs || 'Général'}</strong></span>
                       <span>Date : <strong className="text-slate-900">{a.date || new Date().toLocaleDateString('fr-FR')}</strong></span>
                     </div>
 
-                    {/* IMPACT FINANCIER OU LOGISTIQUE EN ROUGE */}
-                    <div className="text-xs font-black text-red-600 pt-1">
-                      Impact : {a.impact}
-                    </div>
+                    {/* IMPACT FINANCIER OU LOGISTIQUE EN ROUGE SI PRÉSENT */}
+                    {a.impact && (
+                      <div className="text-xs font-black text-red-600 pt-0.5">
+                        {a.impact}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -450,17 +550,19 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
                   <span className="text-xs text-slate-500 font-mono font-bold">{selectedAlertForAction.id}</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedAlertForAction(null)} className="text-slate-400 hover:text-slate-700">
+              <button onClick={() => setSelectedAlertForAction(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X size={20} />
               </button>
             </div>
 
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
               <span className="font-extrabold text-slate-900 block">{selectedAlertForAction.title}</span>
-              <p className="text-slate-600 font-medium">{selectedAlertForAction.description}</p>
-              <div className="text-red-600 font-bold pt-1">
-                Impact : {selectedAlertForAction.impact}
-              </div>
+              <p className="text-slate-600 font-medium">{selectedAlertForAction.message || selectedAlertForAction.description}</p>
+              {selectedAlertForAction.impact && (
+                <div className="text-red-600 font-bold pt-1">
+                  {selectedAlertForAction.impact}
+                </div>
+              )}
             </div>
 
             <div>
@@ -503,3 +605,4 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
 };
 
 export default AlertsCenterModule;
+

@@ -868,7 +868,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter(a => a.id !== 'ALT-2026-001' && a.code !== 'ALT-BUD-01' && !String(a.projectName || '').includes('Lycée') && !String(a.projectId || '').includes('P-003'));
+            if (clean.length !== parsed.length) {
+              localStorage.setItem('gebat_alerts', JSON.stringify(clean));
+            }
+            return clean;
+          }
         } catch (e) {}
       }
     }
@@ -876,9 +882,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    if (alerts.length > 0) {
-      safeSaveToStorage('gebat_alerts', alerts);
-    }
+    safeSaveToStorage('gebat_alerts', alerts);
   }, [alerts]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [costNatures, setCostNatures] = useState<CostNatureConfig[]>(DEFAULT_COST_NATURES);
