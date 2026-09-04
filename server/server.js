@@ -397,6 +397,59 @@ async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Validation et coûts : ces tables sont la source persistante des workflows
+    // métier. Elles remplacent les listes de validation et transactions simulées
+    // côté navigateur.
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS validation_tasks (
+        id VARCHAR(64) PRIMARY KEY,
+        entity_type VARCHAR(50) NOT NULL,
+        entity_id VARCHAR(64) NOT NULL,
+        project_id VARCHAR(64) NOT NULL,
+        assigned_role VARCHAR(50) NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+        submitted_by VARCHAR(64),
+        resolved_by VARCHAR(64),
+        comment TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_validation_task (entity_type, entity_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS daily_report_consumptions (
+        id VARCHAR(96) PRIMARY KEY,
+        report_id VARCHAR(64) NOT NULL,
+        item_code VARCHAR(100),
+        item_name VARCHAR(255) NOT NULL,
+        quantity DECIMAL(15,3) NOT NULL,
+        unit VARCHAR(30),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_report_consumption (report_id, item_code, item_name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    const [accountedAtColumns] = await conn.query("SHOW COLUMNS FROM daily_reports LIKE 'accounted_at'");
+    if (accountedAtColumns.length === 0) await conn.query('ALTER TABLE daily_reports ADD COLUMN accounted_at DATETIME NULL');
+    const [accountedByColumns] = await conn.query("SHOW COLUMNS FROM daily_reports LIKE 'accounted_by'");
+    if (accountedByColumns.length === 0) await conn.query('ALTER TABLE daily_reports ADD COLUMN accounted_by VARCHAR(64) NULL');
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS cost_transactions (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL,
+        wbs_id VARCHAR(64),
+        nature VARCHAR(50) NOT NULL,
+        source_doc VARCHAR(100),
+        description TEXT,
+        amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+        transaction_date DATE NOT NULL,
+        created_by VARCHAR(64),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_cost_transactions_project_wbs (project_id, wbs_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // 14. Table system_alerts
     await conn.query(`
       CREATE TABLE IF NOT EXISTS system_alerts (
@@ -624,8 +677,7 @@ async function initDatabase() {
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    req.user = { id: 'USR-GUEST', name: 'Utilisateur GEBAT', role: 'SUPER_ADMIN' };
-    return next();
+    return sendError(res, 401, 'AUTHENTICATION_REQUIRED', 'Authentification requise.');
   }
 
   const token = authHeader.split(' ')[1];
@@ -645,9 +697,7 @@ const requireAuth = async (req, res, next) => {
     req.user = decoded;
     return next();
   } catch (err) {
-    // Si jeton de session locale ou jeton client fourni
-    req.user = { id: 'USR-ACTIVE', name: 'Utilisateur GEBAT 360', role: 'SUPER_ADMIN' };
-    return next();
+    return sendError(res, 401, 'INVALID_TOKEN', 'Session invalide ou expirée.');
   }
 };
 
@@ -659,6 +709,92 @@ const requireRole = (allowedRoles) => {
     next();
   };
 };
+
+const privilegedRoles = new Set(['SUPER_ADMIN', 'ADMIN', 'DIRECTION', 'DIRECTION_GENERALE']);
+
+const normalizeRole = (role = '') => String(role).toUpperCase().replace(/\s+/g, '_');
+
+async function audit(connection, req, action, module, objectRef, newValue, oldValue = null) {
+  await connection.query(
+    `INSERT INTO audit_logs (id, user_id, user_name, user_role, action, module, object_ref, old_value, new_value)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [`AUD-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, req.user.id, req.user.name, req.user.role,
+      action, module, objectRef, oldValue, newValue]
+  );
+}
+
+async function recalculateProductionMetrics(connection, projectId, wbsId) {
+  // Seuls les rapports validés/verrouillés alimentent les indicateurs officiels.
+  const [wbsRows] = await connection.query('SELECT id, planned_qty FROM wbs_nodes WHERE id = ?', [wbsId]);
+  if (wbsRows.length > 0) {
+    const [totals] = await connection.query(
+      `SELECT COALESCE(SUM(realized_qty), 0) AS realized FROM daily_reports
+       WHERE project_id = ? AND wbs_id = ? AND status IN ('VALIDÉ', 'VERROUILLÉ')`,
+      [projectId, wbsId]
+    );
+    const planned = Number(wbsRows[0].planned_qty || 0);
+    const progress = planned > 0 ? Math.min(100, (Number(totals[0].realized) / planned) * 100) : 0;
+    await connection.query('UPDATE wbs_nodes SET progress = ? WHERE id = ?', [progress, wbsId]);
+  }
+
+  const [projectTotals] = await connection.query(
+    `SELECT COALESCE(SUM(planned_qty), 0) AS planned, COALESCE(SUM(realized_qty), 0) AS realized
+     FROM daily_reports WHERE project_id = ? AND status IN ('VALIDÉ', 'VERROUILLÉ')`,
+    [projectId]
+  );
+  const planned = Number(projectTotals[0].planned || 0);
+  const progress = planned > 0 ? Math.min(100, (Number(projectTotals[0].realized) / planned) * 100) : 0;
+  await connection.query('UPDATE projects SET progress = ? WHERE id = ?', [progress, projectId]);
+}
+
+async function resolveWbsId(connection, projectId, identifier) {
+  if (!identifier) return null;
+  const [rows] = await connection.query(
+    'SELECT id FROM wbs_nodes WHERE project_id = ? AND (id = ? OR code = ?) LIMIT 1',
+    [projectId, identifier, identifier]
+  );
+  return rows[0]?.id || null;
+}
+
+async function accountValidatedProduction(connection, req, report) {
+  if (report.accounted_at) return;
+  const [consumptions] = await connection.query(
+    'SELECT * FROM daily_report_consumptions WHERE report_id = ? ORDER BY id', [report.id]
+  );
+  for (const [index, consumption] of consumptions.entries()) {
+    const [items] = await connection.query(
+      `SELECT * FROM stock_items WHERE (code = ? OR name = ?) AND (site_id = ? OR site_id IS NULL)
+       ORDER BY site_id DESC LIMIT 1 FOR UPDATE`,
+      [consumption.item_code || '', consumption.item_name, report.site_id]
+    );
+    if (items.length === 0) throw new Error(`Article de stock introuvable : ${consumption.item_name}`);
+    const item = items[0];
+    const quantity = Number(consumption.quantity || 0);
+    if (quantity <= 0) continue;
+    if (Number(item.current_stock) < quantity) throw new Error(`Stock insuffisant pour ${item.name}`);
+    const totalCost = quantity * Number(item.average_unit_price || 0);
+    const movementId = `MVT-PROD-${report.id}-${index + 1}`;
+    const costId = `COST-PROD-${report.id}-${index + 1}`;
+    await connection.query(
+      `INSERT INTO stock_movements (id, code, type, item_id, item_name, quantity, unit, unit_price, total_cost, warehouse, project_id, wbs_id, source_doc, user, date, site_id)
+       VALUES (?, ?, 'CONSOMMATION', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE id = id`,
+      [movementId, movementId, item.id, item.name, quantity, consumption.unit || item.unit,
+        item.average_unit_price || 0, totalCost, item.warehouse, report.project_id, report.wbs_id,
+        report.code, req.user.name, report.date, report.site_id]
+    );
+    await connection.query('UPDATE stock_items SET current_stock = current_stock - ?, total_value = (current_stock - ?) * average_unit_price WHERE id = ?', [quantity, quantity, item.id]);
+    await connection.query(
+      `INSERT INTO cost_transactions (id, project_id, wbs_id, nature, source_doc, description, amount, transaction_date, created_by)
+       VALUES (?, ?, ?, 'MAT', ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE id = id`,
+      [costId, report.project_id, report.wbs_id, report.code, `Consommation production : ${item.name}`,
+        totalCost, report.date, req.user.id]
+    );
+    await connection.query('UPDATE wbs_nodes SET actual_cost = actual_cost + ? WHERE id = ?', [totalCost, report.wbs_id]);
+  }
+  await connection.query('UPDATE daily_reports SET accounted_at = NOW(), accounted_by = ? WHERE id = ?', [req.user.id, report.id]);
+}
 
 // ==============================================================================
 // 1. HEALTH CHECK & STATUS
@@ -1082,9 +1218,14 @@ app.get(['/api/v1/sites', '/api/sites'], requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/projects — Liste des projets accessibles depuis la base MySQL
-app.get(['/api/v1/projects', '/api/projects'], async (req, res) => {
+app.get(['/api/v1/projects', '/api/projects'], requireAuth, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM projects ORDER BY created_at DESC');
+    const role = normalizeRole(req.user.role);
+    const [rows] = privilegedRoles.has(role)
+      ? await pool.query('SELECT * FROM projects ORDER BY created_at DESC')
+      : await pool.query(`SELECT p.* FROM projects p
+          JOIN user_sites us ON us.site_id = p.site_id
+          WHERE us.user_id = ? ORDER BY p.created_at DESC`, [req.user.id]);
     res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Erreur récupération projets', detail: err.message });
@@ -1157,7 +1298,7 @@ app.post(['/api/v1/projects', '/api/projects'], requireAuth, async (req, res) =>
 });
 
 // PATCH /api/v1/projects/:id — Modification complète d'un projet avec validation de site
-app.patch(['/api/v1/projects/:id', '/api/projects/:id'], async (req, res) => {
+app.patch(['/api/v1/projects/:id', '/api/projects/:id'], requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const p = req.body;
@@ -1168,6 +1309,9 @@ app.patch(['/api/v1/projects/:id', '/api/projects/:id'], async (req, res) => {
     }
 
     const current = rows[0];
+    if (!await checkUserSiteAccess(req.user, current.site_id)) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Accès refusé sur le site de ce projet.');
+    }
     const newCode = p.code || current.code || id;
     const newName = p.name || current.name;
     const newClient = p.client !== undefined ? p.client : current.client;
@@ -1212,19 +1356,6 @@ app.patch(['/api/v1/projects/:id', '/api/projects/:id'], async (req, res) => {
 });
 
 // DELETE /api/v1/projects/:id — Suppression d'un projet dans MySQL
-app.delete(['/api/v1/projects/:id', '/api/projects/:id'], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [result] = await pool.query('DELETE FROM projects WHERE id = ? OR code = ?', [id, id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Projet introuvable' });
-    }
-    res.status(200).json({ message: `Projet ${id} supprimé avec succès de la base de données` });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur suppression projet', detail: err.message });
-  }
-});
-
 // DELETE /api/v1/projects/:id — Suppression d'un projet avec validation de site
 app.delete(['/api/v1/projects/:id', '/api/projects/:id'], requireAuth, async (req, res) => {
   try {
@@ -1352,73 +1483,119 @@ app.post(['/api/v1/projects/:projectId/wbs/import', '/api/projects/:projectId/wb
 });
 
 app.post(['/api/v1/wbs', '/api/wbs'], requireAuth, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const w = req.body;
-    res.status(201).json({ message: 'Nœud WBS créé avec succès', wbsNode: w });
+    if (!w.projectId || !w.code || !w.name) {
+      connection.release();
+      return sendError(res, 422, 'VALIDATION_ERROR', 'projectId, code et name sont obligatoires.');
+    }
+    const [projects] = await connection.query('SELECT site_id FROM projects WHERE id = ?', [w.projectId]);
+    if (projects.length === 0) {
+      connection.release();
+      return sendError(res, 404, 'PROJECT_NOT_FOUND', 'Projet introuvable.');
+    }
+    if (!await checkUserSiteAccess(req.user, projects[0].site_id)) {
+      connection.release();
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Accès refusé sur le site de ce projet.');
+    }
+    const id = w.id || `WBS-${Date.now()}`;
+    await connection.query(
+      `INSERT INTO wbs_nodes (id, project_id, code, name, unit, planned_qty, unit_cost, initial_budget, revised_budget, nature, level)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, w.projectId, w.code, w.name, w.unit || 'U', w.plannedQty || 0, w.unitCost || 0,
+        w.initialBudget || 0, w.revisedBudget || w.initialBudget || 0, w.nature || 'MAT', w.level || 'ACTIVITE']
+    );
+    await audit(connection, req, 'CREATE_WBS', 'WBS', id, JSON.stringify(w));
+    connection.release();
+    res.status(201).json({ id, message: 'Nœud WBS créé avec succès' });
   } catch (err) {
+    connection.release();
     res.status(500).json({ error: 'Erreur création WBS', detail: err.message });
   }
 });
 
 app.patch(['/api/v1/wbs/:id', '/api/wbs/:id'], requireAuth, async (req, res) => {
-  res.status(200).json({ message: `Nœud WBS ${req.params.id} mis à jour` });
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.query('SELECT w.*, p.site_id FROM wbs_nodes w JOIN projects p ON p.id = w.project_id WHERE w.id = ?', [req.params.id]);
+    if (rows.length === 0) {
+      connection.release();
+      return sendError(res, 404, 'WBS_NOT_FOUND', 'Nœud WBS introuvable.');
+    }
+    if (!await checkUserSiteAccess(req.user, rows[0].site_id)) {
+      connection.release();
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Accès refusé sur le site de ce WBS.');
+    }
+    const w = { ...rows[0], ...req.body };
+    await connection.query(
+      `UPDATE wbs_nodes SET code = ?, name = ?, unit = ?, planned_qty = ?, unit_cost = ?, initial_budget = ?, revised_budget = ?, nature = ? WHERE id = ?`,
+      [w.code, w.name, w.unit, w.plannedQty ?? w.planned_qty, w.unitCost ?? w.unit_cost,
+        w.initialBudget ?? w.initial_budget, w.revisedBudget ?? w.revised_budget, w.nature, req.params.id]
+    );
+    await recalculateProductionMetrics(connection, rows[0].project_id, req.params.id);
+    await audit(connection, req, 'UPDATE_WBS', 'WBS', req.params.id, JSON.stringify(req.body), JSON.stringify(rows[0]));
+    connection.release();
+    res.status(200).json({ message: `Nœud WBS ${req.params.id} mis à jour` });
+  } catch (err) {
+    connection.release();
+    res.status(500).json({ error: 'Erreur mise à jour WBS', detail: err.message });
+  }
 });
 
 app.get(['/api/v1/wbs/:id/cost-control', '/api/wbs/:id/cost-control'], requireAuth, async (req, res) => {
-  res.status(200).json({
-    wbsId: req.params.id,
-    bac: 40000000,
-    actualCost: 22000000,
-    etc: 20000000,
-    eac: 42000000,
-    cpi: 0.95,
-    spi: 0.98,
-    varianceBudget: 2000000,
-    margePrevisionnelle: 8000000,
-  });
+  try {
+    const [rows] = await pool.query(`SELECT w.*, p.contract_amount, p.site_id FROM wbs_nodes w JOIN projects p ON p.id = w.project_id WHERE w.id = ?`, [req.params.id]);
+    if (rows.length === 0) return sendError(res, 404, 'WBS_NOT_FOUND', 'Nœud WBS introuvable.');
+    if (!await checkUserSiteAccess(req.user, rows[0].site_id)) return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Accès refusé sur ce WBS.');
+    const w = rows[0];
+    const [costs] = await pool.query('SELECT COALESCE(SUM(amount), 0) AS actualCost FROM cost_transactions WHERE wbs_id = ?', [w.id]);
+    const bac = Number(w.revised_budget || w.initial_budget || 0);
+    const actualCost = Number(costs[0].actualCost || 0);
+    const etc = Math.max(0, bac - actualCost);
+    res.status(200).json({ wbsId: w.id, bac, actualCost, etc, eac: actualCost + etc,
+      progress: Number(w.progress || 0), varianceBudget: bac - actualCost });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur calcul Cost Control', detail: err.message });
+  }
 });
 
 app.get(['/api/v1/wbs/:id/transactions', '/api/wbs/:id/transactions'], requireAuth, async (req, res) => {
-  res.status(200).json([
-    { id: 'tx-1', date: '2026-02-18', nature: 'MAT', sourceDoc: 'BL-2026-089', description: 'Réception Ciment CPJ 42.5', amount: 14500000 },
-    { id: 'tx-2', date: '2026-02-15', nature: 'MTL', sourceDoc: 'STK-CONS-042', description: 'Consommation Carburant Toupie', amount: 4500000 },
-    { id: 'tx-3', date: '2026-02-10', nature: 'MO', sourceDoc: 'RAP-JOUR-014', description: 'Heures Sup Équipe Coulage', amount: 3000000 }
-  ]);
+  try {
+    const [rows] = await pool.query('SELECT * FROM cost_transactions WHERE wbs_id = ? ORDER BY transaction_date DESC, created_at DESC', [req.params.id]);
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération transactions', detail: err.message });
+  }
 });
 
 // Endpoint Server-Side Paginé, Filtré & Trié
 app.get(['/api/v1/transactions', '/api/transactions'], requireAuth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page || '1', 10);
-    const limit = parseInt(req.query.limit || '50', 10);
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10)));
     const costNature = req.query.costNature;
     const search = req.query.search;
     const projectId = req.query.projectId;
 
-    const allTransactions = [
-      { id: 'tx-1', projectId: 'CIV-2026-ST-BING-001', date: '2026-02-18', nature: 'MAT', sourceDoc: 'BL-2026-089', description: 'Réception Ciment CPJ 42.5', amount: 14500000 },
-      { id: 'tx-2', projectId: 'CIV-2026-ST-BING-001', date: '2026-02-15', nature: 'MTL', sourceDoc: 'STK-CONS-042', description: 'Consommation Carburant Toupie P-04', amount: 4500000 },
-      { id: 'tx-3', projectId: 'CIV-2026-ST-BING-001', date: '2026-02-10', nature: 'MO', sourceDoc: 'RAP-JOUR-014', description: 'Heures Sup Équipe Coulage Radier', amount: 3000000 },
-      { id: 'tx-4', projectId: 'CIV-2026-ST-BING-001', date: '2026-02-08', nature: 'ST', sourceDoc: 'CONTRAT-ST-004', description: 'Prestation Sous-traitance Pieux Profonds', amount: 25000000 },
-      { id: 'tx-5', projectId: 'CIV-2026-ST-BING-001', date: '2026-02-05', nature: 'TRS', sourceDoc: 'FAC-TRANS-012', description: 'Transport Toupies & Évacuation Déblais', amount: 2000000 },
-    ];
-
-    let filtered = allTransactions;
-    if (projectId) {
-      filtered = filtered.filter(t => t.projectId === projectId);
+    const clauses = [];
+    const params = [];
+    if (!privilegedRoles.has(normalizeRole(req.user.role))) {
+      clauses.push('EXISTS (SELECT 1 FROM projects p JOIN user_sites us ON us.site_id = p.site_id WHERE p.id = ct.project_id AND us.user_id = ?)');
+      params.push(req.user.id);
     }
-    if (costNature && costNature !== 'TOUS') {
-      filtered = filtered.filter(t => t.nature === costNature);
-    }
-    if (search) {
-      const q = String(search).toLowerCase();
-      filtered = filtered.filter(t => t.description.toLowerCase().includes(q) || t.sourceDoc.toLowerCase().includes(q));
-    }
-
-    const total = filtered.length;
+    if (projectId) { clauses.push('ct.project_id = ?'); params.push(projectId); }
+    if (costNature && costNature !== 'TOUS') { clauses.push('ct.nature = ?'); params.push(costNature); }
+    if (search) { clauses.push('(ct.description LIKE ? OR ct.source_doc LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const [[count]] = await pool.query(`SELECT COUNT(*) AS total FROM cost_transactions ct ${where}`, params);
+    const [paginatedData] = await pool.query(
+      `SELECT ct.*, ct.project_id AS projectId, ct.source_doc AS sourceDoc, ct.transaction_date AS date
+       FROM cost_transactions ct ${where} ORDER BY ct.transaction_date DESC, ct.created_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, (page - 1) * limit]
+    );
+    const total = Number(count.total);
     const totalPages = Math.ceil(total / limit);
-    const startIndex = (page - 1) * limit;
-    const paginatedData = filtered.slice(startIndex, startIndex + limit);
 
     res.status(200).json({
       data: paginatedData,
@@ -1744,9 +1921,12 @@ app.delete(['/api/v1/stock/items/:id', '/api/stock/items/:id'], requireAuth, asy
 // ==============================================================================
 // 8. PRODUCTION & RAPPORTS JOURNALIERS TERRAIN
 // ==============================================================================
-app.get(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/api/daily-reports', '/api/v1/daily_reports', '/api/daily_reports'], async (req, res) => {
+app.get(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/api/daily-reports', '/api/v1/daily_reports', '/api/daily_reports'], requireAuth, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM daily_reports ORDER BY date DESC, id DESC');
+    const [rows] = privilegedRoles.has(normalizeRole(req.user.role))
+      ? await pool.query('SELECT * FROM daily_reports ORDER BY date DESC, id DESC')
+      : await pool.query(`SELECT r.* FROM daily_reports r JOIN projects p ON p.id = r.project_id
+          JOIN user_sites us ON us.site_id = p.site_id WHERE us.user_id = ? ORDER BY r.date DESC, r.id DESC`, [req.user.id]);
     const mapped = rows.map(r => ({
       ...r,
       reportCode: r.code || r.id,
@@ -1775,6 +1955,12 @@ app.post(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/ap
     await connection.beginTransaction();
 
     const id = r.id || `CR-${Date.now()}`;
+    const projectId = r.projectId || r.project_id;
+    const [projects] = await connection.query('SELECT site_id FROM projects WHERE id = ?', [projectId]);
+    if (projects.length === 0) throw new Error('Projet introuvable');
+    if (!await checkUserSiteAccess(req.user, projects[0].site_id)) throw new Error('Accès refusé au site du projet');
+    const wbsId = await resolveWbsId(connection, projectId, r.wbsId || r.wbs_id || r.wbsCode);
+    if (!wbsId) throw new Error('Activité WBS introuvable pour ce projet');
     await connection.query(
       `INSERT INTO daily_reports (id, code, date, project_id, wbs_id, weather, planned_qty, realized_qty, unit, workers_count, hours_worked, equipment_count, equipment_hours, notes, status, created_by, productivity_rate, site_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1782,8 +1968,8 @@ app.post(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/ap
         id,
         r.code || `CR-${Date.now()}`,
         r.date || new Date().toISOString().substring(0, 10),
-        r.projectId || r.project_id || null,
-        r.wbsId || r.wbs_id || null,
+        projectId,
+        wbsId,
         r.weather || 'Ensoleillé',
         r.plannedQty || r.planned_qty || 0,
         r.realizedQty || r.realized_qty || 0,
@@ -1793,21 +1979,35 @@ app.post(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/ap
         r.equipmentCount || r.equipment_count || 0,
         r.equipmentHours || r.equipment_hours || 0,
         r.notes || '',
-        r.status || 'SOUMIS',
+        r.status || 'BROUILLON',
         r.createdBy || r.created_by || req.user.name,
         r.productivityRate || r.productivity_rate || 100,
-        r.siteId || r.site_id || null
+        projects[0].site_id
       ]
     );
 
-    // Si le rapport valide une quantité produite sur une activité WBS, impacter le progrès du WBS
-    if ((r.wbsId || r.wbs_id) && r.realizedQty > 0) {
-      const [wbsRows] = await connection.query('SELECT planned_qty FROM wbs_nodes WHERE id = ?', [r.wbsId || r.wbs_id]);
-      if (wbsRows.length > 0 && wbsRows[0].planned_qty > 0) {
-        const prog = Math.min(100, (r.realizedQty / wbsRows[0].planned_qty) * 100);
-        await connection.query('UPDATE wbs_nodes SET progress = ? WHERE id = ?', [prog, r.wbsId || r.wbs_id]);
-      }
+    const consumptions = Array.isArray(r.consumptions) ? r.consumptions : (Array.isArray(r.consummations) ? r.consummations : []);
+    for (const [index, c] of consumptions.entries()) {
+      const quantity = Number(c.quantity ?? c.qty ?? 0);
+      if (quantity <= 0) continue;
+      await connection.query(
+        `INSERT INTO daily_report_consumptions (id, report_id, item_code, item_name, quantity, unit)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), unit = VALUES(unit)`,
+        [`CONS-${id}-${index + 1}`, id, c.itemCode || c.code || null, c.article || c.itemName || c.name || 'Article sans libellé', quantity, c.unit || 'U']
+      );
     }
+
+    const status = String(r.status || 'BROUILLON').toUpperCase();
+    if (status === 'SOUMIS') {
+      await connection.query(
+        `INSERT INTO validation_tasks (id, entity_type, entity_id, project_id, assigned_role, status, submitted_by)
+         VALUES (?, 'PRODUCTION_REPORT', ?, ?, 'DIRECTEUR_PROJET', 'PENDING', ?)
+         ON DUPLICATE KEY UPDATE status = 'PENDING', submitted_by = VALUES(submitted_by), updated_at = CURRENT_TIMESTAMP`,
+        [`VAL-RPT-${id}`, id, r.projectId || r.project_id, req.user.id]
+      );
+    }
+    await audit(connection, req, 'CREATE_PRODUCTION_REPORT', 'PRODUCTION', id, JSON.stringify({ status, realizedQty: r.realizedQty || r.realized_qty || 0 }));
 
     await connection.commit();
     connection.release();
@@ -1816,6 +2016,60 @@ app.post(['/api/v1/production', '/api/production', '/api/v1/daily-reports', '/ap
     await connection.rollback();
     connection.release();
     res.status(500).json({ error: 'Erreur création rapport journalier', detail: err.message });
+  }
+});
+
+// Transition de workflow persistante : BROUILLON -> SOUMIS -> VALIDÉ -> VERROUILLÉ.
+app.patch(['/api/v1/production/:id', '/api/production/:id', '/api/v1/daily-reports/:id', '/api/daily-reports/:id', '/api/v1/daily_reports/:id', '/api/daily_reports/:id'], requireAuth, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const [reports] = await connection.query('SELECT r.*, p.site_id FROM daily_reports r JOIN projects p ON p.id = r.project_id WHERE r.id = ?', [req.params.id]);
+    if (reports.length === 0) {
+      connection.release();
+      return sendError(res, 404, 'REPORT_NOT_FOUND', 'Rapport de production introuvable.');
+    }
+    const report = reports[0];
+    if (!await checkUserSiteAccess(req.user, report.site_id)) {
+      connection.release();
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Accès refusé sur le site de ce rapport.');
+    }
+    const current = String(report.status || 'BROUILLON').toUpperCase();
+    const next = String(req.body.status || '').toUpperCase();
+    const allowed = { BROUILLON: ['SOUMIS'], SOUMIS: ['VALIDÉ', 'REFUSÉ'], VALIDÉ: ['VERROUILLÉ'], REFUSÉ: ['BROUILLON'] };
+    if (!allowed[current]?.includes(next)) {
+      connection.release();
+      return sendError(res, 409, 'INVALID_WORKFLOW_TRANSITION', `Transition ${current} -> ${next} non autorisée.`);
+    }
+    const role = normalizeRole(req.user.role);
+    if (next === 'VALIDÉ' && !['DIRECTEUR_PROJET', 'DIRECTION', 'SUPER_ADMIN', 'ADMIN'].includes(role)) {
+      connection.release();
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Seul un valideur autorisé peut valider un rapport.');
+    }
+    if (next === 'VERROUILLÉ' && !['DIRECTEUR_PROJET', 'DIRECTION', 'SUPER_ADMIN', 'ADMIN'].includes(role)) {
+      connection.release();
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Seul un valideur autorisé peut verrouiller un rapport.');
+    }
+    await connection.beginTransaction();
+    await connection.query('UPDATE daily_reports SET status = ? WHERE id = ?', [next, report.id]);
+    if (next === 'SOUMIS') {
+      await connection.query(`INSERT INTO validation_tasks (id, entity_type, entity_id, project_id, assigned_role, status, submitted_by)
+        VALUES (?, 'PRODUCTION_REPORT', ?, ?, 'DIRECTEUR_PROJET', 'PENDING', ?)
+        ON DUPLICATE KEY UPDATE status = 'PENDING', submitted_by = VALUES(submitted_by), updated_at = CURRENT_TIMESTAMP`,
+        [`VAL-RPT-${report.id}`, report.id, report.project_id, req.user.id]);
+    } else if (next === 'VALIDÉ' || next === 'REFUSÉ') {
+      await connection.query('UPDATE validation_tasks SET status = ?, resolved_by = ?, comment = ? WHERE entity_type = \'PRODUCTION_REPORT\' AND entity_id = ?',
+        [next === 'VALIDÉ' ? 'APPROVED' : 'REJECTED', req.user.id, req.body.comment || null, report.id]);
+    }
+    if (next === 'VALIDÉ') await accountValidatedProduction(connection, req, report);
+    if (next === 'VALIDÉ' || next === 'VERROUILLÉ') await recalculateProductionMetrics(connection, report.project_id, report.wbs_id);
+    await audit(connection, req, `PRODUCTION_${next}`, 'PRODUCTION', report.id, req.body.comment || next, current);
+    await connection.commit();
+    connection.release();
+    res.status(200).json({ message: `Rapport ${next}`, id: report.id, status: next });
+  } catch (err) {
+    try { await connection.rollback(); } catch (_) {}
+    connection.release();
+    res.status(500).json({ error: 'Erreur transition workflow production', detail: err.message });
   }
 });
 

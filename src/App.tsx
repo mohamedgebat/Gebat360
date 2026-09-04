@@ -74,26 +74,21 @@ const MainApp: React.FC = () => {
 
   React.useEffect(() => {
     async function checkExistingAuth() {
-      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const ssoUserParam = urlParams ? (urlParams.get('sso_user') || urlParams.get('sso_token') || urlParams.get('sso')) : null;
-      const hasExplicitSso = Boolean(ssoUserParam);
-
       const savedToken = localStorage.getItem('gebat_jwt_token');
-      const savedUserStr = localStorage.getItem('gebat_current_user');
-
-      if (hasExplicitSso || (savedToken && savedUserStr)) {
-        if (!savedToken) {
-          localStorage.setItem('gebat_jwt_token', 'sso_active_token_gebat_360');
-        }
-        if (savedUserStr && !currentUser) {
-          try {
-            setCurrentUser(JSON.parse(savedUserStr));
-          } catch (e) {
-            console.warn('Erreur lecture gebat_current_user:', e);
-          }
-        }
+      if (!savedToken) {
+        setIsAuthenticated(false);
+        setIsVerifyingAuth(false);
+        return;
+      }
+      try {
+        const response = await ApiService.getMe();
+        if (!response?.user) throw new Error('Session non valide');
+        setCurrentUser(response.user);
+        localStorage.setItem('gebat_current_user', JSON.stringify(response.user));
         setIsAuthenticated(true);
-      } else {
+      } catch {
+        localStorage.removeItem('gebat_jwt_token');
+        localStorage.removeItem('gebat_current_user');
         setIsAuthenticated(false);
       }
       setIsVerifyingAuth(false);

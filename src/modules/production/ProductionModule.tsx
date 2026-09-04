@@ -96,6 +96,7 @@ export const ProductionModule: React.FC = () => {
   // Filtre de projet pour le tableau récapitulatif des valideurs (Défaut: 'ALL' pour ne rater aucun rapport soumis)
   const [stepProjectFilter, setStepProjectFilter] = useState<string>('ALL');
   const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
+  const [isValidating, setIsValidating] = useState<boolean>(false);
 
   // Dynamic status-matching helper : Filtrage strict et étanche par site / projet
   const isProjectReportMatch = (r: any, proj: any): boolean => {
@@ -562,7 +563,7 @@ export const ProductionModule: React.FC = () => {
   }, [stockItems]);
 
   // Contrôle d'accès et d'habilitation selon le rôle du compte connecté (Brouillon -> Soumis -> Validé -> Verrouillé)
-  const handleStatusChange = (targetStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé') => {
+  const handleStatusChange = async (targetStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé') => {
     const userRole = (currentUser?.role || '').toLowerCase();
     const isSuperAdmin = userRole.includes('super admin') || userRole.includes('admin');
     const isDirection = userRole.includes('direction') || userRole.includes('dg');
@@ -581,18 +582,18 @@ export const ProductionModule: React.FC = () => {
       const reportsToValidate = dailyReports.filter(r => {
         if (!isProjectReportMatch(r, selectedProject)) return false;
         const normS = (r.status || '').toUpperCase();
-        return !normS.includes('VALID') && !normS.includes('VERROU');
+        return normS.includes('SOUMIS');
       });
 
       if (reportsToValidate.length > 0) {
-        reportsToValidate.forEach(rep => {
-          if (updateDailyReportStatus) {
-            updateDailyReportStatus(rep.id, 'Validé', `Validé par ${currentUser?.name || 'Valideur'} (${currentUser?.role || 'DP/DT'})`);
+        try {
+          for (const rep of reportsToValidate) {
+            await updateDailyReportStatus(rep.id, 'Validé', `Validé par ${currentUser?.name || 'Valideur'} (${currentUser?.role || 'DP/DT'})`);
           }
-          if (updateValidationTaskStatus) {
-            updateValidationTaskStatus(rep.id, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
-          }
-        });
+        } catch (error: any) {
+          alert(`❌ Validation annulée : ${error?.message || 'la comptabilisation a échoué.'}`);
+          return;
+        }
         alert(`✅ ${reportsToValidate.length} rapport(s) du chantier ${selectedProject.name} validé(s) avec succès !\n\n• Métrés & WBS actualisés déterministiquement\n• % Avancement Physique du Projet recalculé\n• Cost Control (AC, EV, EAC, Marge) propagé\n• Sorties de stock enregistrées sans double imputation`);
       } else if (recordedActivities.length > 0 || currentWbsCode) {
         handleSubmitValidation();
@@ -617,10 +618,7 @@ export const ProductionModule: React.FC = () => {
     ]);
   };
 
-  // Enregistrement Brouillon (RJC-AAAA-XXXXX persistent)
-  const handleSaveDraft = () => {
-    handleStatusChange('Brouillon');
-
+  const persistReportItems = async (status: 'Brouillon' | 'Soumis') => {
     const itemsToSave = [...recordedActivities];
     if (currentWbsCode && currentSelectedAct && currentRealizedQty !== '') {
       itemsToSave.push({
@@ -637,115 +635,44 @@ export const ProductionModule: React.FC = () => {
 
     if (itemsToSave.length === 0) {
       alert('⚠️ Aucune activité saisie ou enregistrée sur ce rapport.');
-      return;
+      return false;
     }
 
-    if (createDailyReport) {
-      const primaryItem = itemsToSave[0];
-      const rowAdvancePct = primaryItem.targetQty > 0 ? parseFloat(((primaryItem.realizedQty / primaryItem.targetQty) * 100).toFixed(1)) : 0;
-
-      const currentYear = new Date().getFullYear();
-      const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + 1).padStart(5, '0')}`;
-
-      createDailyReport({
-        id: rjcCode,
-        code: rjcCode,
-        reportCode: rjcCode,
-        projectId: selectedProject.id,
-        date: reportDate,
-        wbsCode: primaryItem.wbsCode,
-        wbsId: primaryItem.wbsCode,
-        activityName: primaryItem.activityName || 'Activité',
-        weather,
-        temperature,
-        workShift,
-        locationZone,
-        generalComment,
-        teamLeader,
-        unit: primaryItem.unit,
-        targetQty: primaryItem.targetQty,
-        plannedQty: primaryItem.targetQty,
-        realizedQty: primaryItem.realizedQty,
-        cumulDate: primaryItem.cumulDate,
-        totalPlanned: primaryItem.totalPlanned,
-        advancePct: rowAdvancePct,
-        personnel: personnelRows,
-        consummations: consommationsRows,
-        problems,
-        photos,
-        observations,
-        status: 'Brouillon'
-      });
+    try {
+      for (const [index, item] of itemsToSave.entries()) {
+        const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
+        const currentYear = new Date().getFullYear();
+        const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}`;
+        await createDailyReport({
+          id: rjcCode, code: rjcCode, reportCode: rjcCode, projectId: selectedProject.id,
+          date: reportDate, wbsCode: item.wbsCode, wbsId: item.wbsCode,
+          activityName: item.activityName || 'Activité', weather, temperature, workShift,
+          locationZone, generalComment, teamLeader, unit: item.unit, targetQty: item.targetQty,
+          plannedQty: item.targetQty, realizedQty: item.realizedQty, cumulDate: item.cumulDate,
+          totalPlanned: item.totalPlanned, advancePct: rowAdvancePct, personnel: personnelRows,
+          consummations: consommationsRows, problems, photos, observations, status
+        });
+      }
+      setRecordedActivities([]);
+      setCurrentRealizedQty('');
+      setReportStatus(status);
+      return true;
+    } catch (error: any) {
+      alert(`❌ Échec de l'enregistrement : ${error?.message || 'les données ne sont pas sauvegardées.'}`);
+      return false;
     }
-
-    alert(`✅ Brouillon du Rapport Journalier (${itemsToSave.length} activité(s)) enregistré et persisté dans la base de données !`);
   };
 
-  // Soumission pour validation (RJC-AAAA-XXXXX persistent)
-  const handleSubmitValidation = () => {
-    handleStatusChange('Soumis');
+  // Enregistrement Brouillon : confirmation affichée seulement après le succès API.
+  const handleSaveDraft = async () => {
+    const saved = await persistReportItems('Brouillon');
+    if (saved) alert('✅ Brouillon enregistré dans la base de données.');
+  };
 
-    const itemsToSave = [...recordedActivities];
-    if (currentWbsCode && currentSelectedAct && currentRealizedQty !== '') {
-      itemsToSave.push({
-        id: `rec-current`,
-        wbsCode: currentWbsCode,
-        activityName: currentSelectedAct.description,
-        unit: currentActUnit,
-        targetQty: currentTargetQty,
-        realizedQty: Number(currentRealizedQty),
-        totalPlanned: currentContractVol,
-        cumulDate: currentCumulDate
-      });
-    }
-
-    if (itemsToSave.length === 0) {
-      alert('⚠️ Aucune activité saisie ou enregistrée sur ce rapport.');
-      return;
-    }
-
-    if (createDailyReport) {
-      const primaryItem = itemsToSave[0];
-      const rowAdvancePct = primaryItem.targetQty > 0 ? parseFloat(((primaryItem.realizedQty / primaryItem.targetQty) * 100).toFixed(1)) : 0;
-
-      const currentYear = new Date().getFullYear();
-      const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + 1).padStart(5, '0')}`;
-
-      createDailyReport({
-        id: rjcCode,
-        code: rjcCode,
-        reportCode: rjcCode,
-        projectId: selectedProject.id,
-        date: reportDate,
-        wbsCode: primaryItem.wbsCode,
-        wbsId: primaryItem.wbsCode,
-        activityName: primaryItem.activityName || 'Activité',
-        weather,
-        temperature,
-        workShift,
-        locationZone,
-        generalComment,
-        teamLeader,
-        unit: primaryItem.unit,
-        targetQty: primaryItem.targetQty,
-        plannedQty: primaryItem.targetQty,
-        realizedQty: primaryItem.realizedQty,
-        cumulDate: primaryItem.cumulDate,
-        totalPlanned: primaryItem.totalPlanned,
-        advancePct: rowAdvancePct,
-        personnel: personnelRows,
-        consummations: consommationsRows,
-        problems,
-        photos,
-        observations,
-        status: 'Soumis'
-      });
-    }
-
-    setRecordedActivities([]);
-    setCurrentRealizedQty('');
-    setReportStatus('Soumis');
-    alert(`🚀 Rapport Journalier (${itemsToSave.length} activité(s)) envoyé pour validation et persisté dans la base de données ! Identifiant officiel : RJC-${new Date().getFullYear()}-${String(dailyReports.length + 1).padStart(5, '0')}`);
+  // Soumission pour validation : tous les rapports d'activités sont persistés.
+  const handleSubmitValidation = async () => {
+    const saved = await persistReportItems('Soumis');
+    if (saved) alert('🚀 Rapport(s) envoyé(s) pour validation et enregistré(s) dans la base de données.');
   };
 
   if (!selectedProject) {
@@ -1150,43 +1077,59 @@ export const ProductionModule: React.FC = () => {
                               return isValidatorRole ? (
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
-                                    onClick={() => {
+                                    disabled={isValidating}
+                                    onClick={async () => {
                                       const targetId = rep.id;
                                       const targetCode = rep.code || rep.reportCode;
-                                      if (updateDailyReportStatus) {
-                                        updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                        if (targetCode && targetCode !== targetId) {
-                                          updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                      setIsValidating(true);
+                                      try {
+                                        if (updateDailyReportStatus) {
+                                          await updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                          if (targetCode && targetCode !== targetId) {
+                                            await updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                          }
                                         }
+                                        if (updateValidationTaskStatus) {
+                                          await updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
+                                        }
+                                        alert(`✅ Rapport ${targetCode || targetId} validé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés.`);
+                                      } catch (err: any) {
+                                        alert(`❌ Échec de la validation : ${err?.message || 'Erreur de communication serveur.'}`);
+                                      } finally {
+                                        setIsValidating(false);
                                       }
-                                      if (updateValidationTaskStatus) {
-                                        updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                      }
-                                      alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! (Étape 3: VALIDÉ).`);
                                     }}
-                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition flex items-center gap-1"
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition flex items-center gap-1"
                                   >
                                     <CheckCircle2 size={13} />
-                                    <span>✅ Valider</span>
+                                    <span>{isValidating ? '⏳ Validation...' : '✅ Valider'}</span>
                                   </button>
                                   <button
-                                    onClick={() => {
+                                    disabled={isValidating}
+                                    onClick={async () => {
                                       const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
                                       if (!reason.trim()) return;
                                       const targetId = rep.id;
                                       const targetCode = rep.code || rep.reportCode;
-                                      if (updateDailyReportStatus) {
-                                        updateDailyReportStatus(targetId, 'Brouillon', reason);
-                                        if (targetCode && targetCode !== targetId) {
-                                          updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                                      setIsValidating(true);
+                                      try {
+                                        if (updateDailyReportStatus) {
+                                          await updateDailyReportStatus(targetId, 'Brouillon', reason);
+                                          if (targetCode && targetCode !== targetId) {
+                                            await updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                                          }
                                         }
+                                        if (updateValidationTaskStatus) {
+                                          await updateValidationTaskStatus(targetId, 'RETURNED', reason);
+                                        }
+                                        alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                                      } catch (err: any) {
+                                        alert(`❌ Erreur lors du renvoi : ${err?.message || 'Erreur serveur.'}`);
+                                      } finally {
+                                        setIsValidating(false);
                                       }
-                                      if (updateValidationTaskStatus) {
-                                        updateValidationTaskStatus(targetId, 'RETURNED', reason);
-                                      }
-                                      alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
                                     }}
-                                    className="px-2.5 py-1.5 bg-amber-100 text-amber-900 hover:bg-amber-200 font-bold rounded-lg text-xs cursor-pointer transition"
+                                    className="px-2.5 py-1.5 bg-amber-100 text-amber-900 hover:bg-amber-200 disabled:opacity-50 font-bold rounded-lg text-xs cursor-pointer transition"
                                   >
                                     ↩️ Correction
                                   </button>
@@ -1201,11 +1144,19 @@ export const ProductionModule: React.FC = () => {
                             if (isValid) {
                               return isValidatorRole ? (
                                 <button
-                                  onClick={() => {
-                                    if (updateDailyReportStatus) updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
-                                    alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
+                                  disabled={isValidating}
+                                  onClick={async () => {
+                                    setIsValidating(true);
+                                    try {
+                                      if (updateDailyReportStatus) await updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
+                                      alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
+                                    } catch (err: any) {
+                                      alert(`❌ Erreur lors du verrouillage : ${err?.message || 'Erreur serveur.'}`);
+                                    } finally {
+                                      setIsValidating(false);
+                                    }
                                   }}
-                                  className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition"
+                                  className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-2xs cursor-pointer transition"
                                 >
                                   🔒 Verrouiller
                                 </button>
@@ -2458,47 +2409,63 @@ export const ProductionModule: React.FC = () => {
                 {isValidatorRole && viewingReportDetail.status === 'Soumis' && (
                   <>
                     <button
-                      onClick={() => {
+                      disabled={isValidating}
+                      onClick={async () => {
                         const reason = prompt('Motif / Commentaire pour la demande de correction :') || 'Demande de correction terrain';
                         if (!reason.trim()) return;
                         const targetId = viewingReportDetail.id;
                         const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
-                        if (updateDailyReportStatus) {
-                          updateDailyReportStatus(targetId, 'Brouillon', reason);
-                          if (targetCode && targetCode !== targetId) {
-                            updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                        setIsValidating(true);
+                        try {
+                          if (updateDailyReportStatus) {
+                            await updateDailyReportStatus(targetId, 'Brouillon', reason);
+                            if (targetCode && targetCode !== targetId) {
+                              await updateDailyReportStatus(targetCode, 'Brouillon', reason);
+                            }
                           }
+                          if (updateValidationTaskStatus) {
+                            await updateValidationTaskStatus(targetId, 'RETURNED', reason);
+                          }
+                          setViewingReportDetail(null);
+                          alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                        } catch (err: any) {
+                          alert(`❌ Erreur lors du renvoi : ${err?.message || 'Erreur serveur.'}`);
+                        } finally {
+                          setIsValidating(false);
                         }
-                        if (updateValidationTaskStatus) {
-                          updateValidationTaskStatus(targetId, 'RETURNED', reason);
-                        }
-                        setViewingReportDetail(null);
-                        alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
                       }}
-                      className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      className="px-4 py-2 bg-amber-100 hover:bg-amber-200 disabled:opacity-50 text-amber-900 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
                     >
                       <span>↩️ Demander Correction</span>
                     </button>
                     <button
-                      onClick={() => {
+                      disabled={isValidating}
+                      onClick={async () => {
                         const targetId = viewingReportDetail.id;
                         const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
-                        if (updateDailyReportStatus) {
-                          updateDailyReportStatus(targetId, 'Validé', 'Validé depuis la fiche synthétique');
-                          if (targetCode && targetCode !== targetId) {
-                            updateDailyReportStatus(targetCode, 'Validé', 'Validé depuis la fiche synthétique');
+                        setIsValidating(true);
+                        try {
+                          if (updateDailyReportStatus) {
+                            await updateDailyReportStatus(targetId, 'Validé', 'Validé depuis la fiche synthétique');
+                            if (targetCode && targetCode !== targetId) {
+                              await updateDailyReportStatus(targetCode, 'Validé', 'Validé depuis la fiche synthétique');
+                            }
                           }
+                          if (updateValidationTaskStatus) {
+                            await updateValidationTaskStatus(targetId, 'APPROVED', 'Validé depuis la fiche synthétique');
+                          }
+                          setViewingReportDetail(null);
+                          alert(`✅ Rapport ${targetCode || targetId} validé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés.`);
+                        } catch (err: any) {
+                          alert(`❌ Échec de la validation : ${err?.message || 'Erreur de communication serveur.'}`);
+                        } finally {
+                          setIsValidating(false);
                         }
-                        if (updateValidationTaskStatus) {
-                          updateValidationTaskStatus(targetId, 'APPROVED', 'Validé depuis la fiche synthétique');
-                        }
-                        setViewingReportDetail(null);
-                        alert(`✅ Rapport ${targetCode || targetId} validé avec succès ! Il est maintenant à l'Étape 3 (VALIDÉ).`);
                       }}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
                     >
                       <CheckCircle2 size={16} />
-                      <span>✅ Valider ce Rapport (DP/DT)</span>
+                      <span>{isValidating ? '⏳ Validation en cours...' : '✅ Valider ce Rapport (DP/DT)'}</span>
                     </button>
                   </>
                 )}

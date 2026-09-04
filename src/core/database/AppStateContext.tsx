@@ -181,10 +181,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v399 - Fully Dynamic Évolution des Coûts SSOT)
+  // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_03_fully_dynamic_evolution_des_couts_v399';
+      const DATA_VERSION = 'v2026_09_04_async_production_auto_stock_v400';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_daily_reports');
@@ -2163,12 +2163,48 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Synchronisation déterministe et universelle SSOT post-validation
     if (newStatus === 'Validé' || newStatus === 'Verrouillé') {
+      const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+      const targetReport = updatedReportsList.find(r => 
+        r.id === reportId || r.code === reportId || r.reportCode === reportId ||
+        r.id === cleanReqId || r.code === cleanReqId
+      );
+
+      // 1. Décrémentation automatique des stocks et création des mouvements de sortie
+      if (targetReport && Array.isArray(targetReport.consummations) && targetReport.consummations.length > 0) {
+        targetReport.consummations.forEach(cons => {
+          const qty = Number(cons.consumed || 0);
+          if (qty > 0 && cons.article) {
+            const matchingItem = stockItems.find(item => 
+              item.name.toLowerCase() === cons.article.toLowerCase() ||
+              (item.code && cons.article && item.code.toLowerCase() === cons.article.toLowerCase())
+            );
+
+            createStockMovement({
+              code: `MVT-PROD-${Date.now().toString().slice(-6)}`,
+              type: 'Sortie',
+              itemId: matchingItem?.id || `STK-${cons.article.replace(/\s+/g, '-').toUpperCase()}`,
+              itemName: cons.article,
+              quantity: qty,
+              unit: cons.unit || matchingItem?.unit || 'U',
+              date: targetReport.date || new Date().toISOString().split('T')[0],
+              projectId: targetReport.projectId,
+              wbsCode: targetReport.wbsCode || targetReport.wbsId || 'GENERAL',
+              notes: `Consommation automatique validée du rapport de production ${targetReport.code || targetReport.id}`,
+              performedBy: actorName,
+              costNature: 'MAT',
+              unitPrice: Number(matchingItem?.averageUnitPrice || cons.theoreticalPrice || 0),
+              totalCost: Number((matchingItem?.averageUnitPrice || cons.theoreticalPrice || 0) * qty)
+            });
+          }
+        });
+      }
+
       const validReports = updatedReportsList.filter(r => {
         const s = (r.status || '').toUpperCase();
         return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
       });
 
-      // 1. Recalcul déterministe du WBS par somme exacte des rapports validés
+      // 2. Recalcul déterministe du WBS par somme exacte des rapports validés
       let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
 
       setWbsMap(prevMap => {
@@ -2190,6 +2226,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               });
 
               const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);
+              const totalRealizedCost = nodeReports.reduce((sum, r) => {
+                let cost = Number(r.totalCost);
+                const qte = Number(r.realizedQty || 0);
+                const pu = Number(r.pu || node.pu || (Number(node.revisedBudget || 0) / Number(node.plannedQty || 1)) || 0);
+                if (isNaN(cost) || cost <= 0) cost = qte * pu;
+                return sum + (cost || 0);
+              }, 0);
 
               let updatedChildren: WBSNode[] | undefined = undefined;
               if (node.children && node.children.length > 0) {
@@ -2211,6 +2254,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 ...node,
                 actualQty: totalRealizedQty > 0 ? totalRealizedQty : node.actualQty || node.realizedQty || 0,
                 realizedQty: totalRealizedQty > 0 ? totalRealizedQty : node.realizedQty || node.actualQty || 0,
+                actualCost: totalRealizedCost > 0 ? totalRealizedCost : node.actualCost || 0,
                 progress: nodeProgress,
                 children: updatedChildren
               };
@@ -2263,54 +2307,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         safeSaveToStorage('gebat_projects', updatedProjects);
         return updatedProjects;
       });
-
-      // 3. Traitement Idempotent des Mouvements de Stock
-      const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
-      const targetReport = updatedReportsList.find(r => r.id === reportId || r.code === reportId || r.id === cleanReqId || r.code === cleanReqId);
-
-      if (targetReport && Array.isArray((targetReport as any).consumptions) && (targetReport as any).consumptions.length > 0) {
-        setStockItems(prevStock => {
-          let updatedStock = [...prevStock];
-          (targetReport as any).consumptions.forEach((c: any) => {
-            const itemCode = (c.itemCode || c.code || c.article || '').toUpperCase();
-            const qtyConsumed = Number(c.qty || c.quantity || 0);
-            if (itemCode && qtyConsumed > 0) {
-              const movId = `MOV-RPT-${targetReport.id}-${itemCode}`;
-              setStockMovements(prevMovs => {
-                if (prevMovs.some(m => m.id === movId || m.reference === targetReport.code)) return prevMovs;
-                const newMov = {
-                  id: movId,
-                  date: targetReport.date || new Date().toISOString().split('T')[0],
-                  type: 'SORTIE' as const,
-                  reference: targetReport.code || targetReport.id,
-                  warehouseId: 'WH-SONGON',
-                  itemId: itemCode,
-                  itemName: c.article || itemCode,
-                  unit: c.unit || 'U',
-                  quantity: qtyConsumed,
-                  wbsCode: targetReport.wbsCode,
-                  requestedBy: targetReport.submittedBy || actorName,
-                  status: 'VALIDÉ' as const
-                };
-                const nextMovs = [newMov, ...prevMovs];
-                safeSaveToStorage('gebat_stock_movements', nextMovs);
-                return nextMovs;
-              });
-
-              updatedStock = updatedStock.map(st => {
-                const stCode = (st.code || st.id || '').toUpperCase();
-                if (stCode === itemCode || stCode.includes(itemCode) || itemCode.includes(stCode)) {
-                  const newQty = Math.max(0, Number(st.currentStock || st.quantity || 0) - qtyConsumed);
-                  return { ...st, currentStock: newQty, quantity: newQty };
-                }
-                return st;
-              });
-            }
-          });
-          safeSaveToStorage('gebat_stock_items', updatedStock);
-          return updatedStock;
-        });
-      }
 
       // Diffusion temps réel multi-fenêtres / multi-onglets
       if (typeof window !== 'undefined') {

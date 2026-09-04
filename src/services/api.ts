@@ -9,7 +9,7 @@ const API_BASE_URL = (
 ).replace(/\/$/, '');
 
 export class ApiService {
-  private static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('gebat_jwt_token');
     
     const headers: Record<string, string> = {
@@ -30,12 +30,13 @@ export class ApiService {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
       if (!response.ok) {
-        return null as unknown as T;
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || payload?.error || `Erreur HTTP ${response.status}`);
       }
 
       return await response.json();
-    } catch {
-      return null as unknown as T;
+    } catch (error) {
+      throw error;
     }
   }
 

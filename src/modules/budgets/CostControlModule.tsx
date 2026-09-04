@@ -126,26 +126,6 @@ export const CostControlModule: React.FC = () => {
     const flatWbs = flattenWBS(projectWbs);
     if (flatWbs.length > 0) {
       baseSourceNodes = flatWbs;
-    } else if (isSongon) {
-      baseSourceNodes = REAL_DS_SONGON_ACTIVITIES.map(a => ({
-        id: a.id,
-        code: a.wbsCode || a.priceNo,
-        name: a.description,
-        unit: a.unit,
-        contractQty: a.contractQty,
-        initialBudget: a.marketAmount,
-        revisedBudget: a.calculatedDsAmount || a.importedDsAmount || a.marketAmount,
-      }));
-    } else if (isBingerville) {
-      baseSourceNodes = REAL_DS_BINGERVILLE_ACTIVITIES.map(a => ({
-        id: a.id,
-        code: a.wbsCode || a.priceNo,
-        name: a.description,
-        unit: a.unit,
-        contractQty: a.contractQty,
-        initialBudget: a.marketAmount,
-        revisedBudget: a.calculatedDsAmount || a.importedDsAmount || a.marketAmount,
-      }));
     }
 
     return baseSourceNodes.map((w) => {
@@ -155,19 +135,20 @@ export const CostControlModule: React.FC = () => {
       // Coût Réel Constated = Cumul des Rapports Journaliers Terrain + Sorties Stock réelles
       const wbsReports = dailyReports.filter(r =>
         (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code || (isSongon && (r.projectId || '').includes('SON')) || (isBingerville && (r.projectId || '').includes('BEN'))) &&
+        ['VALIDÉ', 'VERROUILLÉ', 'VALID', 'VERROUILLE'].some(status => String(r.status || '').toUpperCase().includes(status)) &&
         (r.wbsCode === w.code || r.wbsId === w.code || r.wbsId === w.id ||
         (r.activityName && w.name && (r.activityName.toLowerCase().includes(w.name.toLowerCase()) || w.name.toLowerCase().includes(r.activityName.toLowerCase()))))
       );
-      const actualReportCost = wbsReports.reduce((sum, r) => sum + (Number(r.totalCost) || ((Number(r.realizedQty) || 0) * (Number(r.pu) || 5000)) || 0), 0);
+      const actualReportCost = wbsReports.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
       const wbsMovements = stockMovements.filter(m => m.wbsCode === w.code || (m.notes && m.notes.includes(w.code)));
       const actualStockCost = wbsMovements.reduce((sum, m) => sum + (Number(m.totalCost) || 0), 0);
 
       const actualCost = Math.round(w.actualCost !== undefined && w.actualCost > 0 ? w.actualCost : (actualReportCost > 0 ? actualReportCost : actualStockCost));
 
-      const committed = Math.round(w.committed || (actualCost > 0 ? Math.round(actualCost * 1.15) : Math.round(revised * 0.04)));
-      const reserved = Math.round(revised * 0.04);
-      const received = Math.round(committed * 0.85);
-      const invoiced = Math.round(committed * 0.80);
+      const committed = Math.round(w.committed || 0);
+      const reserved = Math.round(w.reserved || 0);
+      const received = Math.round(w.received || 0);
+      const invoiced = Math.round(w.invoiced || 0);
 
       const remainingToEngage = Math.max(0, Math.round(revised - committed));
       const remainingToProduce = Math.max(0, Math.round(revised - actualCost));

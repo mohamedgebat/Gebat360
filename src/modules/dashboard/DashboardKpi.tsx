@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 import { SiteSelector } from '../../shared/components/SiteSelector';
+import { DashboardGeneral } from './DashboardGeneral';
 
 interface DashboardKpiProps {
   onBackToProject?: () => void;
@@ -46,6 +47,11 @@ export const DashboardKpi: React.FC<DashboardKpiProps> = ({ onBackToProject }) =
 
   const [periode] = useState('Juin 2026');
   const [comparePeriod] = useState('Mai 2026');
+
+  // Le tableau précédent affichait des délais, qualité, sécurité et tableaux de
+  // lots codés en dur. La vue consolidée est la seule vue KPI autorisée tant que
+  // ces sources métier ne sont pas persistées et exposées par l'API.
+  return <DashboardGeneral />;
 
   return (
     <div className="space-y-6 text-slate-800 font-sans max-w-7xl mx-auto">
