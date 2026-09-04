@@ -58,12 +58,14 @@ const formatNumber = (val: number | undefined | null) => {
 interface WbsHierarchyNode {
   id: string;
   code: string;
+  priceNo?: string;
   description: string;
   unit: string;
   contractQty: number;
   contractUnitPrice: number;
   contractAmount: number;
   budgetDs: number;
+  costDsUnit?: number;
   startDate: string;
   endDate: string;
   manager: string;
@@ -79,9 +81,294 @@ interface WbsHierarchyNode {
   children?: WbsHierarchyNode[];
 }
 
-interface WbsModuleProps {
-  onBackToProject?: () => void;
+interface AddWbsNodeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  project: any;
+  existingLots: { id: string; code: string; description: string }[];
+  onAddNode: (nodeData: any) => void;
 }
+
+const AddWbsNodeModal: React.FC<AddWbsNodeModalProps> = ({
+  isOpen,
+  onClose,
+  project,
+  existingLots,
+  onAddNode
+}) => {
+  const [level, setLevel] = useState<'lot' | 'activite'>('lot');
+  const [parentLotCode, setParentLotCode] = useState(existingLots[0]?.code || '');
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [unit, setUnit] = useState('m³');
+  const [contractQty, setContractQty] = useState<number>(1);
+  const [contractUnitPrice, setContractUnitPrice] = useState<number>(0);
+  const [budgetDs, setBudgetDs] = useState<number>(0);
+  const [nature, setNature] = useState<CostNature>('MAT');
+  const [manager, setManager] = useState(project?.manager || 'SEA Alphonse');
+
+  // Auto-generate code when switching level or parent
+  React.useEffect(() => {
+    if (level === 'lot') {
+      const nextLotNum = String(existingLots.length + 1).padStart(2, '0');
+      setCode(`${project?.code || 'PRJ'} / ${nextLotNum}`);
+      setUnit('-');
+    } else {
+      const parent = parentLotCode || existingLots[0]?.code || `${project?.code || 'PRJ'} / 01`;
+      setCode(`${parent} / 001`);
+      setUnit('m³');
+    }
+  }, [level, parentLotCode, project?.code, existingLots.length]);
+
+  // Auto-calculate budget DS when market unit price changes
+  const handleMarketPriceChange = (price: number) => {
+    setContractUnitPrice(price);
+    setBudgetDs(Math.round(price * (contractQty || 1) * 0.85));
+  };
+
+  const handleQtyChange = (qty: number) => {
+    setContractQty(qty);
+    setBudgetDs(Math.round((contractUnitPrice || 0) * qty * 0.85));
+  };
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim() || !name.trim()) {
+      alert('Veuillez renseigner le code et le libellé du nœud WBS.');
+      return;
+    }
+    onAddNode({
+      nodeLevel: level,
+      parentLotCode: level === 'activite' ? parentLotCode : undefined,
+      code: code.trim(),
+      name: name.trim(),
+      unit: level === 'lot' ? '-' : unit,
+      contractQty: Number(contractQty || 1),
+      contractUnitPrice: Number(contractUnitPrice || 0),
+      budgetDs: Number(budgetDs || Math.round(Number(contractUnitPrice || 0) * Number(contractQty || 1) * 0.85)),
+      nature,
+      manager
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans text-xs">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-blue-600 rounded-xl">
+              <Layers size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="font-extrabold text-sm text-white">Ajouter un élément WBS</h2>
+              <p className="text-slate-400 text-[11px]">Projet : {project?.name} ({project?.code})</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg transition cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+          {/* Type de nœud */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 text-xs block">Niveau d'arborescence :</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setLevel('lot')}
+                className={`p-3 rounded-xl border text-left font-bold transition flex items-center gap-2 cursor-pointer ${level === 'lot' ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-xs' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+              >
+                <Folder size={16} className={level === 'lot' ? 'text-blue-600' : 'text-slate-400'} />
+                <div>
+                  <div className="text-xs">LOT (Niveau 1)</div>
+                  <span className="text-[10px] text-slate-500 font-normal">Section principale / Regroupement</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLevel('activite')}
+                className={`p-3 rounded-xl border text-left font-bold transition flex items-center gap-2 cursor-pointer ${level === 'activite' ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-xs' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+              >
+                <FileText size={16} className={level === 'activite' ? 'text-blue-600' : 'text-slate-400'} />
+                <div>
+                  <div className="text-xs">ACTIVITÉ (Niveau 2/3)</div>
+                  <span className="text-[10px] text-slate-500 font-normal">Tâche opérationnelle de chantier</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Si activité, choix du Lot Parent */}
+          {level === 'activite' && existingLots.length > 0 && (
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Rattacher au Lot Parent :</label>
+              <select
+                value={parentLotCode}
+                onChange={e => setParentLotCode(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              >
+                {existingLots.map(lot => (
+                  <option key={lot.id || lot.code} value={lot.code}>
+                    {lot.code} — {lot.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Code & Libellé */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Code WBS :</label>
+              <input
+                type="text"
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                placeholder="Ex: 01.05"
+                required
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Libellé / Désignation :</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Ex: Béton armé pour radiers et longrines"
+                required
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Unité, Quantité et Prix */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Unité :</label>
+              <select
+                value={unit}
+                onChange={e => setUnit(e.target.value)}
+                disabled={level === 'lot'}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="-">- (Lot)</option>
+                <option value="m³">m³ (Mètre cube)</option>
+                <option value="m²">m² (Mètre carré)</option>
+                <option value="ml">ml (Mètre linéaire)</option>
+                <option value="U">U (Unité)</option>
+                <option value="FF">FF (Forfait)</option>
+                <option value="kg">kg (Kilogramme)</option>
+                <option value="T">T (Tonne)</option>
+                <option value="ens">ens (Ensemble)</option>
+                <option value="j">j (Journée)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Quantité :</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={contractQty}
+                onChange={e => handleQtyChange(parseFloat(e.target.value) || 0)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">PU Marché (FCFA) :</label>
+              <input
+                type="number"
+                min="0"
+                value={contractUnitPrice}
+                onChange={e => handleMarketPriceChange(parseFloat(e.target.value) || 0)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Budget DS (FCFA) :</label>
+              <input
+                type="number"
+                min="0"
+                value={budgetDs}
+                onChange={e => setBudgetDs(parseFloat(e.target.value) || 0)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-800 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Nature de Coût & Responsable */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Nature de Coût :</label>
+              <select
+                value={nature}
+                onChange={e => setNature(e.target.value as CostNature)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="MAT">MAT — Matériaux (Ciment, Acier, Granulats...)</option>
+                <option value="MO">MO — Main-d'œuvre (Ouvriers, Maçons...)</option>
+                <option value="MTL">MTL — Matériel & Engins</option>
+                <option value="ST">ST — Sous-traitance</option>
+                <option value="FGC">FGC — Frais Généraux de Chantier</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 text-xs block">Responsable :</label>
+              <input
+                type="text"
+                value={manager}
+                onChange={e => setManager(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Récapitulatif calculé */}
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex justify-between items-center text-xs">
+            <div>
+              <span className="text-slate-500 block text-[10px] font-bold uppercase">Montant Marché Total</span>
+              <span className="font-mono font-black text-blue-900 text-sm">
+                {(contractUnitPrice * contractQty).toLocaleString('fr-FR')} FCFA
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-slate-500 block text-[10px] font-bold uppercase">Marge Initiale Théorique</span>
+              <span className={`font-mono font-black text-sm ${(contractUnitPrice * contractQty) - budgetDs >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {((contractUnitPrice * contractQty) - budgetDs).toLocaleString('fr-FR')} FCFA
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs shadow-md transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <CheckCircle2 size={15} />
+              <span>Enregistrer dans le WBS</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
   const {
@@ -375,9 +662,14 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
           const dsAmt = Number(act.calculatedDsAmount || act.importedDsAmount || Math.round(mktAmt * 0.8));
 
           // Calcul réel depuis les rapports journaliers et engagements
-          const linkedReports = dailyReports.filter(r =>
-            r.projectId === selectedProject.id && (r.wbsCode === actCode || r.activityName.toLowerCase().includes(act.description.toLowerCase()))
-          );
+          const linkedReports = dailyReports.filter(r => {
+            const pMatch = r.projectId === selectedProject.id || r.projectId === selectedProject.code;
+            if (!pMatch) return false;
+            const wMatch = r.wbsCode === actCode;
+            const actName = String(r.activityName || (r as any).description || '').toLowerCase();
+            const actDesc = String(act.description || '').toLowerCase();
+            return wMatch || (actName && actDesc && actName.includes(actDesc));
+          });
           const totalReportedQty = linkedReports.reduce((s, r) => s + (r.realizedQty || 0), 0);
           const totalReportedCost = linkedReports.reduce((s, r) => s + (r.totalCost || 0), 0);
 
@@ -398,12 +690,14 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
           return {
             id: act.id || `act-${lotCode}-${aIdx + 1}`,
             code: actCode,
+            priceNo: act.priceNo || actCode,
             description: act.description,
             unit: act.unit || 'm³',
             contractQty: qty,
             contractUnitPrice: pu,
             contractAmount: mktAmt,
             budgetDs: dsAmt,
+            costDsUnit: Math.round(dsAmt / (qty || 1)),
             startDate: selectedProject.startDate || '2026-01-15',
             endDate: selectedProject.endDate || '2027-07-15',
             manager: selectedProject.manager || 'SEA Alphonse',
@@ -423,7 +717,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
         const lotCommitted = lotChildren.reduce((s, c) => s + c.committed, 0);
         const lotActual = lotChildren.reduce((s, c) => s + c.actualCost, 0);
         const lotEac = lotChildren.reduce((s, c) => s + c.eac, 0);
-        const lotProgress = lotBudgetDs > 0 ? Math.round(lotChildren.reduce((s, c) => s + (c.progress * c.budgetDs), 0) / lotBudgetDs) : 50;
+        const lotProgress = lotBudgetDs > 0 ? Math.round(lotChildren.reduce((s, c) => s + (c.progress * c.budgetDs), 0) / lotBudgetDs) : 0;
 
         let lotStatus: 'En cours' | 'À risque' | 'Terminé' | 'Non démarré' = 'En cours';
         if (lotProgress >= 100) lotStatus = 'Terminé';
@@ -433,6 +727,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
         standaloneLots.push({
           id: `lot-${lotCode}`,
           code: lotCode,
+          priceNo: lotCode,
           description: secName,
           unit: '-',
           contractQty: 0,
@@ -467,11 +762,12 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
     const calculatedEac = dynamicChildren.reduce((s, c) => s + c.eac, 0) || (calculatedActualCost + calculatedForecast > 0 ? calculatedActualCost + calculatedForecast : calculatedTotalBudgetDs);
     const calculatedWeightedProgress = calculatedTotalBudgetDs > 0
       ? Math.round(dynamicChildren.reduce((s, c) => s + (c.progress * c.budgetDs), 0) / calculatedTotalBudgetDs)
-      : (selectedProject.progress || 62.5);
+      : (selectedProject.progress !== undefined ? selectedProject.progress : 0);
 
     return {
       id: 'root',
       code: projCode,
+      priceNo: projCode,
       description: projName,
       unit: '-',
       contractQty: 0,
@@ -581,6 +877,138 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
     setExpandedNodes({ root: false });
   };
 
+  // Dynamic Period & Target Progress
+  const currentPeriodLabel = useMemo(() => {
+    const now = new Date();
+    const monthNames = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  }, []);
+
+  const projectTargetProgress = useMemo(() => {
+    if (selectedProject?.targetProgress !== undefined && selectedProject?.targetProgress !== null) {
+      return Number(selectedProject.targetProgress);
+    }
+    if (selectedProject?.startDate && selectedProject?.endDate) {
+      const start = new Date(selectedProject.startDate).getTime();
+      const end = new Date(selectedProject.endDate).getTime();
+      const now = new Date().getTime();
+      if (end > start) {
+        const pct = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+        return Math.round(pct * 10) / 10;
+      }
+    }
+    return 50.0;
+  }, [selectedProject]);
+
+  const existingLots = useMemo(() => {
+    return (treeData.children || []).map(lot => ({
+      id: lot.id,
+      code: lot.code,
+      description: lot.description
+    }));
+  }, [treeData]);
+
+  const handleAddWbsNode = (newNodeData: any) => {
+    const currentNodes = [...(wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [])];
+    
+    if (newNodeData.nodeLevel === 'lot') {
+      const newLot: WBSNode = {
+        id: `lot-${Date.now()}`,
+        code: newNodeData.code,
+        name: newNodeData.name,
+        description: newNodeData.name,
+        unit: '-',
+        plannedQty: 1,
+        contractQty: 1,
+        contractUnitPrice: Number(newNodeData.contractUnitPrice || 0),
+        contractAmount: Number(newNodeData.contractUnitPrice || 0) * Number(newNodeData.contractQty || 1),
+        initialBudget: Number(newNodeData.budgetDs || 0),
+        revisedBudget: Number(newNodeData.budgetDs || 0),
+        budgetDs: Number(newNodeData.budgetDs || 0),
+        committed: 0,
+        actualCost: 0,
+        forecast: Number(newNodeData.budgetDs || 0),
+        eac: Number(newNodeData.budgetDs || 0),
+        progress: 0,
+        nature: newNodeData.nature,
+        manager: newNodeData.manager || selectedProject.manager || 'SEA Alphonse',
+        children: []
+      };
+      currentNodes.push(newLot);
+    } else {
+      const newAct: WBSNode = {
+        id: `act-${Date.now()}`,
+        code: newNodeData.code,
+        name: newNodeData.name,
+        description: newNodeData.name,
+        unit: newNodeData.unit,
+        plannedQty: Number(newNodeData.contractQty || 1),
+        contractQty: Number(newNodeData.contractQty || 1),
+        contractUnitPrice: Number(newNodeData.contractUnitPrice || 0),
+        contractAmount: Number(newNodeData.contractUnitPrice || 0) * Number(newNodeData.contractQty || 1),
+        initialBudget: Number(newNodeData.budgetDs || 0),
+        revisedBudget: Number(newNodeData.budgetDs || 0),
+        budgetDs: Number(newNodeData.budgetDs || 0),
+        committed: 0,
+        actualCost: 0,
+        forecast: Number(newNodeData.budgetDs || 0),
+        eac: Number(newNodeData.budgetDs || 0),
+        progress: 0,
+        nature: newNodeData.nature,
+        manager: newNodeData.manager || selectedProject.manager || 'SEA Alphonse',
+      };
+
+      if (newNodeData.parentLotCode) {
+        let foundParent = false;
+        const addToParent = (nodes: WBSNode[]): WBSNode[] => {
+          return nodes.map(n => {
+            if (n.code === newNodeData.parentLotCode || n.id === newNodeData.parentLotCode) {
+              foundParent = true;
+              const updatedChildren = [...(n.children || []), newAct];
+              const sumBudget = updatedChildren.reduce((s, c) => s + Number(c.revisedBudget || c.budgetDs || 0), 0);
+              const sumMarket = updatedChildren.reduce((s, c) => s + Number(c.contractAmount || (Number(c.contractUnitPrice || 0) * Number(c.plannedQty || 1))), 0);
+              return {
+                ...n,
+                children: updatedChildren,
+                revisedBudget: sumBudget,
+                budgetDs: sumBudget,
+                contractAmount: sumMarket
+              };
+            }
+            if (n.children && n.children.length > 0) {
+              return {
+                ...n,
+                children: addToParent(n.children)
+              };
+            }
+            return n;
+          });
+        };
+        const updated = addToParent(currentNodes);
+        if (!foundParent) {
+          currentNodes.push(newAct);
+        } else {
+          currentNodes.length = 0;
+          currentNodes.push(...updated);
+        }
+      } else {
+        currentNodes.push(newAct);
+      }
+    }
+
+    updateProjectWBS(selectedProject.id, currentNodes);
+    addAuditLog(
+      'AJOUT_NOEUD_WBS',
+      'WBS',
+      newNodeData.code,
+      `Création du nœud ${newNodeData.nodeLevel === 'lot' ? 'LOT' : 'ACTIVITÉ'} [${newNodeData.code} - ${newNodeData.name}] sur le projet ${selectedProject.code}.`
+    );
+    setShowAddModal(false);
+  };
+
   // Exportation CSV
   const handleExportCSV = () => {
     const headers = "Code WBS;Libelle;Unite;Qte Contractuelle;Budget DS;Engage;Cout Reel;EAC;Avancement%;Ecart;Statut\n";
@@ -604,7 +1032,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button
-            onClick={() => setActiveTab?.('dashboard')}
+            onClick={() => onBackToProject ? onBackToProject() : setActiveTab?.('dashboard')}
             className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1 cursor-pointer transition"
           >
             <ArrowLeft size={13} /> Retour à la vue projet 360°
@@ -622,7 +1050,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xs">
             <span className="text-slate-500">Période :</span>
             <span className="text-slate-900 font-black flex items-center gap-1.5">
-              Mai 2025 <Calendar size={13} className="text-slate-400" />
+              {currentPeriodLabel} <Calendar size={13} className="text-slate-400" />
             </span>
           </div>
 
@@ -739,7 +1167,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
               <DataInsight
                 metricId="budget_revised"
                 title="Budget (DS) Révisé"
-                context={{ revisedBudget: treeData.budgetDs, initialBudget: treeData.initialBudget, projectName: selectedProject.name, projectCode: selectedProject.code }}
+                context={{ revisedBudget: treeData.budgetDs, initialBudget: treeData.budgetDs, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
             <div className="text-[13.5px] font-black tracking-tight text-slate-900 font-mono">
@@ -811,17 +1239,17 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
               <DataInsight
                 metricId="avancement_moyen"
                 title="Avancement Physique Global"
-                context={{ progressRate: treeData.progress || 62.5, projectName: selectedProject.name, projectCode: selectedProject.code }}
+                context={{ progressRate: treeData.progress ?? 0, projectName: selectedProject.name, projectCode: selectedProject.code }}
               />
             </div>
             <div className="text-xl font-black tracking-tight text-slate-900 font-mono">
-              {treeData.progress || 62.5}%
+              {treeData.progress ?? 0}%
             </div>
             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden my-1">
-              <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${treeData.progress || 62.5}%` }} />
+              <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, treeData.progress ?? 0)}%` }} />
             </div>
             <div className="text-[10px] font-bold text-slate-400">
-              Objectif : 58,0%
+              Objectif : {projectTargetProgress.toFixed(1)}%
             </div>
           </div>
           <div className="p-3 bg-teal-500 text-white rounded-full shadow-md shrink-0">
@@ -870,7 +1298,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
 
           {/* Bouton Importer le WBS */}
           <button
-            onClick={() => setShowDsImportModal(true)}
+            onClick={() => setShowDqeImportModal(true)}
             className="bg-white hover:bg-slate-50 text-slate-800 font-extrabold px-4 py-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs shadow-xs cursor-pointer transition"
           >
             <Upload size={15} className="text-slate-600" />
@@ -906,14 +1334,68 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           <button
             onClick={() => setShowColumnPicker(!showColumnPicker)}
             className="bg-white hover:bg-slate-50 text-slate-700 font-extrabold px-3.5 py-2.5 rounded-xl border border-slate-200 flex items-center gap-1.5 text-xs shadow-xs cursor-pointer transition"
           >
             <Settings size={14} />
             <span>Paramètres colonnes</span>
+            <ChevronDown size={13} className={`transition-transform ${showColumnPicker ? 'rotate-180' : ''}`} />
           </button>
+
+          {showColumnPicker && (
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-50 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="font-extrabold text-xs text-slate-900">Affichage des colonnes</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const allTrue: Record<string, boolean> = {};
+                      Object.keys(visibleColumns).forEach(k => allTrue[k] = true);
+                      setVisibleColumns(allTrue);
+                    }}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
+                  >
+                    Tout
+                  </button>
+                  <button
+                    onClick={() => setShowColumnPicker(false)}
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {[
+                  { id: 'wbs', label: 'Code WBS' },
+                  { id: 'libelle', label: 'Libellé' },
+                  { id: 'unite', label: 'Unité' },
+                  { id: 'qte', label: 'Qté contractuelle' },
+                  { id: 'puMarche', label: 'PU Marché HT' },
+                  { id: 'montantMarche', label: 'Montant Marché (DQE)' },
+                  { id: 'budgetDs', label: 'Budget (DS) révisé' },
+                  { id: 'engage', label: 'Engagé' },
+                  { id: 'coutReel', label: 'Coût réel à date' },
+                  { id: 'eac', label: 'EAC' },
+                  { id: 'avancement', label: 'Avancement physique' },
+                  { id: 'ecart', label: 'Écart (EAC - Budget)' },
+                  { id: 'statut', label: 'Statut' },
+                ].map(col => (
+                  <label key={col.id} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer hover:text-slate-900">
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns[col.id] !== false}
+                      onChange={e => setVisibleColumns(prev => ({ ...prev, [col.id]: e.target.checked }))}
+                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1249,6 +1731,15 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
           );
           alert(`Succès : ${summary.totalItems} prix DQE importés.\n\n• Rapprochés avec WBS & DS : ${summary.matchedCount}\n• À vérifier : ${summary.toVerifyCount}\n• Non rapprochés : ${summary.unmatchedCount}\n• Montant Marché HT : ${summary.totalMarketAmount.toLocaleString('fr-FR')} FCFA`);
         }}
+      />
+
+      {/* MODALE D'AJOUT MANUEL LOT / ACTIVITE WBS */}
+      <AddWbsNodeModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        project={selectedProject}
+        existingLots={existingLots}
+        onAddNode={handleAddWbsNode}
       />
     </div>
   );
