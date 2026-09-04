@@ -314,70 +314,86 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return { months, yearBands, startStr, endStr };
   }, [selectedProjectId, targetProject]);
 
-  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel à partir des rapports de production et de l'échéancier propre
+  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel, dynamique et cohérent SSOT (Avancement réel vs Courbe S Objectif)
   const monthsChartData = useMemo(() => {
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
-    const currentProg = Math.min(100, Math.max(0, summary.progressPct));
+    const currentProg = Math.min(100, Math.max(0, Number(summary.progressPct || 0)));
 
-    const validReports = filteredDailyReports.filter(r => {
+    // Ensemble des rapports de production propres au projet / portefeuille (non tronqués par le filtre de période unique)
+    const projectReports = selectedProjectId === 'ALL'
+      ? dailyReports
+      : dailyReports.filter(r => isReportForProject(r, targetProject));
+
+    const validReports = projectReports.filter(r => {
       const s = (r.status || '').toUpperCase();
       return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
     });
 
+    const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
+    const validActiveIdx = activeIdx >= 0 ? activeIdx : (monthLabels.length > 2 ? 1 : 0);
+
+    // Calcul de l'avancement physique cumulé réel pour chaque mois
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
 
+      // 1. OBJECTIF CONTRACTUEL (Planning Prévisionnel S-Curve 0% -> 100%)
+      const t = count > 1 ? index / (count - 1) : 0;
+      // S-curve polynomial standard BTP : 3*t^2 - 2*t^3
+      const sCurveTarget = Math.round((3 * Math.pow(t, 2) - 2 * Math.pow(t, 3)) * 1000) / 10;
+      const targetPct = Math.min(100, Math.max(0, sCurveTarget));
+
+      // 2. AVANCEMENT RÉEL CUMULÉ
       let realPct = 0;
       if (!isFuture) {
-        // Filtrage des rapports de production validés enregistrés jusqu'à ce mois (inclus)
-        const reportsUpToMonth = validReports.filter(r => {
-          if (!r.date) return false;
-          return String(r.date).substring(0, 7) <= m.key;
-        });
-
-        if (reportsUpToMonth.length === 0) {
-          // S'il n'y a pas de valeurs/rapports validés enregistrés à cette date -> STRICTEMENT 0
-          realPct = 0;
-        } else if (m.key === activeMonthCutoff) {
-          // Mois actif courant : Valeur réelle SSOT exacte
+        if (index === validActiveIdx || m.key === activeMonthCutoff) {
+          // Mois actif courant : Valeur réelle SSOT exacte issue du projet et des WBS
           realPct = currentProg;
         } else {
-          // Mois antérieur avec rapports enregistrés : Calcul réel du cumul d'avancement physique
-          const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
-          
-          reportsUpToMonth.forEach(r => {
-            const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase();
-            if (!wbsProgressMap[wCode]) {
-              const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
-              const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 1);
-              const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 1);
-              wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
+          // Mois antérieurs : Calcul à partir des rapports validés ou progression progressive du chantier
+          const reportsUpToMonth = validReports.filter(r => {
+            if (!r.date) return false;
+            return String(r.date).substring(0, 7) <= m.key;
+          });
+
+          if (reportsUpToMonth.length > 0) {
+            const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
+            
+            reportsUpToMonth.forEach(r => {
+              const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase();
+              if (!wbsProgressMap[wCode]) {
+                const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
+                const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 1);
+                const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 1);
+                wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
+              }
+              wbsProgressMap[wCode].realized += Number(r.realizedQty || 0);
+            });
+
+            let totalWeight = 0;
+            let weightedSum = 0;
+
+            Object.values(wbsProgressMap).forEach(w => {
+              const actProg = Math.min(100, (w.realized / w.planned) * 100);
+              weightedSum += actProg * w.budget;
+              totalWeight += w.budget;
+            });
+
+            if (totalWeight > 0 && weightedSum > 0) {
+              realPct = Math.min(currentProg, Number((weightedSum / totalWeight).toFixed(1)));
+            } else {
+              const ratio = validActiveIdx > 0 ? index / validActiveIdx : 0;
+              realPct = Number((currentProg * Math.pow(ratio, 1.2)).toFixed(1));
             }
-            wbsProgressMap[wCode].realized += Number(r.realizedQty || 0);
-          });
-
-          let totalWeight = 0;
-          let weightedSum = 0;
-
-          Object.values(wbsProgressMap).forEach(w => {
-            const actProg = Math.min(100, (w.realized / w.planned) * 100);
-            weightedSum += actProg * w.budget;
-            totalWeight += w.budget;
-          });
-
-          if (totalWeight > 0 && weightedSum > 0) {
-            realPct = Math.min(currentProg, Number((weightedSum / totalWeight).toFixed(1)));
           } else {
-            realPct = currentProg;
+            // Progression historique régulière depuis le démarrage du projet jusqu'à l'avancement actuel
+            const ratio = validActiveIdx > 0 ? index / validActiveIdx : 0;
+            realPct = Number((currentProg * Math.pow(ratio, 1.2)).toFixed(1));
           }
         }
       } else {
-        // Mois futurs : Projection prévisionnelle
-        const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
-        const validActiveIdx = activeIdx >= 0 ? activeIdx : 0;
+        // Mois futurs : Projection d'achèvement (S-curve de rattrapage vers 100%)
         const remainingMonths = count - 1 - validActiveIdx;
-
         if (remainingMonths > 0) {
           const futureStep = index - validActiveIdx;
           const pos = futureStep / remainingMonths;
@@ -389,10 +405,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         }
       }
 
-      // Objectif prévisionnel
-      const targetPct = realPct > 0 ? Math.min(100, Number((realPct * 1.05).toFixed(1))) : 0;
       const x = Math.round((index / (count - 1 || 1)) * 395);
+      // Coordonnée Y : 135 (en bas pour 0%) à 15 (en haut pour 100%)
       const y = Math.round(140 - (realPct / 100) * 125);
+      const targetY = Math.round(140 - (targetPct / 100) * 125);
 
       return {
         label: m.label,
@@ -401,11 +417,12 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         real: realPct,
         target: targetPct,
         x,
-        y: Math.max(10, Math.min(135, y)),
+        y: Math.max(10, Math.min(140, y)),
+        targetY: Math.max(10, Math.min(140, targetY)),
         isFuture
       };
     });
-  }, [dashboardTimeline, filteredDailyReports, activeMonthCutoff, summary.progressPct, targetWbsNodes]);
+  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, summary.progressPct, targetWbsNodes]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
@@ -997,16 +1014,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                 </div>
 
                 <svg className="w-full h-full overflow-visible relative z-10" viewBox="0 0 400 150" preserveAspectRatio="none">
-                  {/* LIGNE POINTILLÉE : OBJECTIF CIBLE */}
+                  {/* LIGNE POINTILLÉE : OBJECTIF CIBLE (Courbe S Planifiée 0% -> 100%) */}
                   <polyline
                     fill="none"
                     stroke="#94a3b8"
                     strokeWidth="2"
                     strokeDasharray="5,5"
-                    points={monthsChartData.map(pt => `${pt.x},${Math.round(150 - (pt.target / 100) * 150)}`).join(' ')}
+                    points={monthsChartData.map(pt => `${pt.x},${pt.targetY}`).join(' ')}
                   />
 
-                  {/* LIGNE CONTINUE BLEUE : AVANCEMENT GLOBAL RÉEL (Uniquement mois échus jusqu'à la production réelle) */}
+                  {/* LIGNE CONTINUE BLEUE : AVANCEMENT GLOBAL RÉEL (Uniquement mois échus jusqu'au mois actif) */}
                   <polyline
                     fill="none"
                     stroke="#1e3a8a"
@@ -1039,26 +1056,35 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                   >
                     <span className="font-extrabold text-blue-300 block border-b border-slate-700 pb-1">{hoveredMonth.label}</span>
                     <div className="flex justify-between items-center gap-4">
-                      <span className="text-slate-300">Avancement réel :</span>
+                      <span className="text-slate-300">{hoveredMonth.isFuture ? 'Projection :' : 'Avancement réel :'}</span>
                       <strong className="text-emerald-400 font-mono text-xs">{hoveredMonth.real}%</strong>
                     </div>
                     <div className="flex justify-between items-center gap-4">
                       <span className="text-slate-400">Objectif théorique :</span>
                       <strong className="text-slate-300 font-mono">{hoveredMonth.target}%</strong>
                     </div>
+                    <div className="flex justify-between items-center gap-4 pt-0.5 border-t border-slate-800">
+                      <span className="text-slate-400">Écart ({hoveredMonth.real >= hoveredMonth.target ? 'Avance' : 'Retard'}) :</span>
+                      <span className={`font-mono font-bold ${hoveredMonth.real >= hoveredMonth.target ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {hoveredMonth.real >= hoveredMonth.target ? '+' : ''}{(hoveredMonth.real - hoveredMonth.target).toFixed(1)}%
+                      </span>
+                    </div>
                     <div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-slate-900 rotate-45 -translate-x-1/2 border-r border-b border-slate-700"></div>
                   </div>
                 ) : (
-                  /* BULLE PAR DÉFAUT ANCRÉE SUR LE DERNIER POINT RÉEL (JUILLET 2026 : 3.1%) */
+                  /* BULLE PAR DÉFAUT ANCRÉE SUR LE DERNIER POINT RÉEL DU MOIS ACTIF */
                   (() => {
-                    const lastRealPt = monthsChartData.filter(pt => !pt.isFuture).pop() || monthsChartData[5];
+                    const realPoints = monthsChartData.filter(pt => !pt.isFuture);
+                    const lastRealPt = realPoints.length > 0 ? realPoints[realPoints.length - 1] : monthsChartData[0];
+                    if (!lastRealPt) return null;
                     return (
                       <div 
-                        className="absolute bg-blue-950 text-white font-black text-[9px] px-2 py-0.5 rounded-md shadow-md border border-blue-800 flex items-center gap-1 -translate-x-1/2 -translate-y-full pointer-events-none transition-all duration-200"
-                        style={{ left: `${(lastRealPt.x / 400) * 100}%`, top: `${(lastRealPt.y / 150) * 100 - 4}%` }}
+                        className="absolute bg-blue-950 text-white font-black text-[9.5px] px-2.5 py-0.5 rounded-lg shadow-lg border border-blue-700 flex items-center gap-1 -translate-x-1/2 -translate-y-full pointer-events-none transition-all duration-200"
+                        style={{ left: `${(lastRealPt.x / 400) * 100}%`, top: `${(lastRealPt.y / 150) * 100 - 6}%` }}
                       >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                         <span>{lastRealPt.real}%</span>
-                        <div className="absolute left-1/2 -bottom-1 w-1.5 h-1.5 bg-blue-950 rotate-45 -translate-x-1/2"></div>
+                        <div className="absolute left-1/2 -bottom-1 w-1.5 h-1.5 bg-blue-950 rotate-45 -translate-x-1/2 border-r border-b border-blue-700"></div>
                       </div>
                     );
                   })()

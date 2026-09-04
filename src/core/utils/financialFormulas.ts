@@ -287,12 +287,28 @@ export const getProjectFinancialSummary = (
     }
   }
 
-  // Priorité 2 : Avancement physique explicitement saisi sur le projet (ex. 13% pour Bingerville, 7.1% pour Songon)
+  // Priorité 2 : Avancement physique issu des rapports de production validés
+  if (progressPct === 0 && Array.isArray(dailyReports) && dailyReports.length > 0) {
+    const validReports = dailyReports.filter(r => {
+      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
+      const s = (r.status || '').toUpperCase();
+      return (s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED')) &&
+             (rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj));
+    });
+    if (validReports.length > 0 && revisedBudget > 0) {
+      const totalReportCost = validReports.reduce((sum, r) => sum + Number(r.totalCost || (Number(r.realizedQty || 0) * Number(r.pu || 0))), 0);
+      if (totalReportCost > 0) {
+        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
+      }
+    }
+  }
+
+  // Priorité 3 : Avancement physique explicitement saisi sur le projet (ex. 13% pour Bingerville, 7.1% pour Songon)
   if (progressPct === 0 && (project?.progress !== undefined && project?.progress !== null && Number(project.progress) > 0)) {
     progressPct = Number(project.progress || project.physicalProgress || 0);
   }
 
-  // Priorité 3 : Consommation budgétaire de secours uniquement si aucun avancement physique n'a été trouvé
+  // Priorité 4 : Consommation budgétaire de secours uniquement si aucun avancement physique n'a été trouvé
   if (progressPct === 0 && contractAmount > 0 && actualCost > 0) {
     progressPct = Number(((actualCost / contractAmount) * 100).toFixed(1));
   }
