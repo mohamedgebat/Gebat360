@@ -72,9 +72,11 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
   const [priority, setPriority] = useState('Élevée');
   const [initialStatus, setInitialStatus] = useState('En préparation');
 
-  // Code projet généré avec préfixe "P-"
+  // Code projet généré sans préfixe redondant
   const generatedCode = useMemo(() => {
-    return projectCodeNum.startsWith('P-') || projectCodeNum.startsWith('CIV-') ? projectCodeNum : `P-${projectCodeNum}`;
+    const trimmed = projectCodeNum.trim();
+    if (!trimmed) return 'CIV-2026-ASS-003';
+    return trimmed;
   }, [projectCodeNum]);
 
   // Étape 2 — Contrat
@@ -84,7 +86,6 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
   const [guaranteeType, setGuaranteeType] = useState('Caution bancaire à première demande (NSIA Banque / BOA)');
 
   // Étape 3 — Équipe Projet
-  const [projectDirector, setProjectDirector] = useState('SEA Alphonse');
   const [siteManager, setSiteManager] = useState('KOUASSI Jean');
   const [qseManager, setQseManager] = useState('KOUADIO Marc');
   const [controlOffice, setControlOffice] = useState('SOCOTEC / LBTP');
@@ -108,29 +109,49 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
       setCurrentStep(prev => prev + 1);
     } else {
       // SOUMISSION FINALE DU PROJET (ÉTAPE 4)
+      if (!name.trim()) {
+        alert('Veuillez renseigner le nom du projet.');
+        setCurrentStep(1);
+        return;
+      }
+
+      const contractAmt = Number(contractAmountHT) || 0;
+      
+      // Si un DQE a été importé, calculer le budget DS exact depuis les nœuds WBS
+      const importedWbsBudget = importedWbsNodes && importedWbsNodes.length > 0
+        ? importedWbsNodes.reduce((sum, n) => sum + Number(n.revisedBudget || n.initialBudget || 0), 0)
+        : 0;
+
+      const estimatedBudgetDS = importedWbsBudget > 0 ? importedWbsBudget : Math.round(contractAmt * 0.82);
+
+      const calculatedRisk = 
+        priority === 'Critique' ? 'Critique' :
+        priority === 'Élevée' ? 'Élevé' : 'Faible';
+
       createProject({
         code: generatedCode,
         domainCode: 'BAT',
-        name: name || `Projet ${generatedCode}`,
-        company: 'GEBAT SA',
-        client: client || 'Ministère de l’Éducation Nationale',
-        country: country || 'Sénégal',
-        location: `${city}, ${region}`,
-        activity: natureOuvrage || 'Bâtiment',
-        manager: manager || 'M. Mamadou Diop',
+        name: name.trim() || `Projet ${generatedCode}`,
+        company: company || 'GEBAT SA',
+        client: client.trim() || 'Client Maître d’Ouvrage',
+        country: country || "Côte d'Ivoire",
+        location: `${city}${region ? `, ${region}` : ''}`,
+        activity: natureOuvrage || projectType || 'Génie Civil',
+        manager: manager || 'SEA Alphonse',
         contractRef: contractRef || `CTR-${generatedCode}`,
-        contractAmount: Number(contractAmountHT) || 15800000000,
+        contractAmount: contractAmt,
         currency: currency || 'FCFA',
         signatureDate: startDate || new Date().toISOString().split('T')[0],
         startDate: startDate || new Date().toISOString().split('T')[0],
         durationMonths: Number(durationMonths) || 18,
-        endDate: endDateContractual || '2026-12-01',
-        initialBudget: Math.round(Number(contractAmountHT) * 0.85) || 13430000000,
-        revisedBudget: Math.round(Number(contractAmountHT) * 0.85) || 13430000000,
+        endDate: endDateContractual || '2027-08-31',
+        initialBudget: estimatedBudgetDS,
+        revisedBudget: estimatedBudgetDS,
         progress: 0,
-        status: 'En préparation',
-        risk: priority === 'Élevée' ? 'Modéré' : 'Faible',
+        status: (initialStatus as any) || 'En préparation',
+        risk: calculatedRisk as any,
       }, importedWbsNodes);
+
       setIsSuccess(true);
       setTimeout(() => {
         onSuccess();
@@ -168,7 +189,16 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold">
               <span className="text-slate-500">Société :</span>
-              <span className="text-slate-900 font-extrabold">GEBAT SA ▾</span>
+              <select
+                value={company}
+                onChange={e => setCompany(e.target.value)}
+                className="bg-transparent font-extrabold text-slate-900 focus:outline-none cursor-pointer"
+              >
+                <option value="GEBAT SA">GEBAT SA</option>
+                <option value="GEBAT Sénégal">GEBAT Sénégal</option>
+                <option value="GEBAT Mali">GEBAT Mali</option>
+                <option value="GEBAT Burkina">GEBAT Burkina</option>
+              </select>
             </div>
           </div>
         </div>
@@ -317,17 +347,14 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block font-extrabold text-slate-700 mb-1">Code projet <span className="text-rose-600">*</span></label>
-                    <div className="flex items-center">
-                      <span className="px-3 py-2 bg-slate-100 border border-r-0 border-slate-200 rounded-l-xl font-mono font-black text-xs text-slate-700">P-</span>
-                      <input
-                        type="text"
-                        required
-                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-r-xl font-mono font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
-                        value={projectCodeNum}
-                        onChange={e => setProjectCodeNum(e.target.value)}
-                        placeholder="2025-045"
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      required
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
+                      value={projectCodeNum}
+                      onChange={e => setProjectCodeNum(e.target.value)}
+                      placeholder="CIV-2026-ASS-003"
+                    />
                   </div>
 
                   <div>
@@ -755,8 +782,8 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                 <label className="block font-extrabold text-slate-700 mb-1">Directeur de projet *</label>
                 <select
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs cursor-pointer"
-                  value={projectDirector}
-                  onChange={e => setProjectDirector(e.target.value)}
+                  value={manager}
+                  onChange={e => setManager(e.target.value)}
                 >
                   {users && users.length > 0 ? (
                     users.map(u => (
@@ -863,35 +890,54 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
               </div>
 
               {/* CARTE 2 : DONNÉES FINANCIÈRES & MARGE ESTIMÉE */}
-              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3">
-                <h3 className="font-extrabold text-blue-900 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
-                  <DollarSign size={15} className="text-emerald-600" /> Montants & Engagements Financiers
-                </h3>
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Montant Marché HT :</span>
-                    <strong className="font-mono text-emerald-700 font-black text-sm">
-                      {Number(contractAmountHT || 0).toLocaleString()} {currency}
-                    </strong>
+              {(() => {
+                const contractAmt = Number(contractAmountHT || 0);
+                const importedWbsBudget = importedWbsNodes && importedWbsNodes.length > 0
+                  ? importedWbsNodes.reduce((sum, n) => sum + Number(n.revisedBudget || n.initialBudget || 0), 0)
+                  : 0;
+                const estimatedBudgetDS = importedWbsBudget > 0 ? importedWbsBudget : Math.round(contractAmt * 0.82);
+                const estimatedMargin = Math.max(0, contractAmt - estimatedBudgetDS);
+                const marginPct = contractAmt > 0 ? ((estimatedMargin / contractAmt) * 100).toFixed(1) : '18.0';
+                const dsPct = contractAmt > 0 ? ((estimatedBudgetDS / contractAmt) * 100).toFixed(1) : '82.0';
+
+                return (
+                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3">
+                    <h3 className="font-extrabold text-blue-900 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
+                      <DollarSign size={15} className="text-emerald-600" /> Montants & Engagements Financiers
+                    </h3>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Montant Marché HT :</span>
+                        <strong className="font-mono text-emerald-700 font-black text-sm">
+                          {contractAmt.toLocaleString('fr-FR')} {currency}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Budget DS Estimé ({dsPct}%) :</span>
+                        <strong className="font-mono text-slate-900 font-bold">
+                          {estimatedBudgetDS.toLocaleString('fr-FR')} {currency}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Marge Prévisionnelle ({marginPct}%) :</span>
+                        <strong className="font-mono text-blue-700 font-bold">
+                          {estimatedMargin.toLocaleString('fr-FR')} {currency}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-medium">Garantie & Caution :</span>
+                        <strong className="text-slate-800 truncate max-w-[200px]">{guaranteeType}</strong>
+                      </div>
+                      {importedWbsNodes && importedWbsNodes.length > 0 && (
+                        <div className="p-2 bg-emerald-50 text-emerald-800 font-bold rounded-lg text-[11px] flex items-center gap-1.5 border border-emerald-200 mt-1">
+                          <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                          <span>Budget issu du DQE / BPU importé ({importedDqeCount} prix)</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Budget DS Estimé (85%) :</span>
-                    <strong className="font-mono text-slate-900 font-bold">
-                      {Math.round(Number(contractAmountHT || 0) * 0.85).toLocaleString()} {currency}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Marge Prévisionnelle (15%) :</span>
-                    <strong className="font-mono text-blue-700 font-bold">
-                      {Math.round(Number(contractAmountHT || 0) * 0.15).toLocaleString()} {currency}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Garantie & Caution :</span>
-                    <strong className="text-slate-800 truncate max-w-[200px]">{guaranteeType}</strong>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* CARTE 3 : DATES & PLANNING CONTRACTUEL */}
               <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3">
