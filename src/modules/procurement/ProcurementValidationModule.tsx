@@ -894,31 +894,127 @@ export const ProcurementValidationModule: React.FC = () => {
               </div>
             </div>
 
-            {/* WORKFLOW VISUEL ET PROGRESSION DES ÉTAPES */}
+            {/* DÉTAIL DES ARTICLES (SI DISPONIBLE) */}
+            {(() => {
+              const cleanId = selectedItem.id.replace('VAL-DA-', '');
+              const matchedDA = purchaseRequests.find(d => d.id === cleanId || d.code === cleanId);
+              if (matchedDA && matchedDA.items && matchedDA.items.length > 0) {
+                return (
+                  <div className="space-y-2">
+                    <span className="text-[10.5px] font-extrabold uppercase text-slate-700 block">Articles de la Demande d'Achat :</span>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 text-[10.5px]">
+                            <th className="py-2 px-3">Désignation</th>
+                            <th className="py-2 px-3 text-center">Unité</th>
+                            <th className="py-2 px-3 text-right">Quantité</th>
+                            <th className="py-2 px-3 text-right">P.U. Estimé</th>
+                            <th className="py-2 px-3 text-right">Total (FCFA)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {matchedDA.items.map((it, idx) => (
+                            <tr key={it.id || idx}>
+                              <td className="py-2 px-3 font-semibold text-slate-800">{it.description}</td>
+                              <td className="py-2 px-3 text-center text-slate-500">{it.unit || 'U'}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold">{it.quantity}</td>
+                              <td className="py-2 px-3 text-right font-mono">{Number(it.unitPrice || 0).toLocaleString('fr-FR')}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{Number(it.totalPrice || 0).toLocaleString('fr-FR')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* JUSTIFICATION DE LA DEMANDE */}
+            {(() => {
+              const cleanId = selectedItem.id.replace('VAL-DA-', '');
+              const matchedDA = purchaseRequests.find(d => d.id === cleanId || d.code === cleanId);
+              if (matchedDA && matchedDA.justification) {
+                return (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-slate-500 block">Justification / Objet :</span>
+                    <p className="text-slate-800 font-medium">{matchedDA.justification}</p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* WORKFLOW VISUEL ET PROGRESSION DES ÉTAPES RÉELLES */}
             <div className="bg-purple-50/70 p-4 rounded-2xl border border-purple-200 space-y-2">
-              <span className="text-[10px] font-black text-purple-900 uppercase block">Représentation du Workflow Visuel (Progress Engine) :</span>
-              <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-bold">
-                <div className="bg-emerald-100 text-emerald-900 p-2 rounded-xl border border-emerald-300">
-                  <CheckCircle2 size={14} className="mx-auto text-emerald-600 mb-0.5" />
-                  <span>1. Demandeur</span>
-                  <span className="block font-normal text-[9px]">✓ Terminé</span>
-                </div>
-                <div className="bg-emerald-100 text-emerald-900 p-2 rounded-xl border border-emerald-300">
-                  <CheckCircle2 size={14} className="mx-auto text-emerald-600 mb-0.5" />
-                  <span>2. Directeur Projet</span>
-                  <span className="block font-normal text-[9px]">✓ Validé</span>
-                </div>
-                <div className="bg-amber-100 text-amber-900 p-2 rounded-xl border border-amber-300 shadow-xs">
-                  <Clock size={14} className="mx-auto text-amber-600 mb-0.5 animate-pulse" />
-                  <span>3. Achats / DAF</span>
-                  <span className="block font-black text-[9px] text-amber-800">● Étape actuelle</span>
-                </div>
-                <div className="bg-slate-100 text-slate-400 p-2 rounded-xl border border-slate-200">
-                  <Lock size={14} className="mx-auto mb-0.5" />
-                  <span>4. DG</span>
-                  <span className="block font-normal text-[9px]">○ En attente</span>
-                </div>
-              </div>
+              <span className="text-[10px] font-black text-purple-900 uppercase block">Représentation du Workflow Visuel (Approval Engine) :</span>
+              {(() => {
+                const cleanId = selectedItem.id.replace('VAL-DA-', '');
+                const matchedDA = purchaseRequests.find(d => d.id === cleanId || d.code === cleanId);
+                const chain = matchedDA?.approvalChain;
+
+                if (chain && chain.length > 0) {
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[10px] font-bold">
+                      {chain.map((step, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-2 rounded-xl border ${
+                            step.status === 'Approuvé'
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              : step.status === 'Refusé'
+                              ? 'bg-rose-100 text-rose-900 border-rose-300'
+                              : step.status === 'Retour correction'
+                              ? 'bg-purple-100 text-purple-900 border-purple-300'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                          }`}
+                        >
+                          {step.status === 'Approuvé' ? (
+                            <CheckCircle2 size={14} className="mx-auto text-emerald-600 mb-0.5" />
+                          ) : step.status === 'Refusé' ? (
+                            <XCircle size={14} className="mx-auto text-rose-600 mb-0.5" />
+                          ) : step.status === 'Retour correction' ? (
+                            <RotateCcw size={14} className="mx-auto text-purple-600 mb-0.5" />
+                          ) : (
+                            <Clock size={14} className="mx-auto text-amber-600 mb-0.5 animate-pulse" />
+                          )}
+                          <span>{idx + 1}. {step.role}</span>
+                          <span className="block font-normal text-[9px] truncate">
+                            {step.status === 'Approuvé' ? '✓ Validé' : step.status === 'Refusé' ? '✕ Refusé' : step.status === 'Retour correction' ? '↩ Correction' : '⏳ En attente'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-bold">
+                    <div className="bg-emerald-100 text-emerald-900 p-2 rounded-xl border border-emerald-300">
+                      <CheckCircle2 size={14} className="mx-auto text-emerald-600 mb-0.5" />
+                      <span>1. Demandeur</span>
+                      <span className="block font-normal text-[9px]">✓ Soumis</span>
+                    </div>
+                    <div className="bg-amber-100 text-amber-900 p-2 rounded-xl border border-amber-300 shadow-xs">
+                      <Clock size={14} className="mx-auto text-amber-600 mb-0.5 animate-pulse" />
+                      <span>2. Chef Travaux</span>
+                      <span className="block font-black text-[9px] text-amber-800">● En attente</span>
+                    </div>
+                    <div className="bg-slate-100 text-slate-400 p-2 rounded-xl border border-slate-200">
+                      <Lock size={14} className="mx-auto mb-0.5" />
+                      <span>3. Achats / DAF</span>
+                      <span className="block font-normal text-[9px]">○ Étape suivante</span>
+                    </div>
+                    <div className="bg-slate-100 text-slate-400 p-2 rounded-xl border border-slate-200">
+                      <Lock size={14} className="mx-auto mb-0.5" />
+                      <span>4. DP / DG</span>
+                      <span className="block font-normal text-[9px]">○ Approbation</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* PANNEAU DE DÉCISION */}
