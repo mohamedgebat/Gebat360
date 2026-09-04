@@ -317,9 +317,12 @@ const MainApp: React.FC = () => {
         return (
           <ProductionModule
             onBackToProject={() => {
-              if (projects[0]?.id) setSelectedProjectId(projects[0].id);
+              if (selectedProjectId || projects[0]?.id) {
+                if (!selectedProjectId && projects[0]?.id) setSelectedProjectId(projects[0].id);
+              }
               setCurrentView('vue-projet-360');
             }}
+            initialProjectId={selectedProjectId}
           />
         );
 

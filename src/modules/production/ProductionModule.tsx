@@ -46,13 +46,32 @@ const formatFrenchDate = (dateStr: string | undefined): string => {
   return dateStr;
 };
 
-export const ProductionModule: React.FC = () => {
+interface ProductionModuleProps {
+  onBackToProject?: () => void;
+  initialProjectId?: string;
+}
+
+export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProject, initialProjectId }) => {
   const { projects, createDailyReport, updateDailyReportStatus, updateValidationTaskStatus, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], setActiveTab } = useAppState();
 
   // État local réactif du projet/site sélectionné
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    if (initialProjectId) {
+      const initMatch = projects.find(p => p.id === initialProjectId || p.code === initialProjectId);
+      if (initMatch) return initMatch.id;
+    }
     return projects[0]?.id || projects[0]?.code || 'CIV-2026-ASS-BEN-002';
   });
+
+  // Synchronisation dynamique lors du passage d'un initialProjectId
+  React.useEffect(() => {
+    if (initialProjectId) {
+      const exists = projects.find(p => p.id === initialProjectId || p.code === initialProjectId);
+      if (exists) {
+        setSelectedProjectId(exists.id);
+      }
+    }
+  }, [initialProjectId, projects]);
 
   // Auto-initialisation si les projets sont rechargés
   React.useEffect(() => {
@@ -669,10 +688,132 @@ export const ProductionModule: React.FC = () => {
     if (saved) alert('✅ Brouillon enregistré dans la base de données.');
   };
 
-  // Soumission pour validation : tous les rapports d'activités sont persistés.
-  const handleSubmitValidation = async () => {
-    const saved = await persistReportItems('Soumis');
-    if (saved) alert('🚀 Rapport(s) envoyé(s) pour validation et enregistré(s) dans la base de données.');
+  // Export CSV standardisé UTF-8 BOM
+  const handleExportCSV = () => {
+    const listToExport = dailyReports.filter(r => isProjectReportMatch(r, selectedProject));
+    if (listToExport.length === 0) {
+      alert('Aucun rapport journalier à exporter pour ce chantier.');
+      return;
+    }
+
+    const headers = [
+      'Référence Rapport',
+      'Date',
+      'Code Projet',
+      'Chantier',
+      'Code WBS',
+      'Activité / Ouvrage',
+      'Unité',
+      'Quantité Réalisée',
+      'Quantité Prévue',
+      'Productivité (%)',
+      'Météo',
+      'Zone',
+      'Chef / Équipe',
+      'Statut',
+      'Validé par',
+      'Notes / Observations'
+    ];
+
+    const rows = listToExport.map(r => [
+      `"${r.code || r.reportCode || r.id}"`,
+      `"${r.date || ''}"`,
+      `"${r.projectId || selectedProject?.code || ''}"`,
+      `"${(selectedProject?.name || '').replace(/"/g, '""')}"`,
+      `"${r.wbsCode || ''}"`,
+      `"${(r.activityName || '').replace(/"/g, '""')}"`,
+      `"${r.unit || 'U'}"`,
+      r.realizedQty || 0,
+      r.plannedQty || r.targetQty || 0,
+      r.productivityRate || 100,
+      `"${r.weather || ''}"`,
+      `"${r.locationZone || ''}"`,
+      `"${(r.createdBy || r.teamLeader || '').replace(/"/g, '""')}"`,
+      `"${r.status || 'Validé'}"`,
+      `"${(r.validatedBy || '').replace(/"/g, '""')}"`,
+      `"${(r.notes || r.generalComment || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `RAPPORTS_JOURNALIERS_${selectedProject?.code || 'EXPORT'}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export Excel (.xlsx)
+  const handleExportExcel = () => {
+    const listToExport = dailyReports.filter(r => isProjectReportMatch(r, selectedProject));
+    if (listToExport.length === 0) {
+      alert('Aucun rapport journalier à exporter pour ce chantier.');
+      return;
+    }
+
+    const data = listToExport.map(r => ({
+      'Réf. Rapport': r.code || r.reportCode || r.id,
+      'Date': r.date,
+      'Chantier': selectedProject?.name,
+      'Code WBS': r.wbsCode,
+      'Activité': r.activityName,
+      'Unité': r.unit,
+      'Quantité Réalisée': r.realizedQty,
+      'Quantité Prévue': r.plannedQty || r.targetQty,
+      'Productivité (%)': r.productivityRate || 100,
+      'Météo': r.weather,
+      'Zone': r.locationZone,
+      'Auteur / Chef': r.createdBy || r.teamLeader,
+      'Statut': r.status,
+      'Validateur': r.validatedBy || '-'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Rapports Production');
+    XLSX.writeFile(workbook, `RAPPORTS_PRODUCTION_${selectedProject?.code || 'EXPORT'}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // Validation en masse de tous les rapports soumis du chantier actif
+  const handleBatchValidateAll = async () => {
+    const reportsToValidate = dailyReports.filter(r => {
+      if (!isProjectReportMatch(r, selectedProject)) return false;
+      const s = (r.status || '').toUpperCase();
+      return s.includes('SOUMIS') || s.includes('ATTENTE') || s.includes('PENDING');
+    });
+
+    if (reportsToValidate.length === 0) {
+      alert('ℹ️ Aucun rapport en attente de validation (Soumis) pour ce chantier.');
+      return;
+    }
+
+    if (!window.confirm(`Confirmez-vous la validation de ${reportsToValidate.length} rapport(s) soumis pour le chantier ${selectedProject?.name} ?`)) {
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      for (const rep of reportsToValidate) {
+        const targetId = rep.id;
+        const targetCode = rep.code || rep.reportCode;
+        if (updateDailyReportStatus) {
+          await updateDailyReportStatus(targetId, 'Validé', `Validation groupée par ${currentUser?.name || 'Direction'}`);
+          if (targetCode && targetCode !== targetId) {
+            await updateDailyReportStatus(targetCode, 'Validé', `Validation groupée par ${currentUser?.name || 'Direction'}`);
+          }
+        }
+        if (updateValidationTaskStatus) {
+          await updateValidationTaskStatus(targetId, 'APPROVED', `Validation groupée par ${currentUser?.name || 'Direction'}`);
+        }
+      }
+      alert(`✅ ${reportsToValidate.length} rapport(s) validé(s) avec succès ! Les avancements WBS et du projet ont été actualisés.`);
+    } catch (err: any) {
+      alert(`❌ Erreur lors de la validation : ${err?.message || 'Erreur serveur.'}`);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   if (!selectedProject) {
@@ -693,7 +834,10 @@ export const ProductionModule: React.FC = () => {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button
-            onClick={() => setActiveTab?.('dashboard')}
+            onClick={() => {
+              if (onBackToProject) onBackToProject();
+              else setActiveTab?.('dashboard');
+            }}
             className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1 cursor-pointer transition"
           >
             <ArrowLeft size={13} /> Retour à la vue projet 360°
@@ -751,19 +895,20 @@ export const ProductionModule: React.FC = () => {
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
                 <button
                   onClick={() => { handleSaveDraft(); setShowActionsDropdown(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 flex items-center gap-2"
+                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 flex items-center gap-2 cursor-pointer"
                 >
                   <FileText size={14} /> Enregistrer comme Brouillon
                 </button>
                 <button
                   onClick={() => { handleSubmitValidation(); setShowActionsDropdown(false); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 flex items-center gap-2"
+                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 flex items-center gap-2 cursor-pointer"
                 >
                   <Send size={14} /> Soumettre pour Validation
                 </button>
               </div>
             )}
           </div>
+
 
           {/* Bouton Exporter PDF */}
           <button
@@ -1010,20 +1155,49 @@ export const ProductionModule: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-500">Filtrer par statut :</span>
-            <select
-              value={masterStatusFilter}
-              onChange={e => setMasterStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-300 text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-xl focus:bg-white focus:outline-none cursor-pointer"
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <button
+              onClick={handleExportExcel}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold px-3 py-1.5 rounded-xl border border-emerald-300 text-xs flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+              title="Exporter le registre en fichier Excel (.xlsx)"
             >
-              <option value="ALL">📋 Tous les statuts ({dailyReports.filter(r => isProjectReportMatch(r, selectedProject)).length})</option>
-              <option value="Brouillon">📝 Brouillons (Étape 1)</option>
-              <option value="Soumis">⏳ Soumis (Étape 2)</option>
-              <option value="Validé">✅ Validés (Étape 3)</option>
-              <option value="Verrouillé">🔒 Verrouillés (Étape 4)</option>
-              <option value="Refusé">❌ Refusés / En correction</option>
-            </select>
+              <FileSpreadsheet size={14} className="text-emerald-700" />
+              <span>Export Excel</span>
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl border border-slate-300 text-xs flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+              title="Exporter en CSV standardisé"
+            >
+              <Download size={14} className="text-slate-600" />
+              <span>CSV</span>
+            </button>
+            {isValidatorRole && dailyReports.some(r => isProjectReportMatch(r, selectedProject) && (r.status || '').toUpperCase().includes('SOUMIS')) && (
+              <button
+                onClick={handleBatchValidateAll}
+                disabled={isValidating}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                title="Valider en un clic tous les rapports soumis du chantier actif"
+              >
+                <CheckCircle2 size={14} />
+                <span>{isValidating ? 'Validation...' : '⚡ Tout Valider (Soumis)'}</span>
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <span className="text-[11px] font-bold text-slate-500">Statut :</span>
+              <select
+                value={masterStatusFilter}
+                onChange={e => setMasterStatusFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-300 text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-xl focus:bg-white focus:outline-none cursor-pointer"
+              >
+                <option value="ALL">📋 Tous les statuts ({dailyReports.filter(r => isProjectReportMatch(r, selectedProject)).length})</option>
+                <option value="Brouillon">📝 Brouillons (Étape 1)</option>
+                <option value="Soumis">⏳ Soumis (Étape 2)</option>
+                <option value="Validé">✅ Validés (Étape 3)</option>
+                <option value="Verrouillé">🔒 Verrouillés (Étape 4)</option>
+                <option value="Refusé">❌ Refusés / En correction</option>
+              </select>
+            </div>
           </div>
         </div>
 
