@@ -234,12 +234,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 md:sticky md:top-0 h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 shadow-2xl shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 md:sticky md:top-0 h-screen min-h-screen min-h-dvh max-h-screen bg-slate-900 text-white flex flex-col transition-all duration-300 shadow-2xl shrink-0 self-stretch ${
           collapsed ? 'w-20' : 'w-72'
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
         {/* Header Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-950">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-950 shrink-0">
           {!collapsed ? (
             <div className="flex items-center gap-3">
               <img
@@ -271,7 +271,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation List avec COULEUR EXACTE #E8CE27 POUR LES GRANDS TITRES ET LE SURVOL */}
-      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-4rem)] py-3 space-y-3 px-2 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-3 px-2 custom-scrollbar">
         {menuSections.map((section, idx) => {
           const SectionIcon = section.icon;
           const isOpen = !!openSections[section.title];
@@ -353,9 +353,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* Footer Info avec indication du rôle actif et photo de profil */}
-      {!collapsed && (
-        <div className="p-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center gap-2.5">
+      {/* Footer Info avec indication du rôle actif et photo de profil (ancré en bas de manière continue) */}
+      {!collapsed ? (
+        <div className="p-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center gap-2.5 mt-auto shrink-0 bg-slate-950">
           {currentUser?.photoUrl || (currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/'))) ? (
             <img
               src={currentUser.photoUrl || currentUser.avatar}
@@ -371,6 +371,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-blue-400 font-bold block truncate">{currentUser?.name || 'Session Réelle'}</span>
             <span className="text-[10px] text-slate-400 font-medium block truncate">{currentUser?.role || 'Directeur Projet'}</span>
           </div>
+        </div>
+      ) : (
+        <div className="p-3 border-t border-slate-800 flex justify-center items-center mt-auto shrink-0 bg-slate-950">
+          {currentUser?.photoUrl || (currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/'))) ? (
+            <img
+              src={currentUser.photoUrl || currentUser.avatar}
+              alt={currentUser.name}
+              className="w-8 h-8 rounded-full object-cover border border-[#E8CE27]/60 shadow-xs shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-[#E8CE27]/20 border border-[#E8CE27]/40 text-[#E8CE27] font-black text-[10px] flex items-center justify-center shrink-0">
+              {currentUser?.avatar || (currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'YM')}
+            </div>
+          )}
         </div>
       )}
     </aside>
