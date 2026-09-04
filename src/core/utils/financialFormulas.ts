@@ -224,11 +224,11 @@ export const getProjectFinancialSummary = (
         const wbsCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
         const node = wbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wbsCode);
         if (node) {
-          const planned = Number(node.plannedQty || node.contractQty || 1);
+          const planned = Number(node.plannedQty || node.contractQty || 0);
           const nodeBudget = Number(node.revisedBudget || node.contractAmount || node.initialBudget || 0);
-          unitPrice = Number(node.pu || node.marketUnitPrice || (nodeBudget > 0 && planned > 0 ? nodeBudget / planned : 500000));
+          unitPrice = Number(node.pu || node.marketUnitPrice || (nodeBudget > 0 && planned > 0 ? nodeBudget / planned : 0));
         } else {
-          unitPrice = 500000;
+          unitPrice = 0;
         }
       }
 

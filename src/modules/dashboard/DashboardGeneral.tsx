@@ -314,11 +314,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return { months, yearBands, startStr, endStr };
   }, [selectedProjectId, targetProject]);
 
-  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel, dynamique et cohérent SSOT (Avancement réel vs Courbe S Objectif)
+  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel STRICT (0 si aucune donnée réelle enregistrée)
   const monthsChartData = useMemo(() => {
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
-    const currentProg = Math.min(100, Math.max(0, Number(summary.progressPct || 0)));
 
     // Ensemble des rapports de production propres au projet / portefeuille (non tronqués par le filtre de période unique)
     const projectReports = selectedProjectId === 'ALL'
@@ -330,10 +329,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
     });
 
-    const activeIdx = monthLabels.findIndex(mon => mon.key === activeMonthCutoff);
-    const validActiveIdx = activeIdx >= 0 ? activeIdx : (monthLabels.length > 2 ? 1 : 0);
-
-    // Calcul de l'avancement physique cumulé réel pour chaque mois
+    // Calcul de l'avancement physique cumulé réel pour chaque mois (0 strict si aucune donnée réelle)
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
 
@@ -343,70 +339,60 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const sCurveTarget = Math.round((3 * Math.pow(t, 2) - 2 * Math.pow(t, 3)) * 1000) / 10;
       const targetPct = Math.min(100, Math.max(0, sCurveTarget));
 
-      // 2. AVANCEMENT RÉEL CUMULÉ
+      // 2. AVANCEMENT RÉEL CUMULÉ STRICT (0 SI AUCUN RAPPORT DE PRODUCTION RÉEL VALIDÉ)
       let realPct = 0;
       if (!isFuture) {
-        if (index === validActiveIdx || m.key === activeMonthCutoff) {
-          // Mois actif courant : Valeur réelle SSOT exacte issue du projet et des WBS
-          realPct = currentProg;
+        // Filtrage strict des rapports de production validés enregistrés jusqu'à ce mois (inclus)
+        const reportsUpToMonth = validReports.filter(r => {
+          if (!r.date) return false;
+          return String(r.date).substring(0, 7) <= m.key;
+        });
+
+        if (reportsUpToMonth.length === 0) {
+          // RÈGLE ABSOLUE : S'il n'y a pas de valeurs/rapports validés enregistrés à cette date -> STRICTEMENT 0
+          realPct = 0;
         } else {
-          // Mois antérieurs : Calcul à partir des rapports validés ou progression progressive du chantier
-          const reportsUpToMonth = validReports.filter(r => {
-            if (!r.date) return false;
-            return String(r.date).substring(0, 7) <= m.key;
+          // Calcul exact du cumul d'avancement physique basé exclusivement sur les rapports réels enregistrés
+          const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
+          
+          reportsUpToMonth.forEach(r => {
+            const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase();
+            if (!wbsProgressMap[wCode]) {
+              const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
+              const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 0);
+              const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 0);
+              wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
+            }
+            wbsProgressMap[wCode].realized += Number(r.realizedQty || 0);
           });
 
-          if (reportsUpToMonth.length > 0) {
-            const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
-            
-            reportsUpToMonth.forEach(r => {
-              const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase();
-              if (!wbsProgressMap[wCode]) {
-                const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
-                const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 1);
-                const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 1);
-                wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
-              }
-              wbsProgressMap[wCode].realized += Number(r.realizedQty || 0);
-            });
+          let totalWeight = 0;
+          let weightedSum = 0;
 
-            let totalWeight = 0;
-            let weightedSum = 0;
+          Object.values(wbsProgressMap).forEach(w => {
+            const actProg = Math.min(100, (w.realized / (w.planned > 0 ? w.planned : 1)) * 100);
+            weightedSum += actProg * w.budget;
+            totalWeight += w.budget;
+          });
 
-            Object.values(wbsProgressMap).forEach(w => {
-              const actProg = Math.min(100, (w.realized / w.planned) * 100);
-              weightedSum += actProg * w.budget;
-              totalWeight += w.budget;
-            });
-
-            if (totalWeight > 0 && weightedSum > 0) {
-              realPct = Math.min(currentProg, Number((weightedSum / totalWeight).toFixed(1)));
-            } else {
-              const ratio = validActiveIdx > 0 ? index / validActiveIdx : 0;
-              realPct = Number((currentProg * Math.pow(ratio, 1.2)).toFixed(1));
-            }
+          if (totalWeight > 0 && weightedSum > 0) {
+            realPct = Math.min(100, Number((weightedSum / totalWeight).toFixed(1)));
           } else {
-            // Progression historique régulière depuis le démarrage du projet jusqu'à l'avancement actuel
-            const ratio = validActiveIdx > 0 ? index / validActiveIdx : 0;
-            realPct = Number((currentProg * Math.pow(ratio, 1.2)).toFixed(1));
+            const totalReportCost = reportsUpToMonth.reduce((sum, r) => sum + Number(r.totalCost || (Number(r.realizedQty || 0) * Number(r.pu || 0))), 0);
+            if (totalReportCost > 0 && totalBudgetDs > 0) {
+              realPct = Math.min(100, Number(((totalReportCost / totalBudgetDs) * 100).toFixed(1)));
+            } else {
+              realPct = 0;
+            }
           }
         }
       } else {
-        // Mois futurs : Projection d'achèvement (S-curve de rattrapage vers 100%)
-        const remainingMonths = count - 1 - validActiveIdx;
-        if (remainingMonths > 0) {
-          const futureStep = index - validActiveIdx;
-          const pos = futureStep / remainingMonths;
-          const sFactor = 3 * Math.pow(pos, 2) - 2 * Math.pow(pos, 3);
-          const gap = 100 - currentProg;
-          realPct = Math.min(100, Math.max(0, Number((currentProg + (gap * sFactor)).toFixed(1))));
-        } else {
-          realPct = 100;
-        }
+        // Mois futurs : 0 (aucune valeur réelle)
+        realPct = 0;
       }
 
       const x = Math.round((index / (count - 1 || 1)) * 395);
-      // Coordonnée Y : 135 (en bas pour 0%) à 15 (en haut pour 100%)
+      // Coordonnée Y : 140 (en bas pour 0%) à 15 (en haut pour 100%)
       const y = Math.round(140 - (realPct / 100) * 125);
       const targetY = Math.round(140 - (targetPct / 100) * 125);
 
@@ -422,7 +408,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, summary.progressPct, targetWbsNodes]);
+  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, totalBudgetDs, targetWbsNodes]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
