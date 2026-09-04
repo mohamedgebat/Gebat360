@@ -301,7 +301,17 @@ const MainApp: React.FC = () => {
         return <MouvementWbsModule />;
 
       case 'btp-planning':
-        return <PlanningModule />;
+        return (
+          <PlanningModule
+            onBackToProject={() => {
+              if (selectedProjectId || projects[0]?.id) {
+                if (!selectedProjectId && projects[0]?.id) setSelectedProjectId(projects[0].id);
+              }
+              setCurrentView('vue-projet-360');
+            }}
+            initialProjectId={selectedProjectId}
+          />
+        );
 
       case 'btp-production':
         return (
