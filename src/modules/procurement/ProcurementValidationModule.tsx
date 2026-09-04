@@ -49,20 +49,23 @@ export const ProcurementValidationModule: React.FC = () => {
     // 1. DEMANDES D'ACHAT RÉELLES DU CONTEXTE GLOBAL
     if (purchaseRequests && purchaseRequests.length > 0) {
       purchaseRequests.forEach(da => {
+        const isOverBudget = Boolean(da.budgetCheck?.isOverBudget || (da as any).is_over_budget);
+        const overAmt = Number(da.budgetCheck?.overBudgetAmount || (da as any).over_budget_amount || 0);
+
         list.push({
           id: `VAL-DA-${da.id}`,
           category: 'DA',
-          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Approvisionnement ciment et fer à béton'}`,
-          amount: da.estimatedTotal,
+          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Approvisionnement fournitures chantier'}`,
+          amount: Number(da.estimatedTotal || 0),
           projectId: da.projectId,
           projectName: da.projectName || (da.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
           wbsCode: da.wbsCode || '02.02.001',
-          initiator: da.createdBy || 'Kouassi Jean (Direction des Travaux)',
+          initiator: da.createdBy || 'Demandeur Chantier',
           date: da.createdAt || new Date().toISOString().substring(0, 10),
-          urgency: da.urgency === 'Très urgent' || da.urgency === 'Critique' ? 'Très urgent' : da.urgency === 'Urgent' ? 'Urgent' : 'Normale',
-          budgetImpact: 'Dans le budget',
-          attachments: ['DA_Scan_Signe.pdf'],
-          status: da.status === 'VALIDEE' ? 'Validé' : da.status === 'REFUSEE' ? 'Refusé' : da.status === 'RETOUR_CORRECTION' ? 'Retour correction' : 'En attente'
+          urgency: da.urgency === 'Très urgent' || da.urgency === 'Critique' || da.urgency === 'Haute' ? 'Très urgent' : da.urgency === 'Urgent' || da.urgency === 'Moyenne' ? 'Urgent' : 'Normale',
+          budgetImpact: isOverBudget ? `Dépassement (+${overAmt > 0 ? overAmt.toLocaleString('fr-FR') : ''} FCFA)` : 'Dans le budget',
+          attachments: da.attachments && da.attachments.length > 0 ? da.attachments : ['DA_Scan_Signe.pdf'],
+          status: da.status === 'VALIDEE' || da.status === 'APPROUVEE' ? 'Validé' : da.status === 'REFUSEE' || da.status === 'REJETEE' ? 'Refusé' : da.status === 'RETOUR_CORRECTION' ? 'Retour correction' : 'En attente'
         });
       });
     }
