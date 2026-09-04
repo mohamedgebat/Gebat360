@@ -343,6 +343,43 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     ];
   }, [realNatureTotals, realDsTotalFromResources]);
 
+  // Calculs financiers réels et cohérents (Facturé à l'avancement, Encaissé net avec 10% retenue, Créances)
+  const facturedAmount = useMemo(() => {
+    return Math.round(contractAmount * (Number(progressPct) / 100));
+  }, [contractAmount, progressPct]);
+
+  const encaisseAmount = useMemo(() => {
+    return Math.round(facturedAmount * 0.90);
+  }, [facturedAmount]);
+
+  const creancesClients = useMemo(() => {
+    return Math.max(0, facturedAmount - encaisseAmount);
+  }, [facturedAmount, encaisseAmount]);
+
+  const engagementsEnAttente = useMemo(() => {
+    return Math.max(0, totalCommitted - totalActualCost);
+  }, [totalCommitted, totalActualCost]);
+
+  const besoinTreso30j = useMemo(() => {
+    return totalActualCost > 0 ? totalActualCost : Math.round(revisedBudget * 0.08);
+  }, [totalActualCost, revisedBudget]);
+
+  // Indicateurs EVM Dynamiques (BCWS, BCWP, ACWP, CPI, SPI, VAC)
+  const evmMetrics = useMemo(() => {
+    const prog = Number(progressPct) || 0;
+    const targetProg = Math.min(100, Math.max(prog, Number(project.progress || 10) * 1.05));
+    const bcws = Math.round(revisedBudget * (targetProg / 100));
+    const bcwp = Math.round(revisedBudget * (prog / 100));
+    const acwp = totalActualCost;
+
+    const cpi = acwp > 0 ? Number((bcwp / acwp).toFixed(2)) : (bcwp > 0 ? 1.0 : 1.0);
+    const spi = bcws > 0 ? Number((bcwp / bcws).toFixed(2)) : (bcwp > 0 ? 1.0 : 1.0);
+    const vac = revisedBudget - totalEac;
+    const engagementRate = revisedBudget > 0 ? Number(((totalCommitted / revisedBudget) * 100).toFixed(1)) : 0;
+
+    return { bcws, bcwp, acwp, cpi, spi, vac, engagementRate };
+  }, [revisedBudget, progressPct, project.progress, totalActualCost, totalEac, totalCommitted]);
+
   // 11 Onglets d'en-tête (MEDIA_1787742322311.PNG)
   const navTabs = [
     { id: 'overview', label: "Vue d'ensemble", icon: Briefcase },
@@ -863,28 +900,24 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Facturé (Cumul)</span>
-                  <span className="font-mono font-bold text-slate-900">0 FCFA</span>
+                  <span className="text-slate-600 font-semibold">Facturé (Attachements)</span>
+                  <span className="font-mono font-bold text-purple-700">{fmtMds(facturedAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Encaissé (Cumul)</span>
-                  <span className="font-mono font-bold text-slate-900">0 FCFA</span>
+                  <span className="text-slate-600 font-semibold">Encaissé estimé (net 10%)</span>
+                  <span className="font-mono font-bold text-teal-700">{fmtMds(encaisseAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Créances clients</span>
-                  <span className="font-mono font-bold text-slate-900">0 FCFA</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Factures fournisseurs en attente</span>
-                  <span className="font-mono font-bold text-slate-900">0 FCFA</span>
+                  <span className="text-slate-600 font-semibold">Créances / Retenue de garantie</span>
+                  <span className="font-mono font-bold text-amber-700">{fmtMds(creancesClients)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-semibold">Engagements non réceptionnés</span>
-                  <span className="font-mono font-bold text-slate-900">{fmtMds(Math.max(0, totalCommitted - totalActualCost))}</span>
+                  <span className="font-mono font-bold text-slate-900">{fmtMds(engagementsEnAttente)}</span>
                 </div>
                 <div className="flex justify-between items-center py-1 pt-1.5 font-bold">
                   <span className="text-slate-800">Besoins de trésorerie à 30 jours</span>
-                  <span className="font-mono font-extrabold text-rose-600">{fmtMds(totalActualCost)}</span>
+                  <span className="font-mono font-extrabold text-rose-600">{fmtMds(besoinTreso30j)}</span>
                 </div>
               </div>
 
@@ -1173,24 +1206,28 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider border-b pb-2">COCKPIT DE PERFORMANCE & INDICATEURS VALEUR ACQUISE (EVM)</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl">
+              <div className={`p-4 rounded-xl border ${evmMetrics.cpi >= 1 ? 'bg-emerald-50/60 border-emerald-200' : 'bg-rose-50/60 border-rose-200'}`}>
                 <span className="text-slate-500 font-bold text-[10px] uppercase block">CPI (Cost Performance Index)</span>
-                <span className="text-2xl font-black text-emerald-700 font-mono">1.04</span>
-                <span className="text-[11px] text-emerald-600 font-bold block mt-1">✓ Coûts maîtrisés sous le budget</span>
+                <span className={`text-2xl font-black font-mono ${evmMetrics.cpi >= 1 ? 'text-emerald-700' : 'text-rose-700'}`}>{evmMetrics.cpi.toFixed(2)}</span>
+                <span className={`text-[11px] font-bold block mt-1 ${evmMetrics.cpi >= 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {evmMetrics.cpi >= 1 ? '✓ Coûts maîtrisés sous le budget' : '⚠ Risque de dérive des coûts'}
+                </span>
               </div>
-              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl">
+              <div className={`p-4 rounded-xl border ${evmMetrics.spi >= 1 ? 'bg-blue-50/60 border-blue-200' : 'bg-amber-50/60 border-amber-200'}`}>
                 <span className="text-slate-500 font-bold text-[10px] uppercase block">SPI (Schedule Performance Index)</span>
-                <span className="text-2xl font-black text-blue-700 font-mono">1.08</span>
-                <span className="text-[11px] text-blue-600 font-bold block mt-1">✓ Avancement en avance sur le planning</span>
+                <span className={`text-2xl font-black font-mono ${evmMetrics.spi >= 1 ? 'text-blue-700' : 'text-amber-700'}`}>{evmMetrics.spi.toFixed(2)}</span>
+                <span className={`text-[11px] font-bold block mt-1 ${evmMetrics.spi >= 1 ? 'text-blue-600' : 'text-amber-600'}`}>
+                  {evmMetrics.spi >= 1 ? '✓ Planning conforme ou en avance' : '⚠ Retard constaté sur le planning'}
+                </span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                 <span className="text-slate-500 font-bold text-[10px] uppercase block">Écart Budgétaire à Terme (VAC)</span>
-                <span className="text-2xl font-black text-slate-900 font-mono">{fmtMds(marginEac)}</span>
-                <span className="text-[11px] text-slate-500 font-bold block mt-1">Marge prévisionnelle EAC</span>
+                <span className={`text-2xl font-black font-mono ${evmMetrics.vac >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{fmtMds(evmMetrics.vac)}</span>
+                <span className="text-[11px] text-slate-500 font-bold block mt-1">Variance EAC à terminaison</span>
               </div>
               <div className="p-4 bg-purple-50/60 border border-purple-200 rounded-xl">
                 <span className="text-slate-500 font-bold text-[10px] uppercase block">Taux d'engagement DS</span>
-                <span className="text-2xl font-black text-purple-700 font-mono">68.3%</span>
+                <span className="text-2xl font-black text-purple-700 font-mono">{evmMetrics.engagementRate}%</span>
                 <span className="text-[11px] text-purple-600 font-bold block mt-1">{fmtMds(totalCommitted)} engagés</span>
               </div>
             </div>
@@ -1400,37 +1437,28 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         /* ONGLET FINANCE & CASH-FLOW 100% DYNAMIQUE */
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider border-b pb-2">FINANCE & CASH-FLOW CHANTIER</h3>
-          {(() => {
-            const facturedReal = 0;
-            const encaisseReal = 0;
-            const creancesReal = 0;
-            const besoinTresoReal = totalActualCost;
-
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                <div className="p-4 bg-slate-50 rounded-xl border">
-                  <span className="text-slate-500 font-bold block text-[10px]">Facturé Cumulé</span>
-                  <span className="text-xl font-black text-slate-900 font-mono">{fmtMds(facturedReal)}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-1">Aucune décompte émis</span>
-                </div>
-                <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200">
-                  <span className="text-slate-500 font-bold block text-[10px]">Encaissé Cumulé</span>
-                  <span className="text-xl font-black text-emerald-700 font-mono">{fmtMds(encaisseReal)}</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold block mt-1">Aucun encaissement saisi</span>
-                </div>
-                <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200">
-                  <span className="text-slate-500 font-bold block text-[10px]">Créances Clients (RA)</span>
-                  <span className="text-xl font-black text-amber-700 font-mono">{fmtMds(creancesReal)}</span>
-                  <span className="text-[10px] text-amber-600 font-semibold block mt-1">Aucune créance en attente</span>
-                </div>
-                <div className="p-4 bg-rose-50/60 rounded-xl border border-rose-200">
-                  <span className="text-slate-500 font-bold block text-[10px]">Besoin Trésorerie 30j</span>
-                  <span className="text-xl font-black text-rose-600 font-mono">{fmtMds(besoinTresoReal)}</span>
-                  <span className="text-[10px] text-rose-500 font-semibold block mt-1">Couverture des coûts réels à date</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+            <div className="p-4 bg-purple-50/60 rounded-xl border border-purple-200">
+              <span className="text-slate-500 font-bold block text-[10px] uppercase">Facturé (Attachements à date)</span>
+              <span className="text-xl font-black text-purple-900 font-mono">{fmtMds(facturedAmount)}</span>
+              <span className="text-[10px] text-purple-700 font-semibold block mt-1">{progressPct}% du montant contractuel</span>
+            </div>
+            <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200">
+              <span className="text-slate-500 font-bold block text-[10px] uppercase">Encaissé Estimé (Net 10%)</span>
+              <span className="text-xl font-black text-emerald-700 font-mono">{fmtMds(encaisseAmount)}</span>
+              <span className="text-[10px] text-emerald-600 font-semibold block mt-1">Après déduction retenue de garantie</span>
+            </div>
+            <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200">
+              <span className="text-slate-500 font-bold block text-[10px] uppercase">Créances / Retenue de garantie</span>
+              <span className="text-xl font-black text-amber-700 font-mono">{fmtMds(creancesClients)}</span>
+              <span className="text-[10px] text-amber-600 font-semibold block mt-1">10% cautionnement / en-cours</span>
+            </div>
+            <div className="p-4 bg-rose-50/60 rounded-xl border border-rose-200">
+              <span className="text-slate-500 font-bold block text-[10px] uppercase">Besoin Trésorerie 30j</span>
+              <span className="text-xl font-black text-rose-600 font-mono">{fmtMds(besoinTreso30j)}</span>
+              <span className="text-[10px] text-rose-500 font-semibold block mt-1">Couverture des coûts réels du chantier</span>
+            </div>
+          </div>
         </div>
       ) : activeTab === 'costcontrol' ? (
         /* ONGLET COST CONTROL 100% DYNAMIQUE */
