@@ -32,9 +32,33 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
 
-  const [starredProjects, setStarredProjects] = useState<Record<string, boolean>>({
-    'CIV-2026-ASS-001': true,
+  const [starredProjects, setStarredProjects] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('gebat_starred_projects');
+      return saved ? JSON.parse(saved) : { 'CIV-2026-ASS-001': true };
+    } catch {
+      return { 'CIV-2026-ASS-001': true };
+    }
   });
+
+  // DÉDUCTION DYNAMIQUE DES FILTRES À PARTIR DES PROJETS EN BASE DE DONNÉES
+  const availableCompanies = useMemo(() => {
+    const set = new Set<string>();
+    (projects || []).forEach(p => {
+      if (p.company && p.company.trim()) set.add(p.company.trim());
+    });
+    if (set.size === 0) set.add('GEBAT SA');
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [projects]);
+
+  const availableCountries = useMemo(() => {
+    const set = new Set<string>();
+    (projects || []).forEach(p => {
+      if (p.country && p.country.trim()) set.add(p.country.trim());
+    });
+    if (set.size === 0) set.add("Côte d'Ivoire");
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [projects]);
 
   // DÉDUCTION DYNAMIQUE DE LA LISTE DES RESPONSABLES À PARTIR DES PROJETS ET DES UTILISATEURS
   const availableManagers = useMemo(() => {
@@ -135,6 +159,10 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
     const budgetRestantPct = totalBudgetDS > 0 ? ((budgetRestantAEngagerValue / totalBudgetDS) * 100).toFixed(1) : '100.0';
     const delayedPct = totalProjectsCount > 0 ? ((delayedProjectsCount / totalProjectsCount) * 100).toFixed(1) : '0.0';
 
+    const avgDueDate = avgRemainingDays > 0 ? new Date(now + avgRemainingDays * 24 * 3600 * 1000) : new Date();
+    const rawDueDateStr = avgDueDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const formattedDueDate = rawDueDateStr ? rawDueDateStr.charAt(0).toUpperCase() + rawDueDateStr.slice(1) : 'En cours';
+
     // Fonction de formatage uniforme en chiffres exacts sans abréviation ni arrondi
     const formatAmount = (val: number) => {
       if (val === undefined || val === null || isNaN(val)) return '0 FCFA';
@@ -154,6 +182,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
 
       // KPIs bas 100% dynamiques et réels
       avgRemainingDays,
+      formattedDueDate,
       delayedProjectsCount,
       delayedPct,
       budgetRestantStr: formatAmount(budgetRestantAEngagerValue),
@@ -166,8 +195,8 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   // FILTRAGE MULTI-CRITÈRES DES PROJETS
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
-      if (companyFilter !== 'TOUS' && p.company !== companyFilter) return false;
-      if (countryFilter !== 'TOUS' && p.country !== countryFilter) return false;
+      if (companyFilter !== 'TOUS' && (p.company || 'GEBAT SA') !== companyFilter) return false;
+      if (countryFilter !== 'TOUS' && (p.country || "Côte d'Ivoire") !== countryFilter && p.country !== countryFilter) return false;
       if (managerFilter !== 'TOUS' && p.manager !== managerFilter) return false;
       if (statusFilter !== 'TOUS' && p.status !== statusFilter) return false;
       if (riskFilter !== 'TOUS' && p.risk !== riskFilter) return false;
@@ -188,7 +217,13 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
 
   const toggleStar = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setStarredProjects(prev => ({ ...prev, [id]: !prev[id] }));
+    setStarredProjects(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem('gebat_starred_projects', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   };
 
   // EXPORTATION REELLE EN FICHIER CSV
@@ -227,10 +262,75 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   // IMPORTATION FICHIER EXCEL/CSV
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      alert(`✅ Fichier ${file.name} chargé avec succès ! 1 nouveau projet importé dans le portefeuille.`);
-      setShowImportModal(false);
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length < 2) {
+          alert('Le fichier est vide ou ne contient pas de lignes de données.');
+          return;
+        }
+
+        let importedCount = 0;
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i];
+          const delimiter = line.includes(';') ? ';' : ',';
+          const cols = line.split(delimiter).map(c => c.replace(/^["']|["']$/g, '').trim());
+          if (cols.length >= 2 && cols[0] && cols[1]) {
+            const newCode = cols[0] || `CIV-2026-IMP-${Math.floor(1000 + Math.random() * 9000)}`;
+            const newName = cols[1] || 'Nouveau Chantier';
+            const newClient = cols[2] || 'Client Général';
+            const newLocation = cols[3] || "Côte d'Ivoire";
+            const newManager = cols[4] || 'SEA Alphonse';
+            const newContract = parseFloat(cols[5]) || 0;
+            const newBudget = parseFloat(cols[6]) || (newContract > 0 ? newContract * 0.82 : 0);
+            const newProgress = parseFloat(cols[7]) || 0;
+            const newStatus = (cols[8] || 'ACTIF') as ProjectStatus;
+            const newRisk = (cols[9] || 'FAIBLE') as RiskLevel;
+
+            const newProj: Omit<Project, 'id'> = {
+              code: newCode,
+              name: newName,
+              client: newClient,
+              location: newLocation,
+              manager: newManager,
+              contractAmount: newContract,
+              initialBudget: newBudget,
+              revisedBudget: newBudget,
+              progress: newProgress,
+              status: newStatus,
+              risk: newRisk,
+              company: 'GEBAT SA',
+              country: "Côte d'Ivoire",
+              currency: 'FCFA',
+              startDate: new Date().toISOString().split('T')[0],
+              durationMonths: 18,
+            };
+
+            if (typeof createProject === 'function') {
+              await createProject(newProj);
+              importedCount++;
+            }
+          }
+        }
+
+        if (importedCount > 0) {
+          addAuditLog('IMPORT_PROJETS', 'PROJETS', 'ALL', `Import CSV/Excel de ${importedCount} projets`);
+          alert(`✅ ${importedCount} projet(s) importé(s) avec succès dans le portefeuille GEBAT !`);
+        } else {
+          alert('⚠️ Aucun projet valide trouvé dans le fichier.');
+        }
+        setShowImportModal(false);
+      } catch (err) {
+        console.error('Erreur import CSV:', err);
+        alert('Erreur lors de la lecture du fichier.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   // DUPLICATION DU PROJET
@@ -522,7 +622,10 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               onChange={e => setCompanyFilter(e.target.value)}
               className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs"
             >
-              <option value="TOUS">GEBAT SA</option>
+              <option value="TOUS">Toutes les sociétés</option>
+              {availableCompanies.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </div>
 
@@ -534,7 +637,9 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs"
             >
               <option value="TOUS">Tous les pays</option>
-              <option value="CIV">Côte d'Ivoire</option>
+              {availableCountries.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </div>
 
@@ -658,9 +763,19 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
                         <span className="text-[10px]">{progVal}%</span>
                       </td>
                       <td className="p-3 text-center font-mono text-[10px]">
-                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-                          Dans les délais
-                        </span>
+                        {p.status === 'EN_RETARD' || p.risk === 'CRITIQUE' || (p.endDate && new Date(p.endDate).getTime() < Date.now() && (p.progress || 0) < 100) ? (
+                          <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 font-bold border border-rose-200">
+                            ⚠️ En retard
+                          </span>
+                        ) : p.status === 'TERMINE' || p.status === 'Terminé' || (p.progress || 0) >= 100 ? (
+                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold border border-blue-200">
+                            ✓ Livré
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                            ● Dans les délais
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 text-right font-mono font-bold text-emerald-700">
                         {marginPct}%
@@ -856,7 +971,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
                 {portfolioKpis.avgRemainingDays} jours
               </div>
               <div className="text-[11px] font-semibold text-slate-400">
-                Échéance moyenne : <span className="text-emerald-600 font-bold">Juillet 2027</span>
+                Échéance moyenne : <span className="text-emerald-600 font-bold">{portfolioKpis.formattedDueDate}</span>
               </div>
             </div>
           </div>

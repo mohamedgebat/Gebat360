@@ -210,7 +210,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onSelectProject, onN
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="p-8 text-center text-slate-400">
+                  <td colSpan={14} className="p-8 text-center text-slate-400">
                     Aucun projet ne correspond aux critères de recherche définis
                   </td>
                 </tr>
