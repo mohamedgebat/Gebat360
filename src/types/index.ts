@@ -517,7 +517,10 @@ export type StockMovementType =
   | 'Retour'
   | 'Inventaire'
   | 'Ajustement'
-  | 'Réservation';
+  | 'Ajustement +'
+  | 'Ajustement -'
+  | 'Réservation'
+  | 'Libération Réservation';
 
 export interface Warehouse {
   id: string;

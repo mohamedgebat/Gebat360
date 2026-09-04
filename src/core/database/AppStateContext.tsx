@@ -2086,6 +2086,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
           } else if (mvtData.type === 'Sortie') {
             const newQty = Math.max(0, oldQty - entryQty);
+            const currentRes = Number(i.reservedStock || 0);
+            const newRes = mvtData.notes?.includes('Réservation') ? Math.max(0, currentRes - entryQty) : currentRes;
+            return {
+              ...i,
+              currentStock: newQty,
+              reservedStock: newRes,
+              totalValue: Math.round(newQty * oldPUMP)
+            };
+          } else if (mvtData.type === 'Retour') {
+            const newQty = oldQty + entryQty;
             return {
               ...i,
               currentStock: newQty,
@@ -2093,6 +2103,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
           } else if (mvtData.type === 'Réservation') {
             const newReserved = Number(i.reservedStock || 0) + entryQty;
+            return {
+              ...i,
+              reservedStock: newReserved
+            };
+          } else if (mvtData.type === 'Libération Réservation') {
+            const newReserved = Math.max(0, Number(i.reservedStock || 0) - entryQty);
             return {
               ...i,
               reservedStock: newReserved

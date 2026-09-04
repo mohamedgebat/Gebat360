@@ -10,7 +10,7 @@ import * as XLSX from 'xlsx';
 import {
   Package, ArrowRightLeft, AlertCircle, Plus, CheckCircle2, RefreshCw,
   Search, Filter, Calculator, ShieldCheck, DollarSign, ArrowRight, FileText,
-  Warehouse as WarehouseIcon, RotateCcw, ClipboardList, Lock, Layers, Download,
+  Warehouse as WarehouseIcon, RotateCcw, ClipboardList, Lock, Unlock, Layers, Download,
   Eye, X, ChevronRight, Edit3, Trash2, FileSpreadsheet, Check, AlertTriangle
 } from 'lucide-react';
 
@@ -627,6 +627,74 @@ export const StockModule: React.FC = () => {
     setShowReservationModal(false);
   };
 
+  const handleReleaseReservation = (item: StockItem) => {
+    const resQty = item.reservedStock || 0;
+    if (resQty <= 0) return;
+
+    if (confirm(`Voulez-vous libérer la réservation de ${resQty} ${item.unit} pour "${item.name}" ? Le stock redeviendra totalement disponible.`)) {
+      createStockMovement({
+        code: `REL-${Date.now().toString().slice(-6)}`,
+        type: 'Libération Réservation',
+        itemId: item.id,
+        itemName: item.name,
+        quantity: resQty,
+        unit: item.unit,
+        unitPrice: item.averageUnitPrice,
+        totalCost: Math.round(resQty * item.averageUnitPrice),
+        warehouse: item.warehouse,
+        sourceDoc: `ANNUL-RES-${item.code}`,
+        user: currentUser ? currentUser.name : 'Conducteur de Travaux',
+        date: new Date().toISOString().split('T')[0],
+        notes: `Libération de réservation : remise à disposition de ${resQty} ${item.unit}`,
+      });
+
+      addAuditLog(
+        `Libération de Réservation (${resQty} ${item.unit} de ${item.name})`,
+        'Stock & Logistique',
+        item.code,
+        `Stock disponible restauré.`
+      );
+
+      alert(`Réservation de ${resQty} ${item.unit} libérée avec succès !`);
+    }
+  };
+
+  const handleConsumeReservation = (item: StockItem) => {
+    const resQty = item.reservedStock || 0;
+    if (resQty <= 0) return;
+
+    if (confirm(`Confirmez-vous la sortie physique et l'imputation sur chantier de ${resQty} ${item.unit} de "${item.name}" ?`)) {
+      createStockMovement({
+        code: `MVT-RES-${Date.now().toString().slice(-6)}`,
+        type: 'Sortie',
+        itemId: item.id,
+        itemName: item.name,
+        quantity: resQty,
+        unit: item.unit,
+        unitPrice: item.averageUnitPrice,
+        totalCost: Math.round(resQty * item.averageUnitPrice),
+        warehouse: item.warehouse,
+        projectId: selectedProjectId,
+        projectName: selectedProject?.name,
+        wbsCode: wbsCode,
+        activityName: activityName,
+        sourceDoc: `BON-SORTIE-RES-${item.code}`,
+        user: currentUser ? currentUser.name : 'Conducteur de Travaux',
+        date: new Date().toISOString().split('T')[0],
+        notes: `Consommation sur chantier de la Réservation de ${resQty} ${item.unit}`,
+      });
+
+      addAuditLog(
+        `Consommation Réservation sur Chantier [${resQty} ${item.unit} de ${item.name}]`,
+        'Stock & Logistique',
+        wbsCode,
+        `Coût imputé : ${(Math.round(resQty * item.averageUnitPrice)).toLocaleString('fr-FR')} FCFA`
+      );
+
+      alert(`Sortie physique de ${resQty} ${item.unit} effectuée et imputée au projet avec succès !`);
+    }
+  };
+
   // SOUMISSION CRÉATION OU MODIFICATION D'ARTICLE
   const handleSaveArticle = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1234,6 +1302,7 @@ export const StockModule: React.FC = () => {
                     <th className="p-3 text-right">Stock Disponible Net</th>
                     <th className="p-3 text-right">Valeur Réservée (FCFA)</th>
                     <th className="p-3 text-center">Statut Réservation</th>
+                    <th className="p-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -1253,11 +1322,29 @@ export const StockModule: React.FC = () => {
                           🔒 Réservé Chantier
                         </span>
                       </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleConsumeReservation(item)}
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[10px] flex items-center gap-1 transition"
+                            title="Consommer et sortir vers le chantier"
+                          >
+                            <ArrowRight size={12} /> Consommer
+                          </button>
+                          <button
+                            onClick={() => handleReleaseReservation(item)}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-[10px] flex items-center gap-1 transition"
+                            title="Libérer la réservation (remettre à disposition)"
+                          >
+                            <Unlock size={12} /> Libérer
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {stockItems.filter(i => (i.reservedStock || 0) > 0).length === 0 && (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
+                      <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">
                         Aucune réservation active pour le moment.
                       </td>
                     </tr>
