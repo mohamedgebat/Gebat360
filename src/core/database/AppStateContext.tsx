@@ -1821,11 +1821,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'Validé',
     };
 
-    setReceipts(prev => [receipt, ...prev]);
+    setReceipts(prev => {
+      const updatedRec = [receipt, ...prev];
+      safeSaveToStorage('gebat_receipts', updatedRec);
+      return updatedRec;
+    });
 
     // Update PO status
-    setPurchaseOrders(prev =>
-      prev.map(p => {
+    setPurchaseOrders(prev => {
+      const updatedPO = prev.map(p => {
         if (p.id === poId) {
           return {
             ...p,
@@ -1834,14 +1838,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           };
         }
         return p;
-      })
-    );
+      });
+      safeSaveToStorage('gebat_purchase_orders', updatedPO);
+      return updatedPO;
+    });
 
     // Entrée en Stock automatique
     let existingItem = stockItems.find(i => i.name.toLowerCase().includes(da.itemDescription.toLowerCase().split(' ')[0]));
     if (existingItem) {
-      setStockItems(prev =>
-        prev.map(item => {
+      setStockItems(prev => {
+        const updatedItems = prev.map(item => {
           if (item.id === existingItem!.id) {
             const newStock = item.currentStock + receivedQty;
             const newTotalVal = item.totalValue + totalCost;
@@ -1853,8 +1859,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
           }
           return item;
-        })
-      );
+        });
+        safeSaveToStorage('gebat_stock_items', updatedItems);
+        return updatedItems;
+      });
+      const updatedExisting = {
+        ...existingItem,
+        currentStock: existingItem.currentStock + receivedQty,
+        totalValue: existingItem.totalValue + totalCost,
+        averageUnitPrice: Math.round((existingItem.totalValue + totalCost) / (existingItem.currentStock + receivedQty))
+      };
+      ApiService.updateStockItem(existingItem.id, updatedExisting).catch(e => console.warn('Sync stock item err:', e));
     } else {
       existingItem = {
         id: `STK-${Date.now()}`,
@@ -1868,7 +1883,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         averageUnitPrice: da.estimatedUnitPrice,
         totalValue: totalCost,
       };
-      setStockItems(prev => [...prev, existingItem!]);
+      setStockItems(prev => {
+        const updated = [...prev, existingItem!];
+        safeSaveToStorage('gebat_stock_items', updated);
+        return updated;
+      });
+      ApiService.createStockItem(existingItem).catch(e => console.warn('Sync stock item err:', e));
     }
 
     // Mouvement de stock d'entrée
@@ -1892,7 +1912,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       user: receivedBy,
       date: new Date().toISOString().replace('T', ' ').substring(0, 16),
     };
-    setStockMovements(prev => [mvtIn, ...prev]);
+    setStockMovements(prev => {
+      const updatedMvts = [mvtIn, ...prev];
+      safeSaveToStorage('gebat_stock_movements', updatedMvts);
+      return updatedMvts;
+    });
+    ApiService.createStockMovement(mvtIn).catch(e => console.warn('Sync stock mvt err:', e));
 
     addAuditLog(
       'RECEPTION_MARCHANDISE',
@@ -1944,11 +1969,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       date: new Date().toISOString().replace('T', ' ').substring(0, 16),
     };
 
-    setStockMovements(prev => [mvtOut, ...prev]);
+    setStockMovements(prev => {
+      const updatedMvts = [mvtOut, ...prev];
+      safeSaveToStorage('gebat_stock_movements', updatedMvts);
+      return updatedMvts;
+    });
+    ApiService.createStockMovement(mvtOut).catch(e => console.warn('Sync stock mvt err:', e));
 
     // Mettre à jour la quantité en stock
-    setStockItems(prev =>
-      prev.map(i => {
+    setStockItems(prev => {
+      const updatedItems = prev.map(i => {
         if (i.id === itemId) {
           const newQty = i.currentStock - quantity;
           return {
@@ -1958,8 +1988,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           };
         }
         return i;
-      })
-    );
+      });
+      safeSaveToStorage('gebat_stock_items', updatedItems);
+      return updatedItems;
+    });
+    ApiService.updateStockItem(item.id, {
+      ...item,
+      currentStock: item.currentStock - quantity,
+      totalValue: (item.currentStock - quantity) * item.averageUnitPrice
+    }).catch(e => console.warn('Sync stock item err:', e));
 
     // Affectation du Coût Réel au WBS et Recalcul Cost Control / EAC
     setWbsMap(prev => {
@@ -1988,7 +2025,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
             status: 'Actif',
           };
-          setAlerts(a => [alertItem, ...a]);
+          setAlerts(a => {
+            const updatedAlerts = [alertItem, ...a];
+            safeSaveToStorage('gebat_alerts', updatedAlerts);
+            return updatedAlerts;
+          });
         }
 
         return {
@@ -1998,7 +2039,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           eac: newEAC,
         };
       });
-      return { ...prev, [projectId]: updatedTree };
+      const newMap = { ...prev, [projectId]: updatedTree };
+      safeSaveToStorage('gebat_wbs', newMap);
+      return newMap;
     });
 
     addAuditLog(
