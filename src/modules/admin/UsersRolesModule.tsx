@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { ApiService } from '../../services/api';
 import { PERMISSIONS_MATRIX, MODULE_ACTIONS_MATRIX, hasPermission } from '../../core/permissions';
@@ -7,8 +7,9 @@ import {
   Users, UserCheck, ShieldCheck, Lock, Building2, Layers, Plus, Edit3, Trash2, CheckCircle2,
   AlertCircle, Search, Filter, Key, Check, X, ShieldAlert, ArrowRight, Camera, Eye, EyeOff,
   RefreshCw, Phone, Hash, Shield, Mail, FileText, Calendar, UserX, UserPlus, UserCheck2, Clock,
-  ArrowLeft, Save, Sliders
+  ArrowLeft, Save, Sliders, Download, FileSpreadsheet
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export const UsersRolesModule: React.FC = () => {
   const { users, currentUser, setCurrentUser, projects, addAuditLog, addUser, updateUser, deleteUser } = useAppState();
@@ -310,11 +311,67 @@ export const UsersRolesModule: React.FC = () => {
     setSelectedUser(users.find(u => u.id !== selectedUser.id) || null);
   };
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = selectedRoleFilter === 'TOUS' || u.role === selectedRoleFilter;
-    return matchesSearch && matchesRole;
-  });
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      const matchesSearch =
+        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.employeeCode || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesRole = selectedRoleFilter === 'TOUS' || u.role === selectedRoleFilter;
+      return matchesSearch && matchesRole;
+    });
+  }, [users, searchTerm, selectedRoleFilter]);
+
+  // Export Annuaire Excel .xlsx
+  const handleExportXLSX = () => {
+    const exportData = filteredUsers.map((u, idx) => ({
+      'Matricule': u.employeeCode || `EMP-2026-${String(idx + 1).padStart(3, '0')}`,
+      'Nom & Prénoms': u.name,
+      'Email Professionnel': u.email,
+      'Téléphone': u.phone || '-',
+      'Rôle / Fonction': u.role,
+      'Société': u.company || 'GEBAT SA',
+      'Périmètre Projet': u.assignedProject || 'GLOBAL',
+      'Statut': u.status || 'ACTIF',
+      'Délégation Active': u.delegation?.isActive ? `Oui (Intérimaire: ${u.delegation.delegateUserName})` : 'Non'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Annuaire_Utilisateurs');
+
+    worksheet['!cols'] = [
+      { wch: 16 }, { wch: 25 }, { wch: 30 }, { wch: 18 },
+      { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 30 }
+    ];
+
+    XLSX.writeFile(workbook, `GEBAT_Annuaire_Utilisateurs_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // Export Annuaire CSV .csv
+  const handleExportCSV = () => {
+    const headers = ['Matricule', 'Nom', 'Email', 'Telephone', 'Role', 'Societe', 'Projet', 'Statut', 'Delegation'];
+    const rows = filteredUsers.map((u, idx) => [
+      u.employeeCode || `EMP-2026-${String(idx + 1).padStart(3, '0')}`,
+      `"${u.name.replace(/"/g, '""')}"`,
+      `"${u.email.replace(/"/g, '""')}"`,
+      `"${(u.phone || '').replace(/"/g, '""')}"`,
+      `"${u.role.replace(/"/g, '""')}"`,
+      `"${(u.company || 'GEBAT SA').replace(/"/g, '""')}"`,
+      `"${(u.assignedProject || 'GLOBAL').replace(/"/g, '""')}"`,
+      u.status || 'ACTIF',
+      u.delegation?.isActive ? `"${u.delegation.delegateUserName}"` : 'Non'
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `GEBAT_Annuaire_Utilisateurs_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // RENDER DÉDIÉ : MODE PLEINE PAGE POUR LE FORMULAIRE D'ENREGISTREMENT UTILISATEUR
   if (viewMode === 'create_form') {
@@ -904,12 +961,28 @@ export const UsersRolesModule: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => setViewMode('create_form')}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition"
-            >
-              <Plus size={16} /> Page Nouvel Utilisateur
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportCSV}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                title="Exporter l'annuaire en CSV"
+              >
+                <Download size={14} /> CSV
+              </button>
+              <button
+                onClick={handleExportXLSX}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                title="Exporter l'annuaire en Excel .xlsx"
+              >
+                <FileSpreadsheet size={15} /> Excel (.xlsx)
+              </button>
+              <button
+                onClick={() => setViewMode('create_form')}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+              >
+                <Plus size={16} /> Page Nouvel Utilisateur
+              </button>
+            </div>
           </div>
 
       {/* GRILLE CENTRALE DE GESTION : LISTE ET INSPECTEUR PERMISSIONS */}
