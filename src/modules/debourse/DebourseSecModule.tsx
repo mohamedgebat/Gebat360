@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
@@ -110,6 +110,12 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return initialProjectId || projects[0]?.id || projects[0]?.code || '';
   });
+
+  useEffect(() => {
+    if (initialProjectId && initialProjectId !== selectedProjectId) {
+      setSelectedProjectId(initialProjectId);
+    }
+  }, [initialProjectId]);
 
   const selectedProject = useMemo(() => {
     return projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0] || null;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { CostNature } from '../../types';
 import {
@@ -44,17 +44,24 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
   onBackToProject,
   initialProjectId
 }) => {
-  const { projects } = useAppState();
+  const { projects, updateProject, addAuditLog, currentUser } = useAppState();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return initialProjectId || projects[0]?.id || 'CIV-2026-ASS-001';
   });
+
+  useEffect(() => {
+    if (initialProjectId && initialProjectId !== selectedProjectId) {
+      setSelectedProjectId(initialProjectId);
+    }
+  }, [initialProjectId]);
+
   const selectedProject = projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0];
 
   const [activeTab, setActiveTab] = useState<'versions' | 'debourse'>('versions');
 
-  // HISTORIQUE SÉCURISÉ DES VERSIONS BUDGÉTAIRES (V0 -> V1 — FIXÉ SUR LA VERSION 1 RÉELLE)
-  const budgetVersions = useMemo<BudgetVersionItem[]>(() => {
+  // HISTORIQUE PAR DÉFAUT DES VERSIONS BUDGÉTAIRES (V0 -> V1)
+  const defaultBudgetVersions = useMemo<BudgetVersionItem[]>(() => {
     if (!selectedProject) return [];
     
     const initialContract = Number(selectedProject.contractAmount || 0);
@@ -89,15 +96,34 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
     ];
   }, [selectedProject]);
 
+  // État persistant des versions budgétaires
+  const [customVersionsMap, setCustomVersionsMap] = useState<Record<string, BudgetVersionItem[]>>(() => {
+    try {
+      const saved = localStorage.getItem('gebat_custom_budget_versions');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const budgetVersions = useMemo<BudgetVersionItem[]>(() => {
+    if (!selectedProject) return [];
+    const custom = customVersionsMap[selectedProject.id] || customVersionsMap[selectedProject.code];
+    if (custom && custom.length > 0) return custom;
+    return defaultBudgetVersions;
+  }, [selectedProject, customVersionsMap, defaultBudgetVersions]);
+
   // Formulaire de création d'une nouvelle version budgétaire (V2...)
   const [showNewVersionModal, setShowNewVersionModal] = useState(false);
   const [newVersionJustification, setNewVersionJustification] = useState('');
-  const [newVersionAmount, setNewVersionAmount] = useState(490000000);
-  const [newVersionAuthor, setNewVersionAuthor] = useState('N’Guessan Amenan');
-  const [newVersionApprover, setNewVersionApprover] = useState('Directeur Technique');
+  const [newVersionAmount, setNewVersionAmount] = useState(() => {
+    return selectedProject ? Math.round(Number(selectedProject.revisedBudget || selectedProject.initialBudget || 490000000) * 1.05) : 490000000;
+  });
+  const [newVersionAuthor, setNewVersionAuthor] = useState(() => currentUser?.name || 'N’Guessan Amenan');
+  const [newVersionApprover, setNewVersionApprover] = useState('Direction Technique & DG');
 
-  // MOTEUR DE DÉBOURSÉ SEC (Composition du coût 1 m³ Béton B25)
-  const [resources, setResources] = useState<ResourceComponent[]>([
+  // MOTEUR DE DÉBOURSÉ SEC — BASE PAR DÉFAUT (Composition du coût 1 m³ Béton B25)
+  const defaultResources: ResourceComponent[] = [
     {
       id: 'res-1',
       nature: 'MAT',
@@ -176,7 +202,23 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
       priceSource: 'Prestataire Transporteur Logistique',
       lastUpdated: '2026-04-12',
     }
-  ]);
+  ];
+
+  // État persistant des ressources de déboursé
+  const [resourcesMap, setResourcesMap] = useState<Record<string, ResourceComponent[]>>(() => {
+    try {
+      const saved = localStorage.getItem('gebat_debourse_resources');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const resources = useMemo<ResourceComponent[]>(() => {
+    if (!selectedProject) return defaultResources;
+    const projectRes = resourcesMap[selectedProject.id] || resourcesMap[selectedProject.code];
+    return projectRes && projectRes.length > 0 ? projectRes : defaultResources;
+  }, [selectedProject, resourcesMap]);
 
   // Formulaire d'ajout de ressource au déboursé sec
   const [newResDesignation, setNewResDesignation] = useState('');
@@ -189,7 +231,7 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
 
   const addResource = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newResDesignation) return;
+    if (!newResDesignation || !selectedProject) return;
 
     const calcCost = Math.round(Number(newResQty) * Number(newResPrice) * Number(newResYield));
     const newRes: ResourceComponent = {
@@ -206,7 +248,18 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
       lastUpdated: new Date().toISOString().split('T')[0],
     };
 
-    setResources([...resources, newRes]);
+    const updated = [...resources, newRes];
+    const newMap = {
+      ...resourcesMap,
+      [selectedProject.id]: updated,
+      [selectedProject.code]: updated
+    };
+    setResourcesMap(newMap);
+    try {
+      localStorage.setItem('gebat_debourse_resources', JSON.stringify(newMap));
+    } catch (err) {
+      console.error(err);
+    }
     setNewResDesignation('');
   };
 
@@ -215,13 +268,57 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
   const totalActualCostPerUnit = useMemo(() => resources.reduce((s, r) => s + r.actualCost, 0), [resources]);
   const ecartDeboursePerUnit = totalTheoreticalCostPerUnit - totalActualCostPerUnit;
 
-  // Soumission d'une nouvelle version (V2, V3...) sans écrasement
+  // Soumission d'une nouvelle version (V2, V3...) sans écrasement avec persistance et mise à jour réactive
   const handleCreateNewVersion = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newVersionJustification) return;
-    alert(`✅ Version 2 révisée créée et rattachée avec succès au budget de ${selectedProject.code} !`);
+    if (!newVersionJustification || !selectedProject) return;
+
+    const previousVersion = budgetVersions[budgetVersions.length - 1];
+    const prevAmount = previousVersion ? previousVersion.totalRevised : Number(selectedProject.revisedBudget || 0);
+    const diff = Number(newVersionAmount) - Number(prevAmount);
+
+    const updatedPrevious = budgetVersions.map(v => ({ ...v, status: 'Historisé' as const }));
+    const newVer: BudgetVersionItem = {
+      version: `V${budgetVersions.length}`,
+      createdAt: new Date().toISOString().split('T')[0],
+      createdBy: newVersionAuthor || currentUser?.name || 'Cost Controller',
+      approver: newVersionApprover || 'Direction Technique & DG',
+      justification: newVersionJustification,
+      totalInitial: budgetVersions[0]?.totalInitial || Number(newVersionAmount),
+      totalRevised: Number(newVersionAmount),
+      forecast: Math.round(Number(newVersionAmount) * 1.01),
+      diffFromPrevious: diff,
+      status: 'Approuvé',
+    };
+
+    const newVersionsList = [...updatedPrevious, newVer];
+    const newMap = {
+      ...customVersionsMap,
+      [selectedProject.id]: newVersionsList,
+      [selectedProject.code]: newVersionsList
+    };
+
+    setCustomVersionsMap(newMap);
+    try {
+      localStorage.setItem('gebat_custom_budget_versions', JSON.stringify(newMap));
+    } catch (err) {
+      console.error(err);
+    }
+
+    updateProject(selectedProject.id, {
+      revisedBudget: Number(newVersionAmount),
+    });
+
+    addAuditLog(
+      `CREATION_VERSION_BUDGET_${newVer.version}`,
+      'BUDGET',
+      selectedProject.code,
+      `Nouvelle version ${newVer.version} créée avec un budget révisé de ${Number(newVersionAmount).toLocaleString('fr-FR')} FCFA (${diff >= 0 ? '+' : ''}${diff.toLocaleString('fr-FR')} FCFA). Justification: ${newVersionJustification}`
+    );
+
     setShowNewVersionModal(false);
     setNewVersionJustification('');
+    alert(`✅ Version ${newVer.version} révisée (${Number(newVersionAmount).toLocaleString('fr-FR')} FCFA) créée et rattachée avec succès au budget de ${selectedProject.code} !`);
   };
 
   const currentActiveBudget = budgetVersions[budgetVersions.length - 1];
