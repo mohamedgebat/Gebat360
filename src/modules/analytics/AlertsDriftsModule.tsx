@@ -99,11 +99,17 @@ export const AlertsDriftsModule: React.FC = () => {
   // ALERTES OPERATIONNELLES FILTREES
   const filteredAlerts = useMemo(() => {
     return (alerts || []).filter(a => {
+      const strId = String(a.id || '').toUpperCase();
+      const strCode = String(a.code || '').toUpperCase();
+      const strTitle = String(a.title || '').toLowerCase();
+      const isMock = strId === 'ALT-2026-001' || strId === 'ALT-BUD-01' || strCode === 'ALT-BUD-01' || strTitle.includes('eac supérieur') || strTitle.includes('lycée');
+      if (isMock) return false;
+
       const matchesCategory = selectedCategory === 'TOUS' || a.category === selectedCategory || a.module === selectedCategory;
       const matchesSeverity = selectedSeverity === 'TOUS' || a.severity === selectedSeverity;
       const matchesSearch =
         (a.title || a.message || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (a.project || a.projectCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (a.project || (a as any).projectCode || a.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (a.wbs || a.wbsCode || '').toLowerCase().includes(searchTerm.toLowerCase());
       return matchesCategory && matchesSeverity && matchesSearch;
     });

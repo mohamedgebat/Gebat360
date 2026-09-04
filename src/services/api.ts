@@ -308,7 +308,19 @@ export class ApiService {
     return this.request<any>(`/alerts/${alertId}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'Résolu' }),
-    });
+    }).catch(() => null);
+  }
+
+  static async deleteAlert(alertId: string): Promise<any> {
+    return this.request<any>(`/alerts/${alertId}`, {
+      method: 'DELETE',
+    }).catch(() => null);
+  }
+
+  static async clearTestAlerts(): Promise<any> {
+    return this.request<any>(`/alerts/purge/test`, {
+      method: 'POST',
+    }).catch(() => null);
   }
 
   static async updateProject(projectId: string, data: any): Promise<any> {

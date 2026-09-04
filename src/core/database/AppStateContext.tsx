@@ -93,10 +93,35 @@ interface AppStateContextType {
   addCostNature: (nature: Omit<CostNatureConfig, 'id'>) => void;
   updateCostNature: (nature: CostNatureConfig) => void;
   toggleCostNatureStatus: (id: string) => void;
-  resolveAlert: (alertId: string, comment?: string) => void;
+  resolveAlert: (alertId: string, comment?: string) => Promise<void>;
+  deleteAlert: (alertId: string) => Promise<void>;
+  clearAllTestAlerts: () => Promise<void>;
   addAlert: (alertData: Omit<SystemAlert, 'id' | 'timestamp'>) => void;
   addAuditLog: (action: string, module: string, objectRef: string, newValue?: string, oldValue?: string, justification?: string) => void;
 }
+
+export const isTestAlert = (a: any): boolean => {
+  if (!a) return false;
+  const strId = String(a.id || '').toUpperCase();
+  const strCode = String(a.code || '').toUpperCase();
+  const strTitle = String(a.title || '').toLowerCase();
+  const strProj = String(a.projectName || a.project || a.projectId || '').toLowerCase();
+  const strMsg = String(a.message || a.description || '').toLowerCase();
+
+  return (
+    strId === 'ALT-2026-001' ||
+    strId === 'ALT-BUD-01' ||
+    strCode === 'ALT-BUD-01' ||
+    strCode === 'ALT-2026-001' ||
+    strTitle.includes('eac supérieur') ||
+    strTitle.includes('lycée technique') ||
+    strProj.includes('lycée') ||
+    strProj.includes('p-003') ||
+    strProj.includes('bouaké') ||
+    strMsg.includes('lycée technique') ||
+    strMsg.includes('p-003')
+  );
+};
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
@@ -174,7 +199,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const savedAlerts = localStorage.getItem('gebat_alerts');
         if (savedAlerts) {
           const parsedAlerts = JSON.parse(savedAlerts);
-          if (Array.isArray(parsedAlerts)) setAlerts(parsedAlerts);
+          if (Array.isArray(parsedAlerts)) {
+            const clean = parsedAlerts.filter(a => !isTestAlert(a));
+            setAlerts(clean);
+          }
         }
         const savedAudit = localStorage.getItem('gebat_audit_logs');
         if (savedAudit) {
@@ -237,6 +265,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.removeItem('gebat_warehouses');
         localStorage.setItem('gebat_data_version', DATA_VERSION);
       }
+
+      // Nettoyage et purge permanente des alertes de test (ALT-BUD-01 / ALT-2026-001)
+      try {
+        const rawAlerts = localStorage.getItem('gebat_alerts');
+        if (rawAlerts) {
+          const parsed = JSON.parse(rawAlerts);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter(a => !isTestAlert(a));
+            if (clean.length !== parsed.length) {
+              localStorage.setItem('gebat_alerts', JSON.stringify(clean));
+              safeSaveToStorage('gebat_alerts', clean);
+              setAlerts(clean);
+            }
+          }
+        }
+      } catch (e) {}
     }
   }, []);
 
@@ -497,9 +541,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setUsers(dbUsers);
           localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
         }
-        if (Array.isArray(dbAlerts) && dbAlerts.length > 0) {
-          setAlerts(dbAlerts);
-          localStorage.setItem('gebat_alerts', JSON.stringify(dbAlerts));
+        if (Array.isArray(dbAlerts)) {
+          const clean = dbAlerts.filter(a => !isTestAlert(a));
+          setAlerts(clean);
+          localStorage.setItem('gebat_alerts', JSON.stringify(clean));
         }
       } catch (err) {
         console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
@@ -1162,7 +1207,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       try {
         const dbAlerts = await ApiService.getAlerts();
-        if (Array.isArray(dbAlerts)) setAlerts(dbAlerts);
+        if (Array.isArray(dbAlerts)) {
+          const clean = dbAlerts.filter(a => !isTestAlert(a));
+          setAlerts(clean);
+          safeSaveToStorage('gebat_alerts', clean);
+        }
       } catch (e) {
         console.warn('⚠️ Erreur chargement alertes API:', e);
       }
@@ -2856,18 +2905,66 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const resolveAlert = (alertId: string, comment?: string) => {
+  const resolveAlert = async (alertId: string, comment?: string) => {
     setAlerts(prev => {
-      const updated = prev.map(a => a.id === alertId ? { ...a, status: 'Résolu' as const } : a);
-      localStorage.setItem('gebat_alerts', JSON.stringify(updated));
+      const updated = prev.map(a => (a.id === alertId || a.code === alertId) ? { ...a, status: 'Résolu' as const } : a);
+      safeSaveToStorage('gebat_alerts', updated);
       return updated;
     });
+    try {
+      await ApiService.resolveAlert(alertId);
+    } catch (err) {}
     addAuditLog(
       'ACQUITTEMENT_ALERTE',
       'ALERTES_RISQUES',
       alertId,
       `Alerte ${alertId} résolue. Justification: ${comment || 'Acquittée en ligne par l\'utilisateur'}`
     );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('gebat_state_updated'));
+    }
+  };
+
+  const deleteAlert = async (alertId: string) => {
+    setAlerts(prev => {
+      const updated = prev.filter(a => a.id !== alertId && a.code !== alertId);
+      safeSaveToStorage('gebat_alerts', updated);
+      return updated;
+    });
+    try {
+      await ApiService.deleteAlert(alertId);
+    } catch (err) {
+      console.warn('Backend alert deletion notice:', err);
+    }
+    addAuditLog(
+      'SUPPRESSION_ALERTE',
+      'ALERTES_RISQUES',
+      alertId,
+      `Alerte ${alertId} définitivement supprimée de la base de données.`
+    );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('gebat_state_updated'));
+    }
+  };
+
+  const clearAllTestAlerts = async () => {
+    setAlerts(prev => {
+      const clean = prev.filter(a => !isTestAlert(a));
+      safeSaveToStorage('gebat_alerts', clean);
+      return clean;
+    });
+    try {
+      await ApiService.clearTestAlerts();
+    } catch (err) {}
+    addAuditLog(
+      'PURGE_ALERTES_TEST',
+      'ALERTES_RISQUES',
+      'ALL_TEST',
+      'Toutes les alertes de test ont été définitivement purgées.'
+    );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('gebat_state_updated'));
+    }
   };
 
   const addAlert = (alertData: Omit<SystemAlert, 'id' | 'timestamp'>) => {
@@ -3019,6 +3116,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateCostNature,
         toggleCostNatureStatus,
         resolveAlert,
+        deleteAlert,
+        clearAllTestAlerts,
         addAlert,
         addAuditLog,
       }}

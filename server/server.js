@@ -2124,6 +2124,33 @@ app.patch(['/api/v1/alerts/:id', '/api/alerts/:id'], requireAuth, async (req, re
   }
 });
 
+app.delete(['/api/v1/alerts/:id', '/api/alerts/:id'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM system_alerts WHERE id = ? OR code = ?', [id, id]);
+    res.status(200).json({ message: `Alerte ${id} supprimée de MySQL avec succès` });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur suppression alerte', detail: err.message });
+  }
+});
+
+app.post(['/api/v1/alerts/purge/test', '/api/alerts/purge/test'], requireAuth, async (req, res) => {
+  try {
+    await pool.query(`
+      DELETE FROM system_alerts 
+      WHERE id IN ('ALT-2026-001', 'ALT-BUD-01') 
+         OR code IN ('ALT-2026-001', 'ALT-BUD-01') 
+         OR title LIKE '%EAC supérieur%' 
+         OR title LIKE '%Lycée%' 
+         OR message LIKE '%Lycée%' 
+         OR project_id LIKE '%P-003%'
+    `);
+    res.status(200).json({ message: 'Alertes de test supprimées avec succès' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur purge alertes test', detail: err.message });
+  }
+});
+
 app.get(['/api/v1/risks', '/api/risks'], requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM project_risks ORDER BY created_at DESC');

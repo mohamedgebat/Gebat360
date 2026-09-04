@@ -212,6 +212,35 @@ export const apiService = {
   },
 
   /**
+   * Suppression définitive d'une Alerte Système
+   */
+  async deleteAlert(alertId: string): Promise<void> {
+    await dbEngine.deleteItem(DB_TABLES.ALERTS, alertId);
+    try {
+      await fetch(`${API_BASE_URL}/alerts/${alertId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+    } catch (e) {
+      // Fallback local géré
+    }
+  },
+
+  /**
+   * Purge complète des alertes de test
+   */
+  async clearTestAlerts(): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/alerts/purge/test`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+    } catch (e) {
+      // Fallback local géré
+    }
+  },
+
+  /**
    * Enregistrement d'un Utilisateur & Habilitations en BDD
    */
   async saveUser(userData: any): Promise<void> {

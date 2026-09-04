@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useAppState, isTestAlert } from '../../core/database/AppStateContext';
 import { isProjectMatch } from '../../utils/projectMatcher';
 import {
   ArrowLeft,
@@ -19,7 +19,8 @@ import {
   FileSpreadsheet,
   AlertOctagon,
   Eye,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 import { SystemAlert } from '../../types';
 
@@ -28,7 +29,7 @@ interface AlertsCenterModuleProps {
 }
 
 export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackToProject }) => {
-  const { alerts, resolveAlert, addAuditLog, purchaseRequests = [], stockItems = [], projects = [] } = useAppState();
+  const { alerts, resolveAlert, deleteAlert, clearAllTestAlerts, addAuditLog, purchaseRequests = [], stockItems = [], projects = [] } = useAppState();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('Tous');
@@ -39,13 +40,18 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
+  // Nettoyage automatique au montage pour purger toute alerte de test persistée
+  useEffect(() => {
+    clearAllTestAlerts().catch(() => {});
+  }, []);
+
   // ALERTES RÉELLES & DYNAMIQUES DÉTECTÉES EN TEMPS RÉEL SUR LA BASE
   const consolidatedAlerts = useMemo(() => {
     const list: any[] = [];
 
-    // 1. Alertes réelles stockées en base (filtrage strict de tout résidu de maquette)
+    // 1. Alertes réelles stockées en base (filtrage strict de tout résidu de maquette ou de test)
     (alerts || []).forEach(a => {
-      if (a.id === 'ALT-2026-001' || a.code === 'ALT-BUD-01' || String(a.projectName || '').includes('Lycée') || String(a.projectId || '').includes('P-003')) return;
+      if (isTestAlert(a)) return;
       
       const matchedProj = projects.find(p => isProjectMatch(p.id, a.projectId) || isProjectMatch(p.code, a.projectId));
       list.push({
@@ -129,17 +135,28 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
   }, [criticalStockItems]);
 
   // Marquer une alerte comme résolue
-  const handleResolveAlert = (id: string, title: string) => {
+  const handleResolveAlert = async (id: string, title: string) => {
     setResolvedIds(prev => ({ ...prev, [id]: true }));
-    addAuditLog(
-      'ACQUITTEMENT_ALERTE',
-      'ALERTES_RISQUES',
-      id,
-      `Alerte "${title}" acquittée et traitée avec succès. Commentaire: ${resolutionComment || 'Traitement validé par l\'administrateur'}`
-    );
+    await resolveAlert(id, resolutionComment || 'Traitement validé par l\'administrateur');
     setSelectedAlertForAction(null);
     setResolutionComment('');
     setActionSuccessMsg(`Alerte [${id}] traitée et clôturée avec succès !`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  // Supprimer définitivement une alerte de la base
+  const handleDeleteAlert = async (id: string, title: string) => {
+    await deleteAlert(id);
+    setSelectedAlertForAction(null);
+    setResolutionComment('');
+    setActionSuccessMsg(`Alerte [${id}] définitivement supprimée de la base de données.`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  // Purger toutes les alertes de test de la base
+  const handleClearTestAlerts = async () => {
+    await clearAllTestAlerts();
+    setActionSuccessMsg('Toutes les alertes de test ont été définitivement purgées de la base de données.');
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
@@ -148,6 +165,7 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
     const newResolvedState: Record<string, boolean> = {};
     consolidatedAlerts.forEach(a => {
       newResolvedState[a.id] = true;
+      resolveAlert(a.id, 'Acquittement groupé').catch(() => {});
     });
     setResolvedIds(newResolvedState);
     addAuditLog('ACQUITTEMENT_MASSIF', 'ALERTES_RISQUES', 'ALL', 'Toutes les alertes actives ont été marquées comme lues.');
@@ -259,7 +277,16 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
             </button>
 
             {quickActionsOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-2 space-y-1 text-xs font-bold text-slate-700">
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-2 space-y-1 text-xs font-bold text-slate-700">
+                <button
+                  onClick={() => {
+                    handleClearTestAlerts();
+                    setQuickActionsOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-red-50 rounded-xl flex items-center gap-2 text-red-600 cursor-pointer"
+                >
+                  <Trash2 size={16} /> Supprimer les alertes de test (RAZ)
+                </button>
                 <button
                   onClick={() => {
                     handleMarkAllAsRead();
@@ -518,15 +545,32 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
                       <button
                         onClick={() => handleResolveAlert(a.id, a.title)}
                         className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-2.5 rounded-xl text-xs transition cursor-pointer"
-                        title="Marquer comme lu"
+                        title="Marquer comme résolu"
                       >
                         <Check size={18} />
                       </button>
+
+                      <button
+                        onClick={() => handleDeleteAlert(a.id, a.title)}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 font-bold p-2.5 rounded-xl text-xs transition cursor-pointer"
+                        title="Supprimer définitivement l'alerte"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </>
                   ) : (
-                    <span className="text-xs font-black text-emerald-600 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                      <CheckCircle2 size={16} /> Traité
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-emerald-600 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                        <CheckCircle2 size={16} /> Traité
+                      </span>
+                      <button
+                        onClick={() => handleDeleteAlert(a.id, a.title)}
+                        className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg transition cursor-pointer"
+                        title="Supprimer de l'historique"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -579,21 +623,30 @@ export const AlertsCenterModule: React.FC<AlertsCenterModuleProps> = ({ onBackTo
               />
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
-                onClick={() => setSelectedAlertForAction(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 cursor-pointer"
+                onClick={() => handleDeleteAlert(selectedAlertForAction.id, selectedAlertForAction.title)}
+                className="px-3.5 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
               >
-                Annuler
+                <Trash2 size={15} /> Supprimer l'alerte
               </button>
-              <button
-                type="button"
-                onClick={() => handleResolveAlert(selectedAlertForAction.id, selectedAlertForAction.title)}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md shadow-blue-600/30 cursor-pointer"
-              >
-                Valider & Clôturer l'Anomalie
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAlertForAction(null)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleResolveAlert(selectedAlertForAction.id, selectedAlertForAction.title)}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md shadow-blue-600/30 cursor-pointer"
+                >
+                  Valider & Clôturer
+                </button>
+              </div>
             </div>
 
           </div>

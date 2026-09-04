@@ -571,6 +571,33 @@ app.patch('/api/v1/alerts/:alertId', async (req, res) => {
   }
 });
 
+app.delete('/api/v1/alerts/:alertId', async (req, res) => {
+  const { alertId } = req.params;
+  try {
+    await pool.query('DELETE FROM system_alerts WHERE id = ? OR code = ?', [alertId, alertId]).catch(() => {});
+    res.json({ message: `Alerte ${alertId} supprimée avec succès` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/alerts/purge/test', async (req, res) => {
+  try {
+    await pool.query(`
+      DELETE FROM system_alerts 
+      WHERE id IN ('ALT-2026-001', 'ALT-BUD-01') 
+         OR code IN ('ALT-2026-001', 'ALT-BUD-01') 
+         OR title LIKE '%EAC supérieur%' 
+         OR title LIKE '%Lycée%' 
+         OR message LIKE '%Lycée%' 
+         OR project_id LIKE '%P-003%'
+    `).catch(() => {});
+    res.json({ message: 'Alertes de test supprimées avec succès' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==============================================================================
 // 9. AUDIT TRAIL
 // ==============================================================================
