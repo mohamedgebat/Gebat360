@@ -3,6 +3,7 @@ import { useAppState } from '../../core/database/AppStateContext';
 import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
+import { REAL_PLANNING_DATA } from '../../data/planningRealData';
 import {
   ArrowLeft,
   Briefcase,
@@ -89,21 +90,6 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
   const project = projects.find(p => isProjectMatch(p.id, projectId) || isProjectMatch(p.code, projectId)) || projects[0];
 
-  const projectWbsNodes = useMemo(() => {
-    if (!project) return [];
-    const direct = wbsMap[project.id] || wbsMap[project.code] || [];
-    if (direct.length > 0) return direct;
-    
-    // Détection projet Bingerville ou Songon pour chargement du Déboursé Sec réel
-    const isBingerville = project.code?.includes('BEN') || project.id?.includes('BEN') || project.id === 'CIV-2026-ASS-BEN-002';
-    const isSongon = project.code?.includes('SON') || project.id?.includes('SON') || project.id === 'CIV-2026-ASS-SON-001';
-    if (isBingerville) return REAL_DS_BINGERVILLE_ACTIVITIES;
-    if (isSongon) return REAL_DS_SONGON_ACTIVITIES;
-
-    const matchedKey = Object.keys(wbsMap).find(key => isProjectMatch(key, project.id) || isProjectMatch(key, project.code));
-    return matchedKey ? wbsMap[matchedKey] : [];
-  }, [project, wbsMap]);
-
   const projectDAs = useMemo(() => {
     if (!project) return [];
     return purchaseRequests.filter(da => isProjectMatch(da.projectId, project.id) || isProjectMatch(da.projectId, project.code));
@@ -118,6 +104,126 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     if (!project) return [];
     return auditLogs.filter(log => isProjectMatch(log.objectRef, project.code) || isProjectMatch(log.objectRef, project.id));
   }, [project, auditLogs]);
+
+  const isBingerville = useMemo(() => {
+    if (!project) return false;
+    const pCode = String(project.code || '').toUpperCase();
+    const pId = String(project.id || '').toUpperCase();
+    const pName = String(project.name || '').toUpperCase();
+    return pCode.includes('BEN') || pId.includes('BEN') || pName.includes('BINGERVILLE') || pId === 'CIV-2026-ASS-BEN-002';
+  }, [project]);
+
+  const isSongon = useMemo(() => {
+    if (!project) return false;
+    const pCode = String(project.code || '').toUpperCase();
+    const pId = String(project.id || '').toUpperCase();
+    const pName = String(project.name || '').toUpperCase();
+    return pCode.includes('SON') || pId.includes('SON') || pName.includes('SONGON') || pId === 'CIV-2026-ASS-SON-001';
+  }, [project]);
+
+  const planningTasksList = useMemo(() => {
+    if (isBingerville) return REAL_PLANNING_DATA['BINGERVILLE'] || [];
+    if (isSongon) return REAL_PLANNING_DATA['SONGON'] || [];
+    return [];
+  }, [isBingerville, isSongon]);
+
+  const projectWbsNodes = useMemo(() => {
+    if (!project) return [];
+    const direct = wbsMap[project.id] || wbsMap[project.code] || [];
+    let rawList = direct;
+    
+    if (!rawList || rawList.length === 0) {
+      if (isBingerville) rawList = REAL_DS_BINGERVILLE_ACTIVITIES;
+      else if (isSongon) rawList = REAL_DS_SONGON_ACTIVITIES;
+      else {
+        const matchedKey = Object.keys(wbsMap).find(key => isProjectMatch(key, project.id) || isProjectMatch(key, project.code));
+        rawList = matchedKey ? wbsMap[matchedKey] : [];
+        if (!rawList || rawList.length === 0) {
+          rawList = isBingerville ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+        }
+      }
+    }
+
+    // Aplatir l'arborescence si présence de nœuds parents avec children
+    const flat: any[] = [];
+    const walk = (nodes: any[]) => {
+      nodes.forEach(item => {
+        if (Array.isArray(item.children) && item.children.length > 0) {
+          walk(item.children);
+        } else {
+          flat.push(item);
+        }
+      });
+    };
+    if (Array.isArray(rawList)) {
+      walk(rawList);
+    }
+
+    // Normalisation SSOT pour chaque nœud WBS
+    return flat.map((n, idx) => {
+      const code = String(n.code || n.wbsCode || n.priceNo || n.id || `WBS.${idx + 1}`).trim();
+      const name = String(n.name || n.description || n.wbsName || n.taskName || n.section || `Tâche de Chantier ${idx + 1}`).trim();
+      const section = String(n.section || n.category || '').trim();
+      const manager = n.manager || project.manager || 'SEA Alphonse';
+
+      // Recherche correspondante dans les tâches du planning réel
+      const matchedPlanningTask = planningTasksList.find(pt => {
+        const ptName = String(pt.name || '').trim().toLowerCase();
+        const nName = name.toLowerCase();
+        return ptName === nName || nName.includes(ptName) || ptName.includes(nName);
+      });
+
+      // Calcul dynamique de l'avancement physique réel depuis les rapports journaliers validés
+      let calcProgress = 0;
+      if (projectReports.length > 0) {
+        const matchingReps = projectReports.filter(r => {
+          const rCode = String(r.wbsCode || r.wbsId || r.code || '').trim().toUpperCase();
+          const rName = String(r.activityName || r.taskName || '').trim().toLowerCase();
+          const nCodeUpper = code.toUpperCase();
+          const nNameLower = name.toLowerCase();
+          return (code && (rCode === nCodeUpper || rCode.includes(nCodeUpper) || nCodeUpper.includes(rCode))) ||
+                 (name && rName && (rName.includes(nNameLower) || nNameLower.includes(rName)));
+        });
+
+        if (matchingReps.length > 0) {
+          const targetQty = Number(n.plannedQty || n.contractQty || n.targetQty || 0);
+          const totalRealized = matchingReps.reduce((sum, r) => sum + (Number(r.realizedQty) || 0), 0);
+          if (targetQty > 0) {
+            calcProgress = Math.min(100, Math.round((totalRealized / targetQty) * 100));
+          } else {
+            const avgRate = Math.round(matchingReps.reduce((sum, r) => sum + (Number(r.productivityRate) || 100), 0) / matchingReps.length);
+            calcProgress = Math.min(100, avgRate);
+          }
+        }
+      }
+
+      // Si le nœud a déjà un progress explicite dans ses données
+      if (calcProgress === 0 && Number(n.progress) > 0) {
+        calcProgress = Number(n.progress);
+      }
+
+      return {
+        ...n,
+        id: n.id || code || `wbs-${idx}`,
+        code,
+        wbsCode: code,
+        name,
+        description: name,
+        section,
+        manager,
+        progress: calcProgress,
+        startDate: matchedPlanningTask?.startDate || project.startDate || '2026-06-01',
+        endDate: matchedPlanningTask?.endDate || project.endDate || '2027-09-01',
+        duration: matchedPlanningTask?.duration || 4,
+        durationUnit: matchedPlanningTask?.durationUnit || 'Mois',
+        revisedBudget: Number(n.revisedBudget || n.calculatedDsAmount || n.initialBudget || n.marketAmount || 0),
+        initialBudget: Number(n.initialBudget || n.revisedBudget || n.calculatedDsAmount || n.marketAmount || 0),
+        committed: Number(n.committed || 0),
+        actualCost: Number(n.actualCost || 0),
+        eac: Number(n.eac || n.revisedBudget || n.calculatedDsAmount || 0),
+      };
+    });
+  }, [project, wbsMap, projectReports, isBingerville, isSongon, planningTasksList]);
 
   if (!project) {
     return (
@@ -1246,13 +1352,30 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                 </thead>
                 <tbody className="divide-y font-medium">
                   {projectWbsNodes.map(n => (
-                    <tr key={n.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{n.code} – {n.name}</td>
+                    <tr key={n.id} className="hover:bg-slate-50 transition">
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[10.5px] font-black text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+                            [{n.code}]
+                          </span>
+                          <span className="font-bold text-slate-900 text-xs">
+                            {n.name}
+                          </span>
+                        </div>
+                      </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold">{fmtMds(n.revisedBudget || n.initialBudget || 0)}</td>
                       <td className="py-2.5 px-3 text-right font-mono">{fmtMds(n.committed || 0)}</td>
                       <td className="py-2.5 px-3 text-right font-mono">{fmtMds(nodeActual(n))}</td>
                       <td className="py-2.5 px-3 text-right font-mono font-black text-blue-900">{fmtMds(n.eac || n.revisedBudget || 0)}</td>
-                      <td className="py-2.5 px-3 text-center font-bold text-emerald-700 font-mono">{n.progress || 0}%</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-black inline-block ${
+                          n.progress >= 75 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                          n.progress > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                          'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          {n.progress}%
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1263,31 +1386,86 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       ) : activeTab === 'planning' ? (
         /* ONGLET PLANNING GANTT */
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex justify-between items-center border-b pb-3">
-            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">PLANNING DE CHANTIER (GANTT & SUIVI DES DÉLAIS)</h3>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">Fin contractuelle : {formatDateFr(project.endDate, '01/12/2026')}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+            <div>
+              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                <Calendar size={15} className="text-blue-600" />
+                PLANNING DE CHANTIER (GANTT & SUIVI DES DÉLAIS)
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Suivi chronologique de l'avancement physique par activité WBS et phase de chantier
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-blue-800 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 font-mono">
+                {projectWbsNodes.length} Tâches WBS
+              </span>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 font-mono">
+                Fin contractuelle : {formatDateFr(project.endDate, '01/09/2027')}
+              </span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
-                  <th className="py-2.5 px-3">WBS</th>
-                  <th className="py-2.5 px-3">Tâche / Phase de chantier</th>
-                  <th className="py-2.5 px-3 text-center">Responsable</th>
-                  <th className="py-2.5 px-3 text-center">Avancement</th>
-                  <th className="py-2.5 px-3 min-w-[220px]">Planning Gantt</th>
+                  <th className="py-2.5 px-3 w-28">WBS</th>
+                  <th className="py-2.5 px-3 min-w-[240px]">Tâche / Phase de chantier</th>
+                  <th className="py-2.5 px-3 text-center min-w-[140px]">Responsable</th>
+                  <th className="py-2.5 px-3 text-center w-28">Avancement</th>
+                  <th className="py-2.5 px-3 min-w-[260px]">Planning Gantt</th>
                 </tr>
               </thead>
               <tbody className="divide-y font-medium">
                 {projectWbsNodes.map(n => (
-                  <tr key={n.id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-mono font-bold text-blue-700">{n.code}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-900">{n.name}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-600">{n.manager || project.manager}</td>
-                    <td className="py-2.5 px-3 text-center font-mono font-extrabold text-emerald-700">{n.progress || 0}%</td>
+                  <tr key={n.id} className="hover:bg-slate-50 transition">
                     <td className="py-2.5 px-3">
-                      <div className="w-full bg-slate-100 rounded-full h-3 relative overflow-hidden flex items-center">
-                        <div className="bg-emerald-600 h-2 rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(10, Number(n.progress || 0)))}%` }}></div>
+                      <span className="font-mono text-[11px] font-black text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block shrink-0">
+                        [{n.code}]
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="font-bold text-slate-900 text-xs block">{n.name}</span>
+                      {n.section && (
+                        <span className="text-[10px] text-slate-400 font-bold block uppercase mt-0.5">
+                          {n.section}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-slate-700 font-bold">
+                        <span className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-black text-slate-600 shrink-0">
+                          {n.manager?.charAt(0) || 'S'}
+                        </span>
+                        <span className="truncate max-w-[130px]">{n.manager || project.manager || 'SEA Alphonse'}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={`px-2.5 py-1 rounded-full font-mono text-xs font-black inline-block ${
+                        n.progress >= 75 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                        n.progress > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                        'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}>
+                        {n.progress}%
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                          <span>{formatDateFr(n.startDate, '01/06/2026')}</span>
+                          <span className="font-mono text-slate-400">{n.duration} {n.durationUnit || 'Mois'}</span>
+                          <span>{formatDateFr(n.endDate, '01/09/2027')}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-3 relative overflow-hidden flex items-center p-0.5">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              n.progress >= 75 ? 'bg-emerald-600' :
+                              n.progress > 0 ? 'bg-blue-600' :
+                              'bg-slate-300 w-0'
+                            }`}
+                            style={{ width: `${Math.max(n.progress > 0 ? 5 : 0, Math.min(100, n.progress))}%` }}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
