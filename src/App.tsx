@@ -338,12 +338,28 @@ const MainApp: React.FC = () => {
         );
 
       case 'btp-debourse':
-        return <DebourseSecModule />;
+        return (
+          <DebourseSecModule
+            onBackToProject={() => {
+              if (selectedProjectId || projects[0]?.id) {
+                if (!selectedProjectId && projects[0]?.id) setSelectedProjectId(projects[0].id);
+              }
+              setCurrentView('vue-projet-360');
+            }}
+            initialProjectId={selectedProjectId}
+          />
+        );
 
       case 'btp-budget':
         return (
           <BudgetModule
-            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+            onBackToProject={() => {
+              if (selectedProjectId || projects[0]?.id) {
+                if (!selectedProjectId && projects[0]?.id) setSelectedProjectId(projects[0].id);
+              }
+              setCurrentView('vue-projet-360');
+            }}
+            initialProjectId={selectedProjectId}
           />
         );
 

@@ -83,7 +83,15 @@ interface NatureBreakdownRow {
   sharePct: number;
 }
 
-export const DebourseSecModule: React.FC = () => {
+export interface DebourseSecModuleProps {
+  onBackToProject?: () => void;
+  initialProjectId?: string;
+}
+
+export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
+  onBackToProject,
+  initialProjectId
+}) => {
   const {
     projects,
     wbsMap,
@@ -100,7 +108,7 @@ export const DebourseSecModule: React.FC = () => {
 
   // Projet sélectionné par défaut avec état réactif
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
-    return projects[0]?.id || projects[0]?.code || '';
+    return initialProjectId || projects[0]?.id || projects[0]?.code || '';
   });
 
   const selectedProject = useMemo(() => {
@@ -574,7 +582,7 @@ export const DebourseSecModule: React.FC = () => {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button
-            onClick={() => setActiveTab?.('dashboard')}
+            onClick={() => onBackToProject ? onBackToProject() : setActiveTab?.('dashboard')}
             className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1 cursor-pointer transition"
           >
             <ArrowLeft size={13} /> Retour à la vue projet 360°

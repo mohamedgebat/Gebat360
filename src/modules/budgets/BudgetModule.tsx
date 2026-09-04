@@ -3,7 +3,7 @@ import { useAppState } from '../../core/database/AppStateContext';
 import { CostNature } from '../../types';
 import {
   DollarSign, History, Layers, Plus, CheckCircle2, AlertTriangle, ShieldCheck,
-  TrendingUp, ArrowRight, UserCheck, Calendar, FileText, Calculator, RefreshCw, X, Eye
+  TrendingUp, ArrowRight, ArrowLeft, UserCheck, Calendar, FileText, Calculator, RefreshCw, X, Eye
 } from 'lucide-react';
 
 // Structure d'une ressource élémentaire du Déboursé Sec (1 m³ béton = Matériaux + MO + Matériel + Transport + Pertes)
@@ -35,11 +35,21 @@ interface BudgetVersionItem {
   status: 'Approuvé' | 'En attente' | 'Historisé';
 }
 
-export const BudgetModule: React.FC = () => {
+export interface BudgetModuleProps {
+  onBackToProject?: () => void;
+  initialProjectId?: string;
+}
+
+export const BudgetModule: React.FC<BudgetModuleProps> = ({
+  onBackToProject,
+  initialProjectId
+}) => {
   const { projects } = useAppState();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'CIV-2026-ASS-001');
-  const selectedProject = projects.find(p => p.id === selectedProjectId) || projects[0];
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    return initialProjectId || projects[0]?.id || 'CIV-2026-ASS-001';
+  });
+  const selectedProject = projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0];
 
   const [activeTab, setActiveTab] = useState<'versions' | 'debourse'>('versions');
 
@@ -221,6 +231,14 @@ export const BudgetModule: React.FC = () => {
       {/* Header Module Budget / Déboursé */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
+          {onBackToProject && (
+            <button
+              onClick={onBackToProject}
+              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1.5 cursor-pointer transition"
+            >
+              <ArrowLeft size={13} /> Retour à la vue projet 360°
+            </button>
+          )}
           <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Gestion Budgétaire & Moteur de Déboursé Sec</h1>
           <p className="text-slate-500 text-xs mt-0.5">Historisation stricte des versions (V0 → V1 → V2) & Calcul théorique vs réel par ressource</p>
         </div>
