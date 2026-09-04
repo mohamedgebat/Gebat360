@@ -688,6 +688,14 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     if (saved) alert('✅ Brouillon enregistré dans la base de données.');
   };
 
+  // Soumission pour validation : Enregistrement en statut 'Soumis' et transmission au DP/DT
+  const handleSubmitValidation = async () => {
+    const saved = await persistReportItems('Soumis');
+    if (saved) {
+      alert('🚀 Rapport journalier soumis pour validation avec succès !\n\n• Statut passé à SOUMIS\n• Tâche de validation assignée au Directeur de Projet\n• Notification envoyée dans le centre de validation.');
+    }
+  };
+
   // Export CSV standardisé UTF-8 BOM
   const handleExportCSV = () => {
     const listToExport = dailyReports.filter(r => isProjectReportMatch(r, selectedProject));
@@ -1351,9 +1359,27 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                             }
 
                             return (
-                              <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[10.5px] border border-slate-200">
-                                📝 {rep.status || 'Brouillon'}
-                              </span>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[10.5px] border border-slate-200">
+                                  📝 {rep.status || 'Brouillon'}
+                                </span>
+                                <button
+                                  onClick={async () => {
+                                    if (updateDailyReportStatus) {
+                                      await updateDailyReportStatus(rep.id, 'Soumis', 'Soumis depuis le registre');
+                                      if (rep.code && rep.code !== rep.id) {
+                                        await updateDailyReportStatus(rep.code, 'Soumis', 'Soumis depuis le registre');
+                                      }
+                                    }
+                                    alert(`🚀 Rapport ${rep.code || rep.id} soumis pour validation.`);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  title="Soumettre ce brouillon pour validation par le DP"
+                                >
+                                  <Send size={12} />
+                                  <span>Soumettre</span>
+                                </button>
+                              </div>
                             );
                           })()}
                         </div>
