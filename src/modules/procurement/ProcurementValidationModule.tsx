@@ -70,8 +70,34 @@ export const ProcurementValidationModule: React.FC = () => {
       });
     }
 
+    // 2. RAPPORTS JOURNALIERS DE PRODUCTION
+    if (dailyReports && dailyReports.length > 0) {
+      dailyReports.forEach(rep => {
+        const isApproved = rep.status === 'Validé' || rep.status === 'VALIDEE';
+        const isRejected = rep.status === 'Refusé' || rep.status === 'REFUSEE';
+        const isReturned = rep.status === 'Brouillon' || rep.status === 'RETOUR_CORRECTION';
+        const isPending = rep.status === 'Soumis' || rep.status === 'En attente' || rep.status === 'EN_VALIDATION';
+
+        list.push({
+          id: `VAL-RPT-${rep.id || rep.code}`,
+          category: 'Rapport Journalier',
+          object: `Rapport Journalier ${rep.code || rep.reportCode} — ${rep.activityName || 'Avancement travaux'} (${rep.realizedQty || 0} ${rep.unit})`,
+          amount: 0,
+          projectId: rep.projectId,
+          projectName: rep.projectName || (rep.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
+          wbsCode: rep.wbsCode || '01.01.001',
+          initiator: rep.createdBy || 'Chef de Chantier',
+          date: rep.date || new Date().toISOString().substring(0, 10),
+          urgency: 'Normale',
+          budgetImpact: 'Dans le budget',
+          attachments: ['Rapport_Terrain.pdf'],
+          status: isApproved ? 'Validé' : isRejected ? 'Refusé' : isReturned ? 'Retour correction' : isPending ? 'En attente' : 'En attente'
+        });
+      });
+    }
+
     return list;
-  }, [purchaseRequests, alerts, projects]);
+  }, [purchaseRequests, dailyReports, alerts, projects]);
 
   const [items, setItems] = useState<ValidationItem[]>(allValidationItems);
 
@@ -404,8 +430,9 @@ export const ProcurementValidationModule: React.FC = () => {
                   onChange={e => setCategoryFilter(e.target.value)}
                   className="p-1 bg-white border border-slate-200 rounded-lg font-bold text-xs"
                 >
-                  <option value="TOUS">Tous les types (DA, BC, Engagements...)</option>
+                  <option value="TOUS">Tous les types (DA, BC, Rapports, Engagements...)</option>
                   <option value="DA">Demande d'Achat (DA)</option>
+                  <option value="Rapport Journalier">Rapports Journaliers de Production</option>
                   <option value="BC">Bon de Commande (BC)</option>
                   <option value="Dépassement">Dépassement Budgétaire</option>
                 </select>
