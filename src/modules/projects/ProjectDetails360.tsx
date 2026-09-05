@@ -291,28 +291,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     });
   }, [project, wbsMap, projectReports, projectDAs, isBingerville, isSongon, planningTasksList]);
 
-  if (!project) {
-    return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center space-y-4 max-w-xl mx-auto my-12">
-        <Building2 size={48} className="text-slate-300 mx-auto" />
-        <h2 className="text-lg font-extrabold text-slate-900">Aucun projet disponible</h2>
-        <p className="text-slate-500 text-xs">
-          La base de données ne contient aucun projet. Créez votre premier projet pour afficher la Vue 360°.
-        </p>
-        <button
-          onClick={onBack}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs shadow-xs transition cursor-pointer"
-        >
-          Retour à la liste des projets
-        </button>
-      </div>
-    );
-  }
-
   // Calculs financiers 100% dynamiques issus de la BDD (SSOT)
-  const contractAmount = Number(project.contractAmount || 0);
-  const initialBudget = Number(project.initialBudget || project.revisedBudget || 0);
-  const revisedBudget = Number(project.revisedBudget || project.initialBudget || 0);
+  const contractAmount = Number(project?.contractAmount || 0);
+  const initialBudget = Number(project?.initialBudget || project?.revisedBudget || 0);
+  const revisedBudget = Number(project?.revisedBudget || project?.initialBudget || 0);
 
   // 2. Calculs exacts par nature (MO, MAT, MTL, ST, FGC) à partir des ressources Déboursé Sec
   const realNatureTotals = useMemo(() => {
@@ -670,6 +652,24 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       .filter(d => d && d >= '2026-01' && d <= '2027-12');
     return dates.length > 0 ? dates.sort().pop() || '2026-08' : '2026-08';
   }, [dailyReports, project]);
+
+  if (!project) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-12 text-center space-y-4 max-w-xl mx-auto my-12">
+        <Building2 size={48} className="text-slate-300 mx-auto" />
+        <h2 className="text-lg font-extrabold text-slate-900">Aucun projet disponible</h2>
+        <p className="text-slate-500 text-xs">
+          La base de données ne contient aucun projet. Créez votre premier projet pour afficher la Vue 360°.
+        </p>
+        <button
+          onClick={onBack}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs shadow-xs transition cursor-pointer"
+        >
+          Retour à la liste des projets
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-slate-800 font-sans w-full pb-12">

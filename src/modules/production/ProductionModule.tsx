@@ -1,17 +1,15 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
-import { NonProductiveCategory } from '../../types';
 import * as XLSX from 'xlsx';
 import {
-  Calendar, Sun, CloudRain, ShieldCheck, CheckCircle2, AlertTriangle, Plus,
-  FileText, Clock, Lock, ArrowRight, UserCheck, Calculator, TrendingUp, Camera, Paperclip,
-  Check, X, Truck, Package, HardHat, AlertCircle, FileSpreadsheet, Eye, Upload, Download, Search,
-  ChevronRight, ChevronLeft, ArrowLeft, ChevronDown, RefreshCw, Layers, Building2, User, FileCheck,
-  Send, HelpCircle, Bell, Printer, Trash2
+  Calendar, CheckCircle2, AlertTriangle, Plus,
+  FileText, Clock, Lock,
+  X, FileSpreadsheet, Eye, Upload, Download,
+  ChevronRight, ArrowLeft, ChevronDown, Layers, Building2,
+  Send, HelpCircle, Printer, Trash2
 } from 'lucide-react';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
-import { hasProjectAccess } from '../../core/permissions';
 import { SearchableSelect, SelectOption } from '../../components/common/SearchableSelect';
 
 const formatQty = (val: number | undefined | null): string => {

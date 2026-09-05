@@ -21,9 +21,7 @@ import {
   X,
   AlertCircle,
   Info,
-  ArrowLeft,
-  TrendingUp,
-  Activity
+  ArrowLeft
 } from 'lucide-react';
 
 export interface PlanningModuleProps {
@@ -249,35 +247,11 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     return [];
   }, [wbsMap, selectedProject]);
 
-  if (projects.length === 0 || !selectedProject) {
-    return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center space-y-4 max-w-xl mx-auto my-12 text-xs">
-        <Calendar size={56} className="text-slate-300 mx-auto" />
-        <h2 className="text-xl font-extrabold text-slate-900">Planning Gantt Operational</h2>
-        <p className="text-slate-500">
-          Aucun projet n'est enregistré dans la base de données. Créez votre premier projet pour piloter le planning et l'avancement.
-        </p>
-      </div>
-    );
-  }
-
-  // Filtrage des tâches
-  const filteredTasks = tasks.filter(t => {
-    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategoryOnly ? t.isCategory : true;
-    return matchesSearch && matchesCategory;
-  });
-
-  // Calculs statistiques du planning
-  const totalTasksCount = tasks.length;
-  const categoriesCount = tasks.filter(t => t.isCategory).length;
-  const subTasksCount = totalTasksCount - categoriesCount;
-
   // Dates de début et fin globales
   const validStartDates = tasks.map(t => t.startDate).filter(Boolean).sort();
   const validEndDates = tasks.map(t => t.endDate).filter(Boolean).sort();
-  const globalStartDate = validStartDates[0] || selectedProject.startDate || '2026-06-01';
-  const globalEndDate = validEndDates[validEndDates.length - 1] || selectedProject.endDate || '2027-09-30';
+  const globalStartDate = validStartDates[0] || selectedProject?.startDate || '2026-06-01';
+  const globalEndDate = validEndDates[validEndDates.length - 1] || selectedProject?.endDate || '2027-09-30';
 
   // Formatage propre des dates françaises
   const formatDateFr = (dateStr?: string) => {
@@ -319,6 +293,18 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     return months;
   }, [globalStartDate, globalEndDate]);
 
+  // Filtrage des tâches
+  const filteredTasks = tasks.filter(t => {
+    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategoryOnly ? t.isCategory : true;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Calculs statistiques du planning
+  const totalTasksCount = tasks.length;
+  const categoriesCount = tasks.filter(t => t.isCategory).length;
+  const subTasksCount = totalTasksCount - categoriesCount;
+
   // Exportation CSV complète du planning
   const handleExportCSV = () => {
     if (!selectedProject) return;
@@ -336,6 +322,18 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     link.click();
     document.body.removeChild(link);
   };
+
+  if (projects.length === 0 || !selectedProject) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center space-y-4 max-w-xl mx-auto my-12 text-xs">
+        <Calendar size={56} className="text-slate-300 mx-auto" />
+        <h2 className="text-xl font-extrabold text-slate-900">Planning Gantt Operational</h2>
+        <p className="text-slate-500">
+          Aucun projet n'est enregistré dans la base de données. Créez votre premier projet pour piloter le planning et l'avancement.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 text-slate-800 font-sans w-full pb-12 max-w-[1700px] mx-auto">
