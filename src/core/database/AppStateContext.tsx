@@ -790,42 +790,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) return parsed;
         } catch (e) {}
       }
     }
-    return [
-      {
-        id: 'TSK-RPT-CR-2026-08-29-86',
-        reportId: 'CR-2026-08-29-86',
-        projectId: 'CIV-2026-ASS-BEN-002',
-        wbsId: '200.1',
-        activityId: 'Aire de dépotage y compris muret d\'arrêt des camions',
-        submittedBy: 'Mohamed',
-        assignedTo: 'SEA Alphonse',
-        assignedRole: 'Directeur Projet',
-        status: 'PENDING',
-        createdAt: '2026-08-29 20:53',
-        updatedAt: '2026-08-29 20:53',
-        priority: 'Normale',
-        comment: 'Rapport terrain soumis pour validation'
-      },
-      {
-        id: 'TSK-RPT-CR-2026-08-29-87',
-        reportId: 'CR-2026-08-29-87',
-        projectId: 'CIV-2026-ASS-SON-001',
-        wbsId: '03.02.001',
-        activityId: 'Structure Béton Armé Bassins d\'Anoxie',
-        submittedBy: 'Bakary Koné',
-        assignedTo: 'SEA Alphonse',
-        assignedRole: 'Directeur Projet',
-        status: 'PENDING',
-        createdAt: '2026-08-29 20:54',
-        updatedAt: '2026-08-29 20:54',
-        priority: 'Normale',
-        comment: 'Rapport terrain soumis pour validation'
-      }
-    ];
+    return [];
   });
 
   useEffect(() => {

@@ -836,27 +836,30 @@ app.get(['/api/v1/health', '/api/health'], async (req, res) => {
 app.get(['/api/v1/dashboard/project/:id', '/api/dashboard/project/:id'], requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const [projects] = await pool.query('SELECT * FROM projects WHERE id = ?', [id]);
-    const project = projects[0] || {
-      id,
-      code: 'CVI-2026-HYD-001',
-      name: 'Station de Traitement Bingerville',
-      contractAmount: 500000000,
-      initialBudget: 400000000,
-      revisedBudget: 400000000,
-      progress: 44.0,
-    };
+    const [projects] = await pool.query('SELECT * FROM projects WHERE id = ? OR code = ?', [id, id]);
+    
+    if (projects.length === 0) {
+      return res.status(404).json({ error: 'Projet introuvable' });
+    }
 
-    const contractAmount = Number(project.contract_amount || project.contractAmount || 500000000);
-    const budget = Number(project.revised_budget || project.revisedBudget || project.initialBudget || 400000000);
-    const actualCost = 220000000;
-    const committed = 230000000;
-    const eac = 420000000;
+    const project = projects[0];
+    const contractAmount = Number(project.contract_amount || 0);
+    const budget = Number(project.revised_budget || project.initial_budget || 0);
+
+    const [costRows] = await pool.query(
+      'SELECT COALESCE(SUM(actual_cost), 0) AS total_actual, COALESCE(SUM(committed), 0) AS total_committed, COALESCE(SUM(eac), 0) AS total_eac FROM wbs_nodes WHERE project_id = ?',
+      [project.id]
+    );
+
+    const actualCost = Number(costRows[0]?.total_actual || 0);
+    const committed = Number(costRows[0]?.total_committed || 0);
+    const eac = Number(costRows[0]?.total_eac || budget || actualCost);
     const forecastMargin = contractAmount - eac;
-    const marginPercent = Math.round(((forecastMargin / (contractAmount || 1)) * 100) * 100) / 100;
+    const marginPercent = contractAmount > 0 ? Math.round(((forecastMargin / contractAmount) * 100) * 100) / 100 : 0;
 
     res.status(200).json({
-      projectId: id,
+      projectId: project.id,
+      projectCode: project.code,
       projectName: project.name,
       contractAmount,
       budget,
@@ -865,7 +868,7 @@ app.get(['/api/v1/dashboard/project/:id', '/api/dashboard/project/:id'], require
       eac,
       forecastMargin,
       marginPercent,
-      progress: Number(project.progress || 44.0),
+      progress: Number(project.progress || 0),
       healthStatus: eac > budget ? 'VIGILANCE' : 'CONFORME',
     });
   } catch (err) {
