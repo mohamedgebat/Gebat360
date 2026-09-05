@@ -33,6 +33,28 @@ import {
 import { SiteSelector } from '../../shared/components/SiteSelector';
 import { DataInsight } from '../../shared/components/DataInsight';
 
+// Helper robuste pour normaliser les dates (YYYY-MM-DD, DD/MM/YYYY, ISO) en format standard YYYY-MM
+function normalizeDateToYearMonth(dateStr: any): string | null {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim();
+  // Format YYYY-MM-DD ou YYYY/MM/DD
+  const yyyyMmMatch = str.match(/^(\d{4})[-/](\d{1,2})/);
+  if (yyyyMmMatch) {
+    return `${yyyyMmMatch[1]}-${yyyyMmMatch[2].padStart(2, '0')}`;
+  }
+  // Format DD/MM/YYYY ou DD-MM-YYYY
+  const ddMmYyyyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (ddMmYyyyMatch) {
+    return `${ddMmYyyyMatch[3]}-${ddMmYyyyMatch[2].padStart(2, '0')}`;
+  }
+  // Date ISO ou parsable standard
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  return null;
+}
+
 interface DashboardGeneralProps {
   onNavigate?: (view: string) => void;
   onSelectProject?: (id: string) => void;
@@ -102,16 +124,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
     return reports.filter(r => {
       if (!r.date) return true;
-      const rDate = String(r.date);
-      const rMonth = rDate.substring(0, 7);
+      const rMonth = normalizeDateToYearMonth(r.date);
+      if (!rMonth) return true;
 
       if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
         return rMonth === selectedPeriod;
       }
-      if (selectedPeriod === 'T3-2026') return rDate >= '2026-07-01' && rDate <= '2026-09-30';
-      if (selectedPeriod === 'T2-2026') return rDate >= '2026-04-01' && rDate <= '2026-06-30';
-      if (selectedPeriod === '2026') return rDate.startsWith('2026');
-      if (selectedPeriod === '2027') return rDate.startsWith('2027');
+      if (selectedPeriod === 'T3-2026') return rMonth >= '2026-07' && rMonth <= '2026-09';
+      if (selectedPeriod === 'T2-2026') return rMonth >= '2026-04' && rMonth <= '2026-06';
+      if (selectedPeriod === '2026') return rMonth.startsWith('2026');
+      if (selectedPeriod === '2027') return rMonth.startsWith('2027');
       return true;
     });
   }, [dailyReports, selectedProjectId, targetProject, selectedPeriod]);
@@ -126,15 +148,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return das.filter(da => {
       const dateStr = String(da.createdAt || da.desiredDate || '');
       if (!dateStr) return true;
-      const daMonth = dateStr.substring(0, 7);
+      const daMonth = normalizeDateToYearMonth(dateStr);
+      if (!daMonth) return true;
 
       if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
         return daMonth === selectedPeriod;
       }
-      if (selectedPeriod === 'T3-2026') return dateStr >= '2026-07-01' && dateStr <= '2026-09-30';
-      if (selectedPeriod === 'T2-2026') return dateStr >= '2026-04-01' && dateStr <= '2026-06-30';
-      if (selectedPeriod === '2026') return dateStr.startsWith('2026');
-      if (selectedPeriod === '2027') return dateStr.startsWith('2027');
+      if (selectedPeriod === 'T3-2026') return daMonth >= '2026-07' && daMonth <= '2026-09';
+      if (selectedPeriod === 'T2-2026') return daMonth >= '2026-04' && daMonth <= '2026-06';
+      if (selectedPeriod === '2026') return daMonth.startsWith('2026');
+      if (selectedPeriod === '2027') return daMonth.startsWith('2027');
       return true;
     });
   }, [purchaseRequests, selectedProjectId, targetProject, selectedPeriod]);
@@ -233,17 +256,21 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   // État interactif du survol de la souris sur le graphique
   const [hoveredMonth, setHoveredMonth] = useState<{
     label: string;
+    monthName: string;
+    year: string;
     real: number;
     target: number;
     x: number;
     y: number;
+    targetY: number;
+    isFuture: boolean;
   } | null>(null);
 
   const activeMonthCutoff = useMemo(() => {
     if (!filteredDailyReports || filteredDailyReports.length === 0) return '2026-08';
     const dates = filteredDailyReports
-      .map(r => String(r.date || '').substring(0, 7))
-      .filter(d => d && d >= '2026-01' && d <= '2027-12');
+      .map(r => normalizeDateToYearMonth(r.date))
+      .filter((d): d is string => !!d && d >= '2026-01' && d <= '2027-12');
     return dates.length > 0 ? dates.sort().pop() || '2026-08' : '2026-08';
   }, [filteredDailyReports]);
 
@@ -329,6 +356,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
     });
 
+    let cumulativeRealPct = 0;
+
     // Calcul de l'avancement physique cumulé réel pour chaque mois (0 strict si aucune donnée réelle)
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
@@ -344,8 +373,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       if (!isFuture) {
         // Filtrage strict des rapports de production validés enregistrés jusqu'à ce mois (inclus)
         const reportsUpToMonth = validReports.filter(r => {
-          if (!r.date) return false;
-          return String(r.date).substring(0, 7) <= m.key;
+          const ym = normalizeDateToYearMonth(r.date);
+          return ym ? ym <= m.key : false;
         });
 
         if (reportsUpToMonth.length === 0) {
@@ -386,6 +415,15 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             }
           }
         }
+
+        // Ancrage de cohérence SSOT pour le mois actif
+        if (m.key === activeMonthCutoff && summary.progressPct > 0) {
+          realPct = Math.max(realPct, summary.progressPct);
+        }
+
+        // L'avancement cumulé ne peut pas régresser
+        cumulativeRealPct = Math.max(cumulativeRealPct, realPct);
+        realPct = cumulativeRealPct;
       } else {
         // Mois futurs : 0 (aucune valeur réelle)
         realPct = 0;
@@ -408,7 +446,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, totalBudgetDs, targetWbsNodes]);
+  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
@@ -464,7 +502,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         .filter(da => {
           const dateStr = String(da.createdAt || da.desiredDate || '');
           if (!dateStr) return true;
-          return dateStr.substring(0, 7) <= m.key;
+          const ym = normalizeDateToYearMonth(dateStr);
+          return ym ? ym <= m.key : false;
         })
         .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
 
@@ -473,7 +512,10 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       // 3. Coût réel cumulé (0 strict s'il n'y a pas de rapports de production validés à cette date)
       let actual = 0;
       if (!isFuture) {
-        const monthReports = filteredDailyReports.filter(r => r.date && String(r.date).substring(0, 7) <= m.key);
+        const monthReports = filteredDailyReports.filter(r => {
+          const ym = normalizeDateToYearMonth(r.date);
+          return ym ? ym <= m.key : false;
+        });
         const validReports = monthReports.filter(r => {
           const s = (r.status || '').toUpperCase();
           return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
@@ -513,7 +555,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff, engagedAmount, actualCostAmount]);
+  }, [dashboardTimeline, filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff, engagedAmount, actualCostAmount]);
 
   // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Agrégation 100% réelle par nature de coût (SSOT)
   const performanceByNature = useMemo(() => {
@@ -1041,27 +1083,51 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
                 {/* INFOBULLE DYNAMIQUE AU SURVOL */}
                 {hoveredMonth ? (
-                  <div
-                    className="absolute bg-slate-900 text-white p-2.5 rounded-xl shadow-2xl border border-slate-700 text-[10px] space-y-1 z-30 pointer-events-none transition-all duration-150 -translate-x-1/2 -translate-y-full"
-                    style={{ left: `${(hoveredMonth.x / 400) * 100}%`, top: `${(hoveredMonth.y / 150) * 100 - 10}%` }}
-                  >
-                    <span className="font-extrabold text-blue-300 block border-b border-slate-700 pb-1">{hoveredMonth.label}</span>
-                    <div className="flex justify-between items-center gap-4">
-                      <span className="text-slate-300">{hoveredMonth.isFuture ? 'Projection :' : 'Avancement réel :'}</span>
-                      <strong className="text-emerald-400 font-mono text-xs">{hoveredMonth.real}%</strong>
+                  hoveredMonth.isFuture ? (
+                    <div
+                      className="absolute bg-slate-900/95 backdrop-blur-sm text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-[10px] space-y-1.5 z-30 pointer-events-none transition-all duration-150 -translate-x-1/2 -translate-y-full"
+                      style={{ left: `${(hoveredMonth.x / 400) * 100}%`, top: `${(hoveredMonth.targetY / 150) * 100 - 10}%` }}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-700 pb-1 gap-3">
+                        <span className="font-extrabold text-blue-300">{hoveredMonth.label}</span>
+                        <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-semibold border border-slate-700">Période future</span>
+                      </div>
+                      <div className="flex justify-between items-center gap-4">
+                        <span className="text-slate-400">Objectif planifié (Courbe S) :</span>
+                        <strong className="text-blue-400 font-mono text-xs">{hoveredMonth.target}%</strong>
+                      </div>
+                      <div className="flex justify-between items-center gap-4 pt-1 border-t border-slate-800/80">
+                        <span className="text-slate-400">Statut :</span>
+                        <span className="text-slate-300 italic">En attente d'exécution</span>
+                      </div>
+                      <div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-slate-900 rotate-45 -translate-x-1/2 border-r border-b border-slate-700"></div>
                     </div>
-                    <div className="flex justify-between items-center gap-4">
-                      <span className="text-slate-400">Objectif théorique :</span>
-                      <strong className="text-slate-300 font-mono">{hoveredMonth.target}%</strong>
+                  ) : (
+                    <div
+                      className="absolute bg-slate-900/95 backdrop-blur-sm text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-[10px] space-y-1.5 z-30 pointer-events-none transition-all duration-150 -translate-x-1/2 -translate-y-full"
+                      style={{ left: `${(hoveredMonth.x / 400) * 100}%`, top: `${(hoveredMonth.y / 150) * 100 - 10}%` }}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-700 pb-1 gap-3">
+                        <span className="font-extrabold text-blue-300">{hoveredMonth.label}</span>
+                        <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-semibold border border-emerald-800">Mois constaté</span>
+                      </div>
+                      <div className="flex justify-between items-center gap-4">
+                        <span className="text-slate-300">Avancement réel constaté :</span>
+                        <strong className="text-emerald-400 font-mono text-xs">{hoveredMonth.real}%</strong>
+                      </div>
+                      <div className="flex justify-between items-center gap-4">
+                        <span className="text-slate-400">Objectif contractuel :</span>
+                        <strong className="text-slate-300 font-mono">{hoveredMonth.target}%</strong>
+                      </div>
+                      <div className="flex justify-between items-center gap-4 pt-1 border-t border-slate-800/80">
+                        <span className="text-slate-400">Écart ({hoveredMonth.real >= hoveredMonth.target ? 'Avance' : 'Retard'}) :</span>
+                        <span className={`font-mono font-bold ${hoveredMonth.real >= hoveredMonth.target ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {hoveredMonth.real >= hoveredMonth.target ? '+' : ''}{(hoveredMonth.real - hoveredMonth.target).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-slate-900 rotate-45 -translate-x-1/2 border-r border-b border-slate-700"></div>
                     </div>
-                    <div className="flex justify-between items-center gap-4 pt-0.5 border-t border-slate-800">
-                      <span className="text-slate-400">Écart ({hoveredMonth.real >= hoveredMonth.target ? 'Avance' : 'Retard'}) :</span>
-                      <span className={`font-mono font-bold ${hoveredMonth.real >= hoveredMonth.target ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {hoveredMonth.real >= hoveredMonth.target ? '+' : ''}{(hoveredMonth.real - hoveredMonth.target).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-slate-900 rotate-45 -translate-x-1/2 border-r border-b border-slate-700"></div>
-                  </div>
+                  )
                 ) : (
                   /* BULLE PAR DÉFAUT ANCRÉE SUR LE DERNIER POINT RÉEL DU MOIS ACTIF */
                   (() => {
