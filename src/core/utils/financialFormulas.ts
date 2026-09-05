@@ -160,7 +160,7 @@ export interface ProjectFinancialSummary {
 export const getProjectFinancialSummary = (
   project?: any | null,
   wbsNodes: any[] = [],
-  dsActivities: any[] = [],
+  _dsActivities: any[] = [],
   purchaseRequests: any[] = [],
   dailyReports: any[] = []
 ): ProjectFinancialSummary => {
@@ -201,76 +201,16 @@ export const getProjectFinancialSummary = (
     committed = pDAs.reduce((s, da) => s + Number(da.estimatedTotal || da.totalAmount || da.amount || 0), 0);
   }
 
-  // 4. Total Actual Cost (Coût Réel à Date / Rapports de Production Validés + WBS)
-  let actualCost = 0;
-  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
-    const validReports = dailyReports.filter(r => {
-      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
-      const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase();
-      const s = (r.status || '').toUpperCase();
-      const isValidated = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      if (!isValidated) return false;
-      const isSongon = pId.includes('SON') || pCode.includes('SON');
-      const isBingerville = pId.includes('BEN') || pCode.includes('BEN');
-      if (isSongon && (rCode.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
-      if (isBingerville && (rCode.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
-      return rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj) || (isSongon && rProj.includes('SON')) || (isBingerville && rProj.includes('BEN'));
-    });
-    actualCost = validReports.reduce((s, r) => {
-      let cost = Number(r.totalCost);
-      const qte = Number(r.realizedQty || 0);
-      let unitPrice = Number(r.pu);
-      if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
-        const wbsCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
-        const node = wbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wbsCode);
-        if (node) {
-          const planned = Number(node.plannedQty || node.contractQty || 0);
-          const nodeBudget = Number(node.revisedBudget || node.contractAmount || node.initialBudget || 0);
-          unitPrice = Number(node.pu || node.marketUnitPrice || (nodeBudget > 0 && planned > 0 ? nodeBudget / planned : 0));
-        } else {
-          unitPrice = 0;
-        }
-      }
-
-      // Si le coût est aberrant (> 500M FCFA ou > Montant Marché), utiliser le calcul déterministe qte * pu
-      if (isNaN(cost) || cost <= 0 || cost > 500000000 || cost > (contractAmount || 500000000)) {
-        cost = qte * unitPrice;
-      }
-      return s + cost;
-    }, 0);
-  }
-
-  if (actualCost <= 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
-    const getLeaves = (arr: any[]): any[] => {
-      let res: any[] = [];
-      arr.forEach(n => {
-        if (!n.children || n.children.length === 0) res.push(n);
-        else res = res.concat(getLeaves(n.children));
-      });
-      return res;
-    };
-    const leafNodes = getLeaves(wbsNodes);
-    actualCost = leafNodes.reduce((s, n) => s + Number(n.actualCost || n.actualCostAmount || 0), 0);
-  }
-
-  // 5. Reste à Engager
-  const maxSpentOrCommitted = Math.max(committed, actualCost);
-  const resteAEngager = Math.max(0, revisedBudget - maxSpentOrCommitted);
-
-  // 6. EAC (Prévision à Terminaison) : Plafonné au budget révisé DS sauf surcoût contractuel validé
-  const eac = (actualCost > revisedBudget && actualCost <= contractAmount) ? actualCost : revisedBudget;
-
-  // 7. Marges et Taux
-  const initialMargin = calculateInitialMargin(contractAmount, revisedBudget);
-  const eacMargin = calculateEACMargin(contractAmount, eac);
-  const initialMarginPct = calculateMarginPercentage(initialMargin, contractAmount);
-  const eacMarginPct = calculateMarginPercentage(eacMargin, contractAmount);
-
-  // 8. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
+  // 4. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
   let progressPct = 0;
 
-  // Priorité 1 : Avancement physique réel calculé à partir des rapports de production validés
-  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
+  // Priorité 1 : Avancement physique explicitement renseigné sur le projet
+  if (project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) >= 0) {
+    progressPct = Number(project.progress);
+  }
+
+  // Priorité 2 : Avancement physique réel calculé à partir des rapports de production validés (si 0)
+  if (progressPct === 0 && Array.isArray(dailyReports) && dailyReports.length > 0) {
     const validReports = dailyReports.filter(r => {
       const rProj = String(r.projectId || r.project_id || '').toUpperCase();
       const s = (r.status || '').toUpperCase();
@@ -287,13 +227,13 @@ export const getProjectFinancialSummary = (
         return sum + (cost || 0);
       }, 0);
 
-      if (totalReportCost > 0) {
-        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
+      if (totalReportCost > 0 && totalReportCost <= revisedBudget) {
+        progressPct = Number(((totalReportCost / revisedBudget) * 100).toFixed(1));
       }
     }
   }
 
-  // Priorité 2 : Avancement physique pondéré des nœuds WBS
+  // Priorité 3 : Avancement physique pondéré des nœuds WBS (si 0)
   if (progressPct === 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
     const getLeaves = (arr: any[]): any[] => {
       let res: any[] = [];
@@ -315,12 +255,67 @@ export const getProjectFinancialSummary = (
     }
   }
 
-  // Priorité 3 : Avancement physique explicitement renseigné sur le projet
-  if (progressPct === 0 && (project?.progress !== undefined && project?.progress !== null && Number(project.progress) > 0)) {
-    progressPct = Number(project.progress || project.physicalProgress || 0);
+  progressPct = Math.min(100, Math.max(0, Number(progressPct.toFixed(1))));
+
+  // 5. Total Actual Cost (Coût Réel Déboursé à Date)
+  let actualCost = 0;
+  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
+    const validReports = dailyReports.filter(r => {
+      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
+      const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase();
+      const s = (r.status || '').toUpperCase();
+      const isValidated = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+      if (!isValidated) return false;
+      const isSongon = pId.includes('SON') || pCode.includes('SON');
+      const isBingerville = pId.includes('BEN') || pCode.includes('BEN');
+      if (isSongon && (rCode.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
+      if (isBingerville && (rCode.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
+      return rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj) || (isSongon && rProj.includes('SON')) || (isBingerville && rProj.includes('BEN'));
+    });
+
+    if (validReports.length > 0) {
+      actualCost = validReports.reduce((s, r) => {
+        let cost = Number(r.totalCost);
+        const qte = Number(r.realizedQty || 0);
+        let unitPrice = Number(r.pu);
+        if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
+          const wbsCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
+          const node = wbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wbsCode);
+          if (node) {
+            const planned = Number(node.plannedQty || node.contractQty || 0);
+            const nodeBudget = Number(node.revisedBudget || node.contractAmount || node.initialBudget || 0);
+            unitPrice = Number(node.pu || node.marketUnitPrice || (nodeBudget > 0 && planned > 0 ? nodeBudget / planned : 0));
+          } else {
+            unitPrice = 0;
+          }
+        }
+
+        // Si le coût est aberrant (> 500M FCFA ou > Montant Marché), utiliser le calcul déterministe qte * pu
+        if (isNaN(cost) || cost <= 0 || cost > 500000000 || cost > (contractAmount || 500000000)) {
+          cost = qte * unitPrice;
+        }
+        return s + cost;
+      }, 0);
+    }
   }
 
-  progressPct = Math.min(100, Math.max(0, progressPct));
+  // Si aucun rapport validé ou coût déraisonnable (> budget DS), calculer le coût réel proportionnel à l'avancement physique
+  if (actualCost <= 0 || (revisedBudget > 0 && actualCost > revisedBudget)) {
+    actualCost = Math.round(revisedBudget * (progressPct / 100));
+  }
+
+  // 6. Reste à Engager / Reste à faire : Déboursé Sec Révisé - max(Engagé, Coût Réel)
+  const maxSpentOrCommitted = Math.max(committed, actualCost);
+  const resteAEngager = Math.max(0, revisedBudget - maxSpentOrCommitted);
+
+  // 7. EAC (Prévision à Terminaison) : Plafonné au budget révisé DS sauf surcoût contractuel validé
+  const eac = (actualCost > revisedBudget && actualCost <= contractAmount) ? actualCost : revisedBudget;
+
+  // 8. Marges et Taux
+  const initialMargin = calculateInitialMargin(contractAmount, revisedBudget);
+  const eacMargin = calculateEACMargin(contractAmount, eac);
+  const initialMarginPct = calculateMarginPercentage(initialMargin, contractAmount);
+  const eacMarginPct = calculateMarginPercentage(eacMargin, contractAmount);
 
   return {
     contractAmount,
