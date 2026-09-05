@@ -45,6 +45,15 @@ const MainApp: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Projet actif résolu de manière sécurisée
+  const activeProject = React.useMemo(() => {
+    if (selectedProjectId) {
+      const match = projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId);
+      if (match) return match;
+    }
+    return projects[0] || null;
+  }, [projects, selectedProjectId]);
+
   // Vue exclusive selon le profil connecté si pas encore définie
   useEffect(() => {
     if (currentUser?.role) {
