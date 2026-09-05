@@ -643,65 +643,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
     const saved = localStorage.getItem('gebat_daily_reports');
     const backupRaw = localStorage.getItem('gebat_user_created_reports_backup');
-    const permLockRaw = localStorage.getItem('gebat_submitted_reports_permanent_lock');
-    let loadedReports: DailyReport[] = [];
 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          loadedReports = parsed;
+          return parsed;
         }
       } catch (e) {}
     }
 
-    if (loadedReports.length === 0 && backupRaw) {
+    if (backupRaw) {
       try {
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed) && backupParsed.length > 0) {
-          loadedReports = backupParsed;
+          return backupParsed;
         }
       } catch (e) {}
     }
 
-    const testSongonReport: DailyReport = {
-      id: 'REP-TEST-SONGON-2026-08-31',
-      code: 'REP-TEST-SONGON-2026-08-31',
-      projectId: 'CIV-2026-ASS-SON-001',
-      date: '31/08/2026',
-      wbsCode: '03.02.004',
-      activityName: 'Béton armé pour voiles et dalles de la station de Songon',
-      unit: 'm³',
-      plannedQty: 50,
-      targetQty: 50,
-      realizedQty: 50,
-      productivityRate: 100,
-      status: 'Validé',
-      isAccounted: true,
-      accountedAt: '31/08/2026 18:20',
-      submittedBy: 'Kouassi Jean',
-      submittedAt: '31/08/2026 14:00',
-      validatedBy: 'SEA Alphonse (Directeur Projet)',
-      validatedAt: '31/08/2026 18:20',
-      generalComment: 'Validation officielle de test par le Directeur de Projet. Conforme au DQE.',
-      weather: 'Ensoleillé',
-      temperature: '31°C',
-      workShift: 'Jour',
-      locationZone: 'Zone Ouvrage Anoxie',
-      teamLeader: 'Kouassi Jean',
-      consummations: [
-        { article: 'Ciment CPJ 42.5', itemCode: 'CIMENT_CPJ42.5', qty: 25, unit: 'sacs' }
-      ],
-      historyLogs: [
-        { timestamp: '31/08/2026 18:20', user: 'SEA Alphonse', role: 'Directeur Projet', action: "Passage au statut 'Validé'", comment: 'Validation officielle SSOT' },
-        { timestamp: '31/08/2026 14:00', user: 'Kouassi Jean', role: 'Chef de Chantier', action: "Passage au statut 'Soumis'", comment: 'Demande de validation' }
-      ]
-    };
-
-    const loadedIds = new Set(loadedReports.map(r => r.id || r.code));
-    const listWithoutDup = loadedReports.filter(r => r.id !== testSongonReport.id && r.code !== testSongonReport.code);
-    const historicalRest = INITIAL_DAILY_REPORTS.filter(r => !loadedIds.has(r.id) && !loadedIds.has(r.code));
-    return [testSongonReport, ...listWithoutDup, ...historicalRest];
+    return INITIAL_DAILY_REPORTS;
   });
 
   useEffect(() => {

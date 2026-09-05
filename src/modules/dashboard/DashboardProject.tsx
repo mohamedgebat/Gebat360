@@ -33,7 +33,7 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
   const { projects, wbsMap, purchaseOrders, purchaseRequests, dailyReports, alerts } = useAppState();
 
   // État local pour le projet sélectionné (Par défaut le premier projet)
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'CIV-2026-ST-BING-001');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'CIV-2026-ASS-SON-001');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('Juil 2026');
 
   // Récupération du projet actif dans l'état global

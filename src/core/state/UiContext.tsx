@@ -21,7 +21,7 @@ const UiContext = createContext<UiContextType | undefined>(undefined);
 export const UiProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [activeModal, setActiveModal] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>('CIV-2026-ST-BING-001');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>('CIV-2026-ASS-SON-001');
 
   const toggleSidebar = () => setSidebarCollapsed(prev => !prev);
   const openModal = (modalId: string) => setActiveModal(modalId);
