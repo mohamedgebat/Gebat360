@@ -559,17 +559,172 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     );
   }, [soustraitantRows]);
 
-  // 4. CONSOMMATIONS & LIVRAISONS
+  // 4. CONSOMMATIONS & LIVRAISONS DYNAMIQUES (100% LIÉES À L'ACTIVITÉ WBS SÉLECTIONNÉE)
   const [consumptionTab, setConsumptionTab] = useState<'consommations' | 'livraisons'>('consommations');
 
-  const defaultConsumptions = useMemo(() => [
-    { article: 'CIMENT CHF', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
-    { article: 'CIMENT CPA (Coulage de radier et BP)', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
-    { article: 'CIMENT CPJ', unit: 'SAC', prevue: 100, consommee: 0, ecart: 0 },
-    { article: 'FER 6 (Barres 12m)', unit: 'BARRE', prevue: 100, consommee: 0, ecart: 0 }
-  ], []);
+  // Helper intelligent pour dériver les consommations théoriques et prévues selon l'Activité WBS active
+  const getConsumptionsForWbsActivity = (
+    wbsCode: string,
+    targetQty: number = 0,
+    project: any = null
+  ) => {
+    if (!wbsCode) return [];
 
-  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>(defaultConsumptions);
+    const normCode = String(wbsCode).toUpperCase().trim();
+    
+    // 1. Recherche dans les activités DS réelles du projet (qui contiennent le détail exact des sous-ressources MAT)
+    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const matchedDs = allActivities.find(act => 
+      String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
+      normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
+    );
+
+    if (matchedDs && Array.isArray(matchedDs.resources) && matchedDs.resources.length > 0) {
+      const matResources = matchedDs.resources.filter(r => {
+        const nat = String(r.nature || '').toUpperCase();
+        return nat === 'MAT' || nat.includes('MAT');
+      });
+
+      if (matResources.length > 0) {
+        const contractVol = Number(matchedDs.contractQty || matchedDs.plannedQty || 1);
+        const effectiveTarget = targetQty > 0 ? targetQty : (Number(matchedDs.contractQty) > 0 ? Math.round(Number(matchedDs.contractQty) / 20) : 10);
+        
+        return matResources.map(res => {
+          const ratio = contractVol > 0 ? (Number(res.theoreticalQty || res.correctedQty || 1) / contractVol) : 1;
+          const calculatedPrevue = Math.max(1, Math.round(ratio * effectiveTarget));
+          return {
+            article: res.name || res.code || 'Matériau',
+            unit: res.unit || 'U',
+            prevue: calculatedPrevue,
+            consommee: 0,
+            ecart: 0
+          };
+        });
+      }
+    }
+
+    // 2. Recherche dans le WBS Tree pour récupérer la description de l'activité
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || matchedDs?.description || '').toLowerCase();
+    const unit = String(actObj?.unit || matchedDs?.unit || 'm²').toLowerCase();
+    const effectiveTarget = targetQty > 0 ? targetQty : 10;
+
+    // 3. Déduction sémantique experte selon la nature de l'ouvrage BTP
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage') || unit.includes('m3') || unit.includes('m³')) {
+      const vol = effectiveTarget;
+      return [
+        { article: 'CIMENT CPA 42.5 (Coulage de structure)', unit: 'SAC', prevue: Math.max(7, Math.round(vol * 7)), consommee: 0, ecart: 0 },
+        { article: 'Sable de lagune lavé 0/4', unit: 'm³', prevue: Math.max(1, Math.round(vol * 0.45)), consommee: 0, ecart: 0 },
+        { article: 'Gravier concassé 15/25', unit: 'm³', prevue: Math.max(1, Math.round(vol * 0.80)), consommee: 0, ecart: 0 },
+        { article: 'Eau de gâchage', unit: 'm³', prevue: Math.max(1, Math.round(vol * 0.18)), consommee: 0, ecart: 0 },
+        { article: 'Adjuvant plastifiant réducteur d’eau', unit: 'L', prevue: Math.max(1, Math.round(vol * 2.5)), consommee: 0, ecart: 0 }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return [
+        { article: 'FER 12 (Barres 12m HA)', unit: 'BARRE', prevue: Math.round(effectiveTarget * 0.40) || 20, consommee: 0, ecart: 0 },
+        { article: 'FER 10 (Ferraillage voiles & radiers)', unit: 'BARRE', prevue: Math.round(effectiveTarget * 0.35) || 18, consommee: 0, ecart: 0 },
+        { article: 'FER 8 (Épingles et chevaliers)', unit: 'BARRE', prevue: Math.round(effectiveTarget * 0.25) || 12, consommee: 0, ecart: 0 },
+        { article: 'Fil de recuit pour ligature', unit: 'ROULEAU', prevue: Math.max(1, Math.round(effectiveTarget * 0.05)), consommee: 0, ecart: 0 },
+        { article: 'Cales d’enrobage béton armé 30mm', unit: 'U', prevue: Math.max(10, Math.round(effectiveTarget * 3)), consommee: 0, ecart: 0 }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd') || unit.includes('ml')) {
+      const ml = effectiveTarget;
+      return [
+        { article: 'Tuyau PVC Assainissement CR8 DN200', unit: 'ML', prevue: ml, consommee: 0, ecart: 0 },
+        { article: 'Manchons & Coudes PVC 45°/90°', unit: 'U', prevue: Math.max(2, Math.round(ml * 0.12)), consommee: 0, ecart: 0 },
+        { article: 'Colle gel & Lubrifiant d’emboîtement', unit: 'POT', prevue: Math.max(1, Math.round(ml * 0.04)), consommee: 0, ecart: 0 },
+        { article: 'Sable d’enrobage de lit de pose', unit: 'm³', prevue: Math.max(1, Math.round(ml * 0.08)), consommee: 0, ecart: 0 },
+        { article: 'Grillage avertisseur bleu/marron', unit: 'ML', prevue: ml, consommee: 0, ecart: 0 }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return [
+        { article: 'Planches de coffrage sapin 4m', unit: 'U', prevue: Math.max(10, Math.round(effectiveTarget * 1.2)), consommee: 0, ecart: 0 },
+        { article: 'Chevrons 6x8 et bastaings', unit: 'U', prevue: Math.max(5, Math.round(effectiveTarget * 0.6)), consommee: 0, ecart: 0 },
+        { article: 'Huile de décoffrage biodégradable', unit: 'L', prevue: Math.max(2, Math.round(effectiveTarget * 0.15)), consommee: 0, ecart: 0 },
+        { article: 'Pointes & Clous d’assemblage 70/80mm', unit: 'KG', prevue: Math.max(2, Math.round(effectiveTarget * 0.10)), consommee: 0, ecart: 0 }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { article: 'Carburant Gasoil Engins de chantier', unit: 'L', prevue: Math.max(20, Math.round(effectiveTarget * 0.85)), consommee: 0, ecart: 0 },
+        { article: 'Piquets d’implantation bois & repères', unit: 'U', prevue: Math.max(6, Math.round(effectiveTarget * 0.10)), consommee: 0, ecart: 0 },
+        { article: 'Rubalise de balisage et sécurité', unit: 'RLX', prevue: 1, consommee: 0, ecart: 0 },
+        { article: 'Matériaux d’apport remblai latéritique', unit: 'm³', prevue: Math.max(5, Math.round(effectiveTarget * 0.30)), consommee: 0, ecart: 0 }
+      ];
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return [
+        { article: 'Tôles de bardage prélaquées 3m', unit: 'U', prevue: 20, consommee: 0, ecart: 0 },
+        { article: 'Poteaux métalliques d’ancrage', unit: 'U', prevue: 10, consommee: 0, ecart: 0 },
+        { article: 'Ciment CHF (Scellement poteaux)', unit: 'SAC', prevue: 15, consommee: 0, ecart: 0 },
+        { article: 'Panneaux de signalisation EPI', unit: 'U', prevue: 4, consommee: 0, ecart: 0 }
+      ];
+    }
+
+    // Par défaut, proposer les articles en stock du chantier actif
+    if (stockItems && stockItems.length > 0) {
+      return stockItems.slice(0, 4).map(item => ({
+        article: item.name,
+        unit: item.unit || 'U',
+        prevue: Math.max(10, Math.round(effectiveTarget * 2)),
+        consommee: 0,
+        ecart: 0
+      }));
+    }
+
+    return [
+      { article: 'Ciment CPA 42.5', unit: 'SAC', prevue: Math.max(10, effectiveTarget * 2), consommee: 0, ecart: 0 },
+      { article: 'Sable 0/4', unit: 'm³', prevue: Math.max(1, Math.round(effectiveTarget * 0.3)), consommee: 0, ecart: 0 },
+      { article: 'Gravier 15/25', unit: 'm³', prevue: Math.max(1, Math.round(effectiveTarget * 0.5)), consommee: 0, ecart: 0 }
+    ];
+  };
+
+  const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>([]);
+
+  // Synchronisation dynamique automatique des consommations dès que l'activité WBS ou l'objectif change
+  React.useEffect(() => {
+    if (currentWbsCode) {
+      const derived = getConsumptionsForWbsActivity(currentWbsCode, currentTargetQty, selectedProject);
+      setConsommationsRows(derived);
+    } else if (projectWbsNodes && projectWbsNodes.length > 0) {
+      const firstCode = projectWbsNodes[0].wbsCode || projectWbsNodes[0].priceNo || projectWbsNodes[0].id;
+      if (firstCode) {
+        const derived = getConsumptionsForWbsActivity(firstCode, currentTargetQty || 10, selectedProject);
+        setConsommationsRows(derived);
+      }
+    }
+  }, [currentWbsCode, currentTargetQty, selectedProject?.id]);
+
+  // Suggestion automatique proportionnelle de la quantité consommée au fil de la saisie de la quantité réalisée
+  React.useEffect(() => {
+    if (currentTargetQty > 0 && numCurrentRealized > 0) {
+      const ratio = numCurrentRealized / currentTargetQty;
+      setConsommationsRows(prev => prev.map(row => {
+        const calculated = Math.round(row.prevue * ratio);
+        return {
+          ...row,
+          consommee: calculated,
+          ecart: calculated - row.prevue
+        };
+      }));
+    } else if (numCurrentRealized === 0) {
+      setConsommationsRows(prev => prev.map(row => ({
+        ...row,
+        consommee: 0,
+        ecart: 0
+      })));
+    }
+  }, [numCurrentRealized, currentTargetQty]);
 
   const [livraisonsRows, setLivraisonsRows] = useState<Array<{ ref: string; supplier: string; qty: string; date: string }>>([
     { ref: 'BL-2026-089-SOCIMAC', supplier: 'SOCIMAC / Ciment CPJ 45', qty: '+150 sac', date: getTodayFrDate() },
@@ -653,20 +808,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     setRejectionReason('');
     alert('↩️ Rapport renvoyé au chef de chantier en statut Brouillon avec le motif d\'ajustement !');
   };
-
-  // Synchronisation dynamique automatique des consommations depuis le stock de l'application
-  React.useEffect(() => {
-    if (stockItems && stockItems.length > 0) {
-      const realCons = stockItems.slice(0, 4).map(item => ({
-        article: item.name,
-        unit: item.unit || 'U',
-        prevue: Number(item.minQuantity || 100),
-        consommee: 0,
-        ecart: 0
-      }));
-      setConsommationsRows(realCons);
-    }
-  }, [stockItems]);
 
   // Contrôle d'accès et d'habilitation selon le rôle du compte connecté (Brouillon -> Soumis -> Validé -> Verrouillé)
   const handleStatusChange = async (targetStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé') => {
@@ -2158,7 +2299,14 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider pb-2 border-b border-slate-100 flex items-center justify-between">
-              <span>CONSOMMATIONS & LIVRAISONS</span>
+              <div className="flex items-center gap-2">
+                <span>CONSOMMATIONS & LIVRAISONS</span>
+                {currentWbsCode && (
+                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[200px]" title={`Activité WBS liée : [${currentWbsCode}] ${currentSelectedAct?.description || ''}`}>
+                    WBS : {currentWbsCode}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-3 text-xs font-bold font-sans">
                 <button
                   onClick={() => setConsumptionTab('consommations')}
