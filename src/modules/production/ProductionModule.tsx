@@ -497,23 +497,395 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   // 3. RESSOURCES UTILISÉES (Onglets Personnel / Matériel / Sous-traitants)
   const [resourceTab, setResourceTab] = useState<'personnel' | 'materiel' | 'soustraitants'>('personnel');
 
-  const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([
-    { category: 'Chefs de chantier & Encadrement', effectif: 0, hNormales: 0, hSup: 0 },
-    { category: 'Maçons & Coffreurs', effectif: 0, hNormales: 0, hSup: 0 },
-    { category: 'Ferrailleurs & Boiseurs', effectif: 0, hNormales: 0, hSup: 0 },
-    { category: 'Manoeuvres & Ouvriers', effectif: 0, hNormales: 0, hSup: 0 }
-  ]);
+  // Helper pour dériver le personnel selon l'activité WBS et le déboursé sec
+  const getPersonnelForWbsActivity = (wbsCode: string, targetQty: number = 0, project: any = null) => {
+    if (!wbsCode) return [
+      { category: 'Chefs de chantier & Encadrement', effectif: 1, hNormales: 8, hSup: 0 },
+      { category: 'Maçons & Coffreurs', effectif: 2, hNormales: 16, hSup: 0 },
+      { category: 'Ferrailleurs & Boiseurs', effectif: 2, hNormales: 16, hSup: 0 },
+      { category: 'Manoeuvres & Ouvriers', effectif: 3, hNormales: 24, hSup: 0 }
+    ];
 
-  const [materielRows, setMaterielRows] = useState<Array<{ name: string; qty: number; hours: number; fuel: number }>>([
-    { name: 'Bulldozer CAT D7', qty: 0, hours: 0, fuel: 0 },
-    { name: 'Camion Benne 15T', qty: 0, hours: 0, fuel: 0 },
-    { name: 'Pelle Hydraulique 20T', qty: 0, hours: 0, fuel: 0 }
-  ]);
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const matchedDs = allActivities.find(act => 
+      String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
+      normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
+    );
 
-  const [soustraitantRows, setSoustraitantRows] = useState<Array<{ company: string; task: string; effectif: number; status: string }>>([
-    { company: 'SOGEA BTP', task: 'Débroussement & Élagage', effectif: 0, status: 'Actif' },
-    { company: 'GEBAT TOPO', task: 'Relevés Altimétriques', effectif: 0, status: 'Actif' }
-  ]);
+    if (matchedDs && Array.isArray(matchedDs.resources) && matchedDs.resources.length > 0) {
+      const moResources = matchedDs.resources.filter(r => {
+        const nat = String(r.nature || '').toUpperCase();
+        const code = String(r.code || '').toUpperCase();
+        return nat === 'MO' || nat.includes('MO') || code.startsWith('MO');
+      });
+
+      if (moResources.length > 0) {
+        return moResources.map(res => {
+          const effCount = Math.max(1, Math.round(Number(res.theoreticalQty || 1)));
+          return {
+            category: res.name || res.code || 'Main d\'œuvre spécialisée',
+            effectif: effCount,
+            hNormales: effCount * 8,
+            hSup: 0
+          };
+        });
+      }
+    }
+
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || matchedDs?.description || '').toLowerCase();
+    const effTarget = targetQty > 0 ? targetQty : 10;
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      const macons = Math.max(2, Math.round(effTarget * 0.4));
+      const vibreurs = Math.max(2, Math.round(effTarget * 0.3));
+      const manoeuvres = Math.max(2, Math.round(effTarget * 0.3));
+      return [
+        { category: 'Chef d\'équipe Béton armé', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Maçons qualifiés & Coffreurs', effectif: macons, hNormales: macons * 8, hSup: 0 },
+        { category: 'Vibreurs & Ouvriers de coulage', effectif: vibreurs, hNormales: vibreurs * 8, hSup: 0 },
+        { category: 'Manoeuvres d\'accompagnement', effectif: manoeuvres, hNormales: manoeuvres * 8, hSup: 0 }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      const ferrailleurs = Math.max(2, Math.round(effTarget * 0.05)) || 3;
+      const poseurs = Math.max(2, Math.round(effTarget * 0.04)) || 2;
+      return [
+        { category: 'Chef d\'équipe Ferrailleur', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Ferrailleurs façonneurs qualifiés', effectif: ferrailleurs, hNormales: ferrailleurs * 8, hSup: 0 },
+        { category: 'Poseurs d\'armatures & Ligatureurs', effectif: poseurs, hNormales: poseurs * 8, hSup: 0 },
+        { category: 'Manoeuvres manutention aciers', effectif: 2, hNormales: 16, hSup: 0 }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      const poseurs = Math.max(2, Math.round(effTarget * 0.06)) || 2;
+      const terrassiers = Math.max(2, Math.round(effTarget * 0.08)) || 3;
+      return [
+        { category: 'Chef d\'équipe Poseur Réseaux Assainissement', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Canalisateurs & Poseurs qualifiés', effectif: poseurs, hNormales: poseurs * 8, hSup: 0 },
+        { category: 'Manoeuvres fouilles & lit de pose', effectif: terrassiers, hNormales: terrassiers * 8, hSup: 0 },
+        { category: 'Topographe / Implantation pentes', effectif: 1, hNormales: 8, hSup: 0 }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { category: 'Chef de chantier Terrassement & VRD', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Conducteurs d\'engins lourds (Pelle / Bull)', effectif: 2, hNormales: 16, hSup: 0 },
+        { category: 'Chauffeurs Camions Bennes 15T', effectif: 2, hNormales: 16, hSup: 0 },
+        { category: 'Topographe & Aides réglage plateforme', effectif: 2, hNormales: 16, hSup: 0 }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      const coffreurs = Math.max(2, Math.round(effTarget * 0.12)) || 3;
+      return [
+        { category: 'Chef d\'équipe Coffreur-boiseur', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Coffreurs-bancheurs qualifiés', effectif: coffreurs, hNormales: coffreurs * 8, hSup: 0 },
+        { category: 'Échafaudeurs & Étaieurs', effectif: 2, hNormales: 16, hSup: 0 },
+        { category: 'Aides coffreurs & Manoeuvres', effectif: 2, hNormales: 16, hSup: 0 }
+      ];
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return [
+        { category: 'Chef d\'équipe Clôtures & Sécurisation', effectif: 1, hNormales: 8, hSup: 0 },
+        { category: 'Serruriers / Poseurs de bardage', effectif: 2, hNormales: 16, hSup: 0 },
+        { category: 'Maçons scellement poteaux', effectif: 2, hNormales: 16, hSup: 0 },
+        { category: 'Manoeuvres chantier', effectif: 2, hNormales: 16, hSup: 0 }
+      ];
+    }
+
+    return [
+      { category: 'Chef de chantier & Encadrement', effectif: 1, hNormales: 8, hSup: 0 },
+      { category: 'Ouvriers qualifiés', effectif: 2, hNormales: 16, hSup: 0 },
+      { category: 'Manoeuvres & Ouvriers d\'exécution', effectif: 3, hNormales: 24, hSup: 0 }
+    ];
+  };
+
+  // Helper pour dériver le matériel et engins selon l'activité WBS
+  const getMaterielForWbsActivity = (wbsCode: string, targetQty: number = 0, project: any = null) => {
+    if (!wbsCode) return [
+      { name: 'Bulldozer CAT D7', qty: 1, hours: 7, fuel: 90 },
+      { name: 'Camion Benne 15T', qty: 1, hours: 8, fuel: 80 },
+      { name: 'Pelle Hydraulique 20T', qty: 1, hours: 8, fuel: 110 }
+    ];
+
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const matchedDs = allActivities.find(act => 
+      String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
+      normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
+    );
+
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || matchedDs?.description || '').toLowerCase();
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return [
+        { name: 'Camion Toupie Bétonnière 8m³', qty: 1, hours: 7, fuel: 85 },
+        { name: 'Aiguilles vibrantes béton 45mm', qty: 2, hours: 6, fuel: 15 },
+        { name: 'Grue / Benne à béton basculante 1000L', qty: 1, hours: 5, fuel: 40 },
+        { name: 'Règle vibrante oscillante 3m', qty: 1, hours: 4, fuel: 10 }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return [
+        { name: 'Cintreuse électrique d’armature 380V', qty: 1, hours: 7, fuel: 20 },
+        { name: 'Cisaille à fer électrique d’atelier', qty: 1, hours: 6, fuel: 15 },
+        { name: 'Camion plateau approvisionnement fer', qty: 1, hours: 3, fuel: 35 },
+        { name: 'Groupe électrogène 15 kVA', qty: 1, hours: 8, fuel: 30 }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return [
+        { name: 'Mini-Pelle hydraulique 8T sur chenilles', qty: 1, hours: 7.5, fuel: 55 },
+        { name: 'Pilonneuse / Compacteur de tranchée', qty: 1, hours: 5, fuel: 18 },
+        { name: 'Niveau Laser rotatif d’alignement', qty: 1, hours: 8, fuel: 0 },
+        { name: 'Motopompe d’épuisement des eaux', qty: 1, hours: 3, fuel: 12 }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { name: 'Pelle Hydraulique 20T sur chenilles', qty: 1, hours: 8, fuel: 140 },
+        { name: 'Bulldozer CAT D7 / Niveleuse', qty: 1, hours: 7, fuel: 120 },
+        { name: 'Camion Benne 15T (Rotation déblais)', qty: 2, hours: 8, fuel: 160 },
+        { name: 'Compacteur vibrant monocylindre 14T', qty: 1, hours: 6, fuel: 75 }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return [
+        { name: 'Scie circulaire de table & Outillage boiseur', qty: 2, hours: 7, fuel: 25 },
+        { name: 'Chariot élévateur télescopique / Manuscopic', qty: 1, hours: 4, fuel: 35 },
+        { name: 'Pulvérisateur & Nettoyeur haute pression', qty: 1, hours: 2, fuel: 8 }
+      ];
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return [
+        { name: 'Groupe électrogène insonorisé 30 kVA', qty: 1, hours: 8, fuel: 45 },
+        { name: 'Poste à souder inverter & Tronçonneuse métal', qty: 2, hours: 6, fuel: 15 },
+        { name: 'Bétonnière thermique mobile 350L', qty: 1, hours: 4, fuel: 12 }
+      ];
+    }
+
+    return [
+      { name: 'Pelle Hydraulique polyvalente', qty: 1, hours: 7, fuel: 65 },
+      { name: 'Camion benne de servitude chantier', qty: 1, hours: 4, fuel: 35 },
+      { name: 'Petit outillage mécanique & motorisé', qty: 2, hours: 6, fuel: 15 }
+    ];
+  };
+
+  // Helper pour dériver les sous-traitants selon l'activité WBS
+  const getSoustraitantsForWbsActivity = (wbsCode: string, project: any = null) => {
+    if (!wbsCode) return [
+      { company: 'SOGEA BTP', task: 'Travaux préparatoires', effectif: 2, status: 'Actif' },
+      { company: 'GEBAT TOPO', task: 'Relevés Altimétriques', effectif: 2, status: 'Actif' }
+    ];
+
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || '').toLowerCase();
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return [
+        { company: 'LABOGEM CI', task: 'Prélèvement éprouvettes & Contrôle écrasement 28j', effectif: 2, status: 'Actif' },
+        { company: 'POMPAGE BTP CI', task: 'Mise à disposition pompe à béton 36m', effectif: 2, status: 'Actif' }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return [
+        { company: 'ARMATURES PLUS CI', task: 'Façonnage & Prémontage cages d\'armatures', effectif: 4, status: 'Actif' },
+        { company: 'GEBAT CONTRÔLE', task: 'Vérification conformité plans de ferraillage', effectif: 1, status: 'Actif' }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return [
+        { company: 'HYDRO-CONTROL CI', task: 'Inspection télévisée caméra & Épreuve étanchéité', effectif: 2, status: 'Actif' },
+        { company: 'SOCATRA BTP', task: 'Pose préfabriquée regards de visite', effectif: 3, status: 'Actif' }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { company: 'GEBAT TOPO EXPERTISE', task: 'Implantation géométrique & Relevés laser', effectif: 2, status: 'Actif' },
+        { company: 'TRANS-TERRE SERVICES', task: 'Évacuation déblais en décharge agréée', effectif: 3, status: 'Actif' }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return [
+        { company: 'COFFRAGES DU SUD', task: 'Fourniture & Montage banches métalliques', effectif: 3, status: 'Actif' }
+      ];
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return [
+        { company: 'SOGEA SÉCURITÉ', task: 'Pose clôtures grillagées & Concertina', effectif: 3, status: 'Actif' }
+      ];
+    }
+
+    return [
+      { company: 'SOGEA BTP', task: 'Travaux préparatoires & Assainissement', effectif: 2, status: 'Actif' },
+      { company: 'GEBAT TOPO', task: 'Relevés Altimétriques', effectif: 2, status: 'Actif' }
+    ];
+  };
+
+  // Helper pour dériver les bons de livraisons selon l'activité WBS
+  const getLivraisonsForWbsActivity = (wbsCode: string, project: any = null) => {
+    const currentYear = new Date().getFullYear();
+    const dateStr = getTodayFrDate();
+    if (!wbsCode) return [
+      { ref: `BL-${currentYear}-089-SOCIMAC`, supplier: 'SOCIMAC / Ciment CPJ 45', qty: '+150 sac', date: dateStr },
+      { ref: `BL-${currentYear}-092-ACI`, supplier: 'Aciéries CI / Fer HA 12', qty: '+3,50 t', date: dateStr }
+    ];
+
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || '').toLowerCase();
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return [
+        { ref: `BL-${currentYear}-089-SOCIMAC`, supplier: 'SOCIMAC / Ciment CPA 42.5', qty: '+200 SAC', date: dateStr },
+        { ref: `BL-${currentYear}-094-CARRIERE`, supplier: 'CARRIÈRE PFO / Gravier concassé 15/25', qty: '+30 m³', date: dateStr }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return [
+        { ref: `BL-${currentYear}-102-ACI`, supplier: 'Aciéries CI / Fer à béton HA 12', qty: '+4,50 t', date: dateStr },
+        { ref: `BL-${currentYear}-103-ACI`, supplier: 'Aciéries CI / Fer HA 8 & Fil recuit', qty: '+2,20 t', date: dateStr }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return [
+        { ref: `BL-${currentYear}-077-TUBOPLAST`, supplier: 'TUBOPLAST / Tuyaux PVC Assainissement CR8 DN200', qty: '+60 ML', date: dateStr },
+        { ref: `BL-${currentYear}-078-PREFA`, supplier: 'PREFACLUB / Regards 80x80 & Tampons fonte', qty: '+6 U', date: dateStr }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { ref: `BL-${currentYear}-045-TOTAL`, supplier: 'TOTAL ÉNERGIES / Carburant Gasoil Cuve Chantier', qty: '+1 200 L', date: dateStr },
+        { ref: `BL-${currentYear}-046-APPORT`, supplier: 'CARRIÈRE LAGUNE / Remblai latéritique', qty: '+45 m³', date: dateStr }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return [
+        { ref: `BL-${currentYear}-061-BOIS`, supplier: 'SCIERIE MODERNE / Planches sapin 4m', qty: '+80 U', date: dateStr },
+        { ref: `BL-${currentYear}-062-CHIMIE`, supplier: 'SIKA CI / Huile de décoffrage 200L', qty: '+1 FUT', date: dateStr }
+      ];
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return [
+        { ref: `BL-${currentYear}-033-METAL`, supplier: 'PRO-BARDAGE CI / Tôles de bardage 3m', qty: '+50 U', date: dateStr },
+        { ref: `BL-${currentYear}-034-SOCIMAC`, supplier: 'SOCIMAC / Ciment CHF Scellements', qty: '+30 SAC', date: dateStr }
+      ];
+    }
+
+    return [
+      { ref: `BL-${currentYear}-089-SOCIMAC`, supplier: 'SOCIMAC / Ciment CPJ 45', qty: '+150 sac', date: dateStr },
+      { ref: `BL-${currentYear}-092-ACI`, supplier: 'Aciéries CI / Fer HA 12', qty: '+3,50 t', date: dateStr }
+    ];
+  };
+
+  // Helper pour dériver les incidents & points de contrôle selon l'activité WBS
+  const getProblemsForWbsActivity = (wbsCode: string, project: any = null) => {
+    if (!wbsCode) return [
+      { type: 'Point d’arrêt sécurité & vérification conformité des ouvrages', impact: 'Faible' as const }
+    ];
+
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || '').toLowerCase();
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return [
+        { type: 'Contrôle slump test cône d’Abrams conforme (14 cm) - Aucun incident de coulage', impact: 'Faible' as const }
+      ];
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return [
+        { type: 'Contrôle des enrobages et ligatures des armatures validé avant coulage', impact: 'Faible' as const }
+      ];
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return [
+        { type: 'Vérification fil d’eau et calage des pentes au niveau laser', impact: 'Faible' as const }
+      ];
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return [
+        { type: 'Contrôle humidité et portance de la plateforme (Essai à la plaque)', impact: 'Faible' as const }
+      ];
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return [
+        { type: 'Vérification de l’aplomb et de l’étanchéité des banches de coffrage', impact: 'Faible' as const }
+      ];
+    }
+
+    return [
+      { type: 'Point d’arrêt sécurité & vérification conformité des ouvrages', impact: 'Faible' as const }
+    ];
+  };
+
+  // Helper pour dériver la Zone de chantier selon l'activité WBS
+  const getLocationZoneForWbsActivity = (wbsCode: string) => {
+    if (!wbsCode) return 'Zone A - Côté Nord';
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || '').toLowerCase();
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return 'Zone 1 - Ouvrages de Structure & Radiers';
+    }
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return 'Atelier Central de Façonnage & Pose Cages';
+    }
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return 'Zone Réseau Principal Assainissement & Tranchées';
+    }
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return 'Plateforme Générale - Nivellement & Décapage';
+    }
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return 'Périphérie Chantier & Base-Vie';
+    }
+    return 'Zone A - Côté Nord';
+  };
+
+  const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([]);
+  const [materielRows, setMaterielRows] = useState<Array<{ name: string; qty: number; hours: number; fuel: number }>>([]);
+  const [soustraitantRows, setSoustraitantRows] = useState<Array<{ company: string; task: string; effectif: number; status: string }>>([]);
 
   const handleAddPersonnelRow = () => {
     setPersonnelRows(prev => [...prev, { category: '', effectif: 0, hNormales: 0, hSup: 0 }]);
@@ -690,31 +1062,70 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   };
 
   const [consommationsRows, setConsommationsRows] = useState<Array<{ article: string; unit: string; prevue: number; consommee: number; ecart: number }>>([]);
+  const [livraisonsRows, setLivraisonsRows] = useState<Array<{ ref: string; supplier: string; qty: string; date: string }>>([]);
+  const [problems, setProblems] = useState<Array<{ type: string; impact: 'Moyen' | 'Faible' | 'Fort' | 'Critique' }>>([]);
 
-  // Synchronisation dynamique automatique des consommations dès que l'activité WBS ou l'objectif change
+  // SYNCHRONISATION MULTI-SECTIONS 100% LIÉE À L'ACTIVITÉ WBS SÉLECTIONNÉE
   React.useEffect(() => {
-    if (currentWbsCode) {
-      const derived = getConsumptionsForWbsActivity(currentWbsCode, currentTargetQty, selectedProject);
-      setConsommationsRows(derived);
-    } else if (projectWbsNodes && projectWbsNodes.length > 0) {
-      const firstCode = projectWbsNodes[0].wbsCode || projectWbsNodes[0].priceNo || projectWbsNodes[0].id;
-      if (firstCode) {
-        const derived = getConsumptionsForWbsActivity(firstCode, currentTargetQty || 10, selectedProject);
-        setConsommationsRows(derived);
-      }
+    const code = currentWbsCode || (projectWbsNodes && projectWbsNodes.length > 0 ? (projectWbsNodes[0].wbsCode || projectWbsNodes[0].priceNo || projectWbsNodes[0].id) : '');
+    if (code) {
+      // 1. Consommations
+      const derivedCons = getConsumptionsForWbsActivity(code, currentTargetQty, selectedProject);
+      setConsommationsRows(derivedCons);
+
+      // 2. Personnel
+      const derivedPers = getPersonnelForWbsActivity(code, currentTargetQty, selectedProject);
+      setPersonnelRows(derivedPers);
+
+      // 3. Matériel & Engins
+      const derivedMat = getMaterielForWbsActivity(code, currentTargetQty, selectedProject);
+      setMaterielRows(derivedMat);
+
+      // 4. Sous-traitance
+      const derivedSt = getSoustraitantsForWbsActivity(code, selectedProject);
+      setSoustraitantRows(derivedSt);
+
+      // 5. Livraisons
+      const derivedLiv = getLivraisonsForWbsActivity(code, selectedProject);
+      setLivraisonsRows(derivedLiv);
+
+      // 6. Problèmes & Contrôles
+      const derivedProb = getProblemsForWbsActivity(code, selectedProject);
+      setProblems(derivedProb);
+
+      // 7. Zone du chantier
+      const derivedZone = getLocationZoneForWbsActivity(code);
+      setLocationZone(derivedZone);
+
+      // 8. Commentaire général & Observations contextualisés
+      const actObj = projectWbsNodes.find(a => (a.wbsCode || a.priceNo || a.id) === code);
+      const actName = actObj?.description || actObj?.name || 'Chantier';
+      setGeneralComment(`Travaux de ${actName} (WBS: ${code}) en cours conformément au planning journalier.`);
+      setObservations(`Exécution conforme aux règles de l'art pour l'activité [${code} - ${actName}]. Mobilisation des équipes et outillages selon la cadence requise.`);
     }
   }, [currentWbsCode, currentTargetQty, selectedProject?.id]);
 
-  // Suggestion automatique proportionnelle de la quantité consommée au fil de la saisie de la quantité réalisée
+  // Suggestion automatique proportionnelle de la consommation et des heures lors de la saisie de la quantité réalisée
   React.useEffect(() => {
     if (currentTargetQty > 0 && numCurrentRealized > 0) {
       const ratio = numCurrentRealized / currentTargetQty;
+      // Ajuster consommations
       setConsommationsRows(prev => prev.map(row => {
         const calculated = Math.round(row.prevue * ratio);
         return {
           ...row,
           consommee: calculated,
           ecart: calculated - row.prevue
+        };
+      }));
+
+      // Ajuster heures matériel
+      setMaterielRows(prev => prev.map(row => {
+        const factor = Math.min(1.2, Math.max(0.4, ratio));
+        return {
+          ...row,
+          hours: Math.round(row.hours * factor * 10) / 10,
+          fuel: Math.round(row.fuel * factor)
         };
       }));
     } else if (numCurrentRealized === 0) {
@@ -725,11 +1136,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       })));
     }
   }, [numCurrentRealized, currentTargetQty]);
-
-  const [livraisonsRows, setLivraisonsRows] = useState<Array<{ ref: string; supplier: string; qty: string; date: string }>>([
-    { ref: 'BL-2026-089-SOCIMAC', supplier: 'SOCIMAC / Ciment CPJ 45', qty: '+150 sac', date: getTodayFrDate() },
-    { ref: 'BL-2026-092-ACI', supplier: 'Aciéries CI / Fer HA 12', qty: '+3,50 t', date: getTodayFrDate() }
-  ]);
 
   const handleAddConsumptionRow = () => {
     setConsommationsRows(prev => [
@@ -744,11 +1150,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       { ref: `BL-${Date.now().toString().slice(-4)}`, supplier: '', qty: '0', date: getTodayFrDate() }
     ]);
   };
-
-  // 5. PROBLÈMES RENCONTRÉS
-  const [problems, setProblems] = useState<Array<{ type: string; impact: 'Moyen' | 'Faible' | 'Fort' | 'Critique' }>>([
-    { type: 'Nouvel incident signalisé', impact: 'Moyen' }
-  ]);
 
   const handleAddProblem = () => {
     setProblems(prev => [
@@ -1640,9 +2041,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       {reportStatus === 'Brouillon' && (
         <div className="space-y-6">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              INFORMATIONS GÉNÉRALES DU CHANTIER
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+                INFORMATIONS GÉNÉRALES DU CHANTIER
+              </h2>
+              {currentWbsCode && (
+                <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[240px]" title={`WBS lié : ${currentWbsCode}`}>
+                  WBS : {currentWbsCode}
+                </span>
+              )}
+            </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Champ Projet */}
@@ -1671,6 +2079,11 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               onChange={e => setLocationZone(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
             >
+              <option value="Zone 1 - Ouvrages de Structure & Radiers">Zone 1 - Ouvrages de Structure & Radiers</option>
+              <option value="Zone Réseau Principal Assainissement & Tranchées">Zone Réseau Principal Assainissement & Tranchées</option>
+              <option value="Plateforme Générale - Nivellement & Décapage">Plateforme Générale - Nivellement & Décapage</option>
+              <option value="Atelier Central de Façonnage & Pose Cages">Atelier Central de Façonnage & Pose Cages</option>
+              <option value="Périphérie Chantier & Base-Vie">Périphérie Chantier & Base-Vie</option>
               <option value="Zone A - Côté Nord">Zone A - Côté Nord</option>
               <option value="Zone B - Côté Sud">Zone B - Côté Sud</option>
               <option value="Base-Vie & Ateliers">Base-Vie & Ateliers</option>
@@ -1978,9 +2391,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-                RESSOURCES UTILISÉES
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+                  RESSOURCES UTILISÉES
+                </h2>
+                {currentWbsCode && (
+                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
+                    WBS : {currentWbsCode}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-4 text-xs font-bold">
                 <button
                   onClick={() => setResourceTab('personnel')}
@@ -2502,9 +2922,18 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         {/* CARD 2 : PROBLÈMES RENCONTRÉS (CHAQUE CHAMP SAISISSABLE & DYNAMIQUE) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
           <div>
-            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider pb-2 border-b border-slate-100">
-              PROBLÈMES RENCONTRÉS
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+                  PROBLÈMES RENCONTRÉS
+                </h2>
+                {currentWbsCode && (
+                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
+                    WBS : {currentWbsCode}
+                  </span>
+                )}
+              </div>
+            </div>
 
             <div className="overflow-x-auto pt-2 space-y-2">
               <table className="w-full text-left text-xs border-collapse">
@@ -2577,9 +3006,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
         {/* CARD 3 : PHOTOS DU CHANTIER * */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider pb-2 border-b border-slate-100">
-            PHOTOS DU CHANTIER *
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+              PHOTOS DU CHANTIER *
+            </h2>
+            {currentWbsCode && (
+              <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
+                WBS : {currentWbsCode}
+              </span>
+            )}
+          </div>
 
           {/* Zone de Glisser-Déposer Upload */}
           <div
@@ -2587,7 +3023,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
             className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-2xl p-4 text-center cursor-pointer hover:bg-blue-50/60 transition"
           >
             <Upload size={22} className="text-blue-600 mx-auto mb-1" />
-            <span className="text-xs font-extrabold text-slate-700 block">Glissez-déposez vos photos ici</span>
+            <span className="text-xs font-extrabold text-slate-700 block">
+              Glissez-déposez vos photos {currentWbsCode ? `pour [${currentWbsCode}]` : 'du chantier'}
+            </span>
             <span className="text-[10px] text-slate-400 font-medium">ou</span>
             <div className="mt-1">
               <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-[11px] font-bold text-blue-600 shadow-2xs inline-block">
@@ -2626,9 +3064,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* OBSERVATIONS & REMARQUES */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-          <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider border-b border-slate-100 pb-2">
-            OBSERVATIONS & REMARQUES
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+              OBSERVATIONS & REMARQUES
+            </h2>
+            {currentWbsCode && (
+              <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
+                WBS : {currentWbsCode}
+              </span>
+            )}
+          </div>
           <textarea
             rows={3}
             value={observations}
@@ -2640,9 +3085,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
         {/* DOCUMENTS JOINTS */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-          <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider border-b border-slate-100 pb-2">
-            DOCUMENTS JOINTS
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+              DOCUMENTS JOINTS
+            </h2>
+            {currentWbsCode && (
+              <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
+                WBS : {currentWbsCode}
+              </span>
+            )}
+          </div>
           <div
             onClick={() => docInputRef.current?.click()}
             className="border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 transition"
@@ -2657,6 +3109,11 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
             </div>
             <input type="file" ref={docInputRef} className="hidden" multiple />
           </div>
+          {currentWbsCode && (
+            <p className="text-[10px] text-slate-500 font-medium">
+              💡 Recommandés : Fiche autocontrôle [{currentWbsCode}], Bons de pesée / livraison, PV d'essais.
+            </p>
+          )}
         </div>
 
         {/* HISTORIQUE */}
