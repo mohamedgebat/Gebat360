@@ -148,72 +148,38 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     checkBackendConnection();
 
+    // Cache des valeurs brutes pour ne déclencher setState QUE SI la chaîne dans localStorage a réellement changé
+    const lastRawCache: Record<string, string | null> = {};
+
     // Écouteur synchrone d'évènement universel pour synchroniser en temps réel multi-onglets / composants / sessions
     const syncStateFromStorage = () => {
       try {
-        const savedProjects = localStorage.getItem('gebat_projects');
-        if (savedProjects) {
-          const parsed = JSON.parse(savedProjects);
-          if (Array.isArray(parsed) && parsed.length > 0) setProjects(parsed);
-        }
-        const savedWbs = localStorage.getItem('gebat_wbs');
-        if (savedWbs) {
-          const parsedWbs = JSON.parse(savedWbs);
-          if (parsedWbs && typeof parsedWbs === 'object') setWbsMap(parsedWbs);
-        }
-        const savedReports = localStorage.getItem('gebat_daily_reports');
-        if (savedReports) {
-          const parsed = JSON.parse(savedReports);
-          if (Array.isArray(parsed)) setDailyReports(parsed);
-        }
-        const savedTasks = localStorage.getItem('gebat_validation_tasks');
-        if (savedTasks) {
-          const parsedTasks = JSON.parse(savedTasks);
-          if (Array.isArray(parsedTasks)) setValidationTasks(parsedTasks);
-        }
-        const savedDA = localStorage.getItem('gebat_purchase_requests');
-        if (savedDA) {
-          const parsedDA = JSON.parse(savedDA);
-          if (Array.isArray(parsedDA)) setPurchaseRequests(parsedDA);
-        }
-        const savedPO = localStorage.getItem('gebat_purchase_orders');
-        if (savedPO) {
-          const parsedPO = JSON.parse(savedPO);
-          if (Array.isArray(parsedPO)) setPurchaseOrders(parsedPO);
-        }
-        const savedReceipts = localStorage.getItem('gebat_receipts');
-        if (savedReceipts) {
-          const parsedRec = JSON.parse(savedReceipts);
-          if (Array.isArray(parsedRec)) setReceipts(parsedRec);
-        }
-        const savedStock = localStorage.getItem('gebat_stock_items');
-        if (savedStock) {
-          const parsedStock = JSON.parse(savedStock);
-          if (Array.isArray(parsedStock)) setStockItems(parsedStock);
-        }
-        const savedMovements = localStorage.getItem('gebat_stock_movements');
-        if (savedMovements) {
-          const parsedMvt = JSON.parse(savedMovements);
-          if (Array.isArray(parsedMvt)) setStockMovements(parsedMvt);
-        }
-        const savedAlerts = localStorage.getItem('gebat_alerts');
-        if (savedAlerts) {
-          const parsedAlerts = JSON.parse(savedAlerts);
-          if (Array.isArray(parsedAlerts)) {
-            const clean = parsedAlerts.filter(a => !isTestAlert(a));
-            setAlerts(clean);
+        const checkAndSync = (key: string, setter: (val: any) => void, transform?: (val: any) => any) => {
+          const raw = localStorage.getItem(key);
+          if (raw !== null && raw !== lastRawCache[key]) {
+            lastRawCache[key] = raw;
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed !== undefined && parsed !== null) {
+                const finalVal = transform ? transform(parsed) : parsed;
+                if (finalVal !== undefined) setter(finalVal);
+              }
+            } catch (e) {}
           }
-        }
-        const savedAudit = localStorage.getItem('gebat_audit_logs');
-        if (savedAudit) {
-          const parsedAudit = JSON.parse(savedAudit);
-          if (Array.isArray(parsedAudit)) setAuditLogs(parsedAudit);
-        }
-        const savedUsers = localStorage.getItem('gebat_users');
-        if (savedUsers) {
-          const parsedUsers = JSON.parse(savedUsers);
-          if (Array.isArray(parsedUsers)) setUsers(parsedUsers);
-        }
+        };
+
+        checkAndSync('gebat_projects', setProjects, p => (Array.isArray(p) && p.length > 0 ? p : undefined));
+        checkAndSync('gebat_wbs', setWbsMap, w => (w && typeof w === 'object' && Object.keys(w).length > 0 ? w : undefined));
+        checkAndSync('gebat_daily_reports', setDailyReports, r => (Array.isArray(r) ? r : undefined));
+        checkAndSync('gebat_validation_tasks', setValidationTasks, t => (Array.isArray(t) ? t : undefined));
+        checkAndSync('gebat_purchase_requests', setPurchaseRequests, d => (Array.isArray(d) ? d : undefined));
+        checkAndSync('gebat_purchase_orders', setPurchaseOrders, po => (Array.isArray(po) ? po : undefined));
+        checkAndSync('gebat_receipts', setReceipts, rc => (Array.isArray(rc) ? rc : undefined));
+        checkAndSync('gebat_stock_items', setStockItems, s => (Array.isArray(s) && s.length > 0 ? s : undefined));
+        checkAndSync('gebat_stock_movements', setStockMovements, m => (Array.isArray(m) ? m : undefined));
+        checkAndSync('gebat_alerts', setAlerts, a => (Array.isArray(a) ? a.filter(al => !isTestAlert(al)) : undefined));
+        checkAndSync('gebat_audit_logs', setAuditLogs, au => (Array.isArray(au) ? au : undefined));
+        checkAndSync('gebat_users', setUsers, u => (Array.isArray(u) && u.length > 0 ? u : undefined));
       } catch (err) {}
     };
 

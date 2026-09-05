@@ -266,13 +266,19 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     isFuture: boolean;
   } | null>(null);
 
+  const projectReports = useMemo(() => {
+    return selectedProjectId === 'ALL'
+      ? dailyReports
+      : dailyReports.filter(r => isReportForProject(r, targetProject));
+  }, [selectedProjectId, dailyReports, targetProject]);
+
   const activeMonthCutoff = useMemo(() => {
-    if (!filteredDailyReports || filteredDailyReports.length === 0) return '2026-08';
-    const dates = filteredDailyReports
+    if (!projectReports || projectReports.length === 0) return '2026-08';
+    const dates = projectReports
       .map(r => normalizeDateToYearMonth(r.date))
       .filter((d): d is string => !!d && d >= '2026-01' && d <= '2027-12');
     return dates.length > 0 ? dates.sort().pop() || '2026-08' : '2026-08';
-  }, [filteredDailyReports]);
+  }, [projectReports]);
 
   // Générateur dynamique de l'échéancier propre du projet ou du portefeuille (startDate -> endDate)
   const dashboardTimeline = useMemo(() => {
@@ -346,11 +352,6 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
 
-    // Ensemble des rapports de production propres au projet / portefeuille (non tronqués par le filtre de période unique)
-    const projectReports = selectedProjectId === 'ALL'
-      ? dailyReports
-      : dailyReports.filter(r => isReportForProject(r, targetProject));
-
     const validReports = projectReports.filter(r => {
       const s = (r.status || '').toUpperCase();
       return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
@@ -377,17 +378,17 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
           return ym ? ym <= m.key : false;
         });
 
-        if (reportsUpToMonth.length === 0) {
-          // RÈGLE ABSOLUE : S'il n'y a pas de valeurs/rapports validés enregistrés à cette date -> STRICTEMENT 0
-          realPct = 0;
-        } else {
+        if (reportsUpToMonth.length > 0) {
           // Calcul exact du cumul d'avancement physique basé exclusivement sur les rapports réels enregistrés
           const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
           
           reportsUpToMonth.forEach(r => {
-            const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase();
+            const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase().replace(/^WBS-/, '');
             if (!wbsProgressMap[wCode]) {
-              const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
+              const node = targetWbsNodes.find((n: any) => {
+                const nCode = String(n.code || n.id || '').toUpperCase().replace(/^WBS-/, '');
+                return nCode === wCode || nCode.includes(wCode) || wCode.includes(nCode);
+              });
               const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 0);
               const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 0);
               wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
@@ -410,8 +411,6 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             const totalReportCost = reportsUpToMonth.reduce((sum, r) => sum + Number(r.totalCost || (Number(r.realizedQty || 0) * Number(r.pu || 0))), 0);
             if (totalReportCost > 0 && totalBudgetDs > 0) {
               realPct = Math.min(100, Number(((totalReportCost / totalBudgetDs) * 100).toFixed(1)));
-            } else {
-              realPct = 0;
             }
           }
         }
@@ -446,7 +445,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isFuture
       };
     });
-  }, [dashboardTimeline, dailyReports, selectedProjectId, targetProject, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
+  }, [dashboardTimeline, projectReports, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
