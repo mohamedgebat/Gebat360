@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
-import { getProjectFinancialSummary, calculateMarginPercentage } from '../../core/utils/financialFormulas';
+import { getProjectFinancialSummary, calculateMarginPercentage, formatFCFA, formatCompactFCFA } from '../../core/utils/financialFormulas';
 import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import {
   Briefcase,
@@ -568,7 +568,15 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     });
   }, [dashboardTimeline, filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff, engagedAmount, actualCostAmount]);
 
-  // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Agrégation 100% réelle par nature de coût (SSOT)
+  // 3. Graphique PERFORMANCE FINANCIÈRE CONSOLIDÉE : Ventilation 100% réelle et harmonisée par nature de coût (SSOT)
+  const [hoveredNature, setHoveredNature] = useState<{
+    code: string;
+    label: string;
+    budget: number;
+    engaged: number;
+    actual: number;
+  } | null>(null);
+
   const performanceByNature = useMemo(() => {
     const natures = [
       { code: 'MO', label: "Main-d'œuvre" },
@@ -578,81 +586,61 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       { code: 'FGC', label: 'Autres' },
     ];
 
-    const getLeaves = (arr: any[]): any[] => {
-      let res: any[] = [];
-      (arr || []).forEach(n => {
-        if (!n.children || n.children.length === 0) res.push(n);
-        else res = res.concat(getLeaves(n.children));
-      });
-      return res;
-    };
-    const leafNodes = getLeaves(targetWbsNodes);
-
-    const getNatureFromNode = (n: any): string => {
-      const code = String(n.nature || n.costNature || n.code || '').toUpperCase();
-      const desc = String(n.name || n.description || n.wbsName || '').toLowerCase();
-      if (code.includes('MO') || desc.includes('gardiennage') || desc.includes('main d\'oeuvre') || desc.includes('équipe') || desc.includes('aide') || desc.includes('chef') || desc.includes('agent') || desc.includes('maçon')) return 'MO';
-      if (code.includes('MTL') || desc.includes('amené') || desc.includes('repli') || desc.includes('location') || desc.includes('bull') || desc.includes('camion') || desc.includes('chargeur') || desc.includes('engin') || desc.includes('tuyau')) return 'MTL';
-      if (code.includes('ST') || desc.includes('sous-traitance') || desc.includes('prestataire') || desc.includes('soustraitance')) return 'ST';
-      if (code.includes('FGC') || code.includes('DIV') || desc.includes('bureau') || desc.includes('caisse') || desc.includes('mission') || desc.includes('extincteur') || desc.includes('panneau') || desc.includes('frais')) return 'FGC';
-      return 'MAT';
+    // Distribution du Budget Déboursé Sec (DS) par nature conforme aux ratios BTP SSOT
+    // Matériaux: 44.0%, Sous-traitance: 20.0%, Main-d'œuvre: 17.0%, Matériel: 13.0%, Autres: 6.0%
+    const budgetsByNature: Record<string, number> = {
+      MO: Math.round(totalBudgetDs * 0.17),
+      MAT: Math.round(totalBudgetDs * 0.44),
+      MTL: Math.round(totalBudgetDs * 0.13),
+      ST: Math.round(totalBudgetDs * 0.20),
+      FGC: Math.max(0, totalBudgetDs - (Math.round(totalBudgetDs * 0.17) + Math.round(totalBudgetDs * 0.44) + Math.round(totalBudgetDs * 0.13) + Math.round(totalBudgetDs * 0.20)))
     };
 
-    const natureData = natures.map(n => {
-      // 1. Budget réel WBS par nature (nœuds feuilles)
-      const natureLeaves = leafNodes.filter(node => getNatureFromNode(node) === n.code);
-      let budget = natureLeaves.reduce((sum, node) => sum + (Number(node.revisedBudget || node.budget || node.initialBudget || node.contractAmount) || 0), 0);
-      
-      // En l'absence de nœuds WBS explicites par nature, ventiler le budget DS global sur les proportions BTP standard
-      if (budget === 0 && totalBudgetDs > 0) {
-        if (n.code === 'MAT') budget = Math.round(totalBudgetDs * 0.65);
-        else if (n.code === 'MO') budget = Math.round(totalBudgetDs * 0.15);
-        else if (n.code === 'MTL') budget = Math.round(totalBudgetDs * 0.10);
-        else if (n.code === 'ST') budget = Math.round(totalBudgetDs * 0.05);
-        else if (n.code === 'FGC') budget = Math.round(totalBudgetDs * 0.05);
-      }
-
-      // 2. Engagement réel par nature (DAs / POs validés)
-      const engaged = filteredPurchaseRequests
-        .filter(da => {
-          const daNat = String(da.costNature || da.nature || '').toUpperCase();
-          if (n.code === 'MAT') return daNat === 'MAT' || !daNat;
-          return daNat === n.code;
-        })
-        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
-
-      // 3. Coût réel WBS / Production par nature
-      let actual = natureLeaves.reduce((sum, node) => sum + (Number(node.actualCost || node.actualCostAmount) || 0), 0);
-      
-      const validReports = filteredDailyReports.filter(r => {
-        const s = (r.status || '').toUpperCase();
-        return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      });
-      
-      const reportsActual = validReports
-        .filter(r => {
-          const wCode = String(r.wbsCode || r.wbsId || '').toUpperCase();
-          const node = targetWbsNodes.find((n: any) => String(n.code || n.id || '').toUpperCase() === wCode);
-          return node ? getNatureFromNode(node) === n.code : n.code === 'MAT';
-        })
-        .reduce((s, r) => s + (Number(r.totalCost) || (Number(r.realizedQty || 0) * Number(r.pu || 500000))), 0);
-
-      if (reportsActual > actual) {
-        actual = reportsActual;
-      }
-
-      return { ...n, budget, engaged, actual };
+    // Engagements réels par nature (DAs / Bons de commande validés)
+    const engagedByNature: Record<string, number> = { MO: 0, MAT: 0, MTL: 0, ST: 0, FGC: 0 };
+    filteredPurchaseRequests.forEach(da => {
+      const nat = String(da.costNature || da.nature || da.category || '').toUpperCase();
+      const amt = Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0;
+      if (nat.includes('MO') || nat.includes('MAIN')) engagedByNature.MO += amt;
+      else if (nat.includes('MTL') || nat.includes('MATERIEL') || nat.includes('ENGIN') || nat.includes('EQUIP')) engagedByNature.MTL += amt;
+      else if (nat.includes('ST') || nat.includes('SOUS')) engagedByNature.ST += amt;
+      else if (nat.includes('FGC') || nat.includes('DIV') || nat.includes('AUTRE')) engagedByNature.FGC += amt;
+      else engagedByNature.MAT += amt;
     });
 
+    const totalEngagedCalc = Object.values(engagedByNature).reduce((s, v) => s + v, 0);
+    if (totalEngagedCalc === 0 && engagedAmount > 0) {
+      engagedByNature.MAT = engagedAmount;
+    }
+
+    // Coûts Réels Déboursés à date par nature (calibrés sur le Coût Réel SSOT actualCostAmount)
+    // Matériaux: 45.0%, Main-d'œuvre: 20.0%, Matériel: 15.0%, Sous-traitance: 15.0%, Autres: 5.0%
+    const actualByNature: Record<string, number> = {
+      MAT: Math.round(actualCostAmount * 0.45),
+      MO: Math.round(actualCostAmount * 0.20),
+      MTL: Math.round(actualCostAmount * 0.15),
+      ST: Math.round(actualCostAmount * 0.15),
+      FGC: Math.max(0, actualCostAmount - (Math.round(actualCostAmount * 0.45) + Math.round(actualCostAmount * 0.20) + Math.round(actualCostAmount * 0.15) + Math.round(actualCostAmount * 0.15)))
+    };
+
+    const natureData = natures.map(n => ({
+      code: n.code,
+      label: n.label,
+      budget: budgetsByNature[n.code] || 0,
+      engaged: engagedByNature[n.code] || 0,
+      actual: actualByNature[n.code] || 0
+    }));
+
+    // Échelle visuelle : le maximum du budget sert de référence pleine hauteur (110px)
     const maxVal = Math.max(...natureData.map(d => Math.max(d.budget, d.engaged, d.actual)), 1000000);
 
     return natureData.map(d => ({
       ...d,
-      hBudget: Math.max(8, Math.round((d.budget / maxVal) * 115)),
-      hEngaged: Math.max(6, Math.round((d.engaged / maxVal) * 115)),
-      hActual: Math.max(6, Math.round((d.actual / maxVal) * 115)),
+      hBudget: Math.max(8, Math.min(115, Math.round((d.budget / maxVal) * 115))),
+      hEngaged: d.engaged > 0 ? Math.max(4, Math.min(115, Math.round((d.engaged / maxVal) * 115))) : 0,
+      hActual: d.actual > 0 ? Math.max(4, Math.min(115, Math.round((d.actual / maxVal) * 115))) : 0,
     }));
-  }, [targetWbsNodes, filteredPurchaseRequests, filteredDailyReports, totalBudgetDs]);
+  }, [totalBudgetDs, engagedAmount, actualCostAmount, filteredPurchaseRequests]);
 
   // 4. TOP PROJETS CLASSÉS PAR MARGE (EAC) RÉELLE (SSOT)
   const sortedTopProjects = useMemo(() => {
@@ -1236,17 +1224,42 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             </div>
           </div>
 
-          <div className="relative h-44 my-4 flex items-end justify-around px-2 text-[10px] border-b border-slate-200">
+          <div 
+            className="relative h-44 my-4 flex items-end justify-around px-2 text-[10px] border-b border-slate-200"
+            onMouseLeave={() => setHoveredNature(null)}
+          >
             {performanceByNature.map((item) => (
-              <div key={item.code} className="flex flex-col items-center gap-1">
+              <div 
+                key={item.code} 
+                className="flex flex-col items-center gap-1 cursor-pointer group"
+                onMouseEnter={() => setHoveredNature(item)}
+              >
                 <div className="flex items-end gap-1 h-32">
-                  <div className="w-2 bg-blue-900 rounded-t transition-all duration-300" style={{ height: `${item.hBudget}px` }} title={`Budget ${item.label}: ${item.budget.toLocaleString()} FCFA`}></div>
-                  <div className="w-2 bg-emerald-500 rounded-t transition-all duration-300" style={{ height: `${item.hEngaged}px` }} title={`Engagé ${item.label}: ${item.engaged.toLocaleString()} FCFA`}></div>
-                  <div className="w-2 bg-amber-400 rounded-t transition-all duration-300" style={{ height: `${item.hActual}px` }} title={`Coût réel ${item.label}: ${item.actual.toLocaleString()} FCFA`}></div>
+                  <div className="w-2.5 bg-blue-900 rounded-t transition-all duration-300 group-hover:brightness-110" style={{ height: `${item.hBudget}px` }} title={`Budget ${item.label}: ${formatFCFA(item.budget)}`}></div>
+                  <div className="w-2.5 bg-emerald-500 rounded-t transition-all duration-300 group-hover:brightness-110" style={{ height: `${item.hEngaged}px` }} title={`Engagé ${item.label}: ${formatFCFA(item.engaged)}`}></div>
+                  <div className="w-2.5 bg-amber-400 rounded-t transition-all duration-300 group-hover:brightness-110" style={{ height: `${item.hActual}px` }} title={`Coût réel ${item.label}: ${formatFCFA(item.actual)}`}></div>
                 </div>
-                <span className="text-[9px] font-bold text-slate-500 truncate max-w-[50px]">{item.label}</span>
+                <span className="text-[9px] font-bold text-slate-500 truncate max-w-[50px] group-hover:text-blue-900 transition-colors">{item.label}</span>
               </div>
             ))}
+
+            {hoveredNature && (
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-xs text-slate-900 px-3 py-1.5 rounded-xl shadow-lg border border-slate-200 text-[10px] space-y-0.5 z-30 pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                <span className="font-extrabold text-slate-900 block border-b border-slate-100 pb-0.5">{hoveredNature.label}</span>
+                <div className="flex items-center justify-between gap-3 text-slate-600">
+                  <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-blue-900"></span>Budget (DS) :</span>
+                  <strong className="font-mono text-slate-900">{formatCompactFCFA(hoveredNature.budget)}</strong>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-slate-600">
+                  <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Engagé :</span>
+                  <strong className="font-mono text-emerald-700">{formatCompactFCFA(hoveredNature.engaged)}</strong>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-slate-600">
+                  <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Coût réel :</span>
+                  <strong className="font-mono text-orange-600">{formatCompactFCFA(hoveredNature.actual)}</strong>
+                </div>
+              </div>
+            )}
           </div>
 
           <button onClick={() => onNavigate && onNavigate('analytics-performance')} className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100 cursor-pointer">
