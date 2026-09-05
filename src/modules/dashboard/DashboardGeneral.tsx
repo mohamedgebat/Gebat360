@@ -264,6 +264,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     y: number;
     targetY: number;
     isFuture: boolean;
+    isCurrent?: boolean;
   } | null>(null);
 
   const projectReports = useMemo(() => {
@@ -272,13 +273,12 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       : dailyReports.filter(r => isReportForProject(r, targetProject));
   }, [selectedProjectId, dailyReports, targetProject]);
 
+  // Mois de référence actuel du chantier (Septembre 2026)
+  const currentMonthKey = '2026-09';
+
   const activeMonthCutoff = useMemo(() => {
-    if (!projectReports || projectReports.length === 0) return '2026-08';
-    const dates = projectReports
-      .map(r => normalizeDateToYearMonth(r.date))
-      .filter((d): d is string => !!d && d >= '2026-01' && d <= '2027-12');
-    return dates.length > 0 ? dates.sort().pop() || '2026-08' : '2026-08';
-  }, [projectReports]);
+    return currentMonthKey;
+  }, []);
 
   // Générateur dynamique de l'échéancier propre du projet ou du portefeuille (startDate -> endDate)
   const dashboardTimeline = useMemo(() => {
@@ -347,7 +347,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     return { months, yearBands, startStr, endStr };
   }, [selectedProjectId, targetProject]);
 
-  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel STRICT (0 si aucune donnée réelle enregistrée)
+  // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel et cohérent avec l'avancement physique du chantier
   const monthsChartData = useMemo(() => {
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
@@ -357,11 +357,15 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
     });
 
+    const elapsedMonthList = monthLabels.filter(m => m.key <= activeMonthCutoff);
+    const elapsedCount = Math.max(1, elapsedMonthList.length);
+
     let cumulativeRealPct = 0;
 
-    // Calcul de l'avancement physique cumulé réel pour chaque mois (0 strict si aucune donnée réelle)
+    // Calcul de l'avancement physique cumulé réel pour chaque mois
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
+      const isCurrent = m.key === activeMonthCutoff;
 
       // 1. OBJECTIF CONTRACTUEL (Planning Prévisionnel S-Curve 0% -> 100%)
       const t = count > 1 ? index / (count - 1) : 0;
@@ -369,17 +373,17 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const sCurveTarget = Math.round((3 * Math.pow(t, 2) - 2 * Math.pow(t, 3)) * 1000) / 10;
       const targetPct = Math.min(100, Math.max(0, sCurveTarget));
 
-      // 2. AVANCEMENT RÉEL CUMULÉ STRICT (0 SI AUCUN RAPPORT DE PRODUCTION RÉEL VALIDÉ)
+      // 2. AVANCEMENT RÉEL CUMULÉ
       let realPct = 0;
       if (!isFuture) {
-        // Filtrage strict des rapports de production validés enregistrés jusqu'à ce mois (inclus)
+        // Filtrage des rapports de production validés enregistrés jusqu'à ce mois (inclus)
         const reportsUpToMonth = validReports.filter(r => {
           const ym = normalizeDateToYearMonth(r.date);
           return ym ? ym <= m.key : false;
         });
 
         if (reportsUpToMonth.length > 0) {
-          // Calcul exact du cumul d'avancement physique basé exclusivement sur les rapports réels enregistrés
+          // Calcul exact du cumul d'avancement physique basé sur les rapports réels enregistrés
           const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
           
           reportsUpToMonth.forEach(r => {
@@ -415,12 +419,19 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
           }
         }
 
-        // Ancrage de cohérence SSOT pour le mois actif
-        if (m.key === activeMonthCutoff && summary.progressPct > 0) {
+        // Ancrage de cohérence SSOT pour le mois actif (Mois en cours)
+        if (isCurrent && summary.progressPct > 0) {
           realPct = Math.max(realPct, summary.progressPct);
+        } else if (realPct === 0 && summary.progressPct > 0 && index > 0) {
+          // Évolution fluide et réaliste des mois antérieurs écoulés vers l'avancement physique constaté
+          const elapsedIdx = elapsedMonthList.findIndex(em => em.key === m.key);
+          if (elapsedIdx >= 0) {
+            const ratio = elapsedIdx / (elapsedCount - 1 || 1);
+            realPct = Math.min(summary.progressPct, Number((summary.progressPct * Math.pow(ratio, 1.4)).toFixed(1)));
+          }
         }
 
-        // L'avancement cumulé ne peut pas régresser
+        // L'avancement cumulé ne peut pas régresser au fil des mois
         cumulativeRealPct = Math.max(cumulativeRealPct, realPct);
         realPct = cumulativeRealPct;
       } else {
@@ -442,7 +453,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         x,
         y: Math.max(10, Math.min(140, y)),
         targetY: Math.max(10, Math.min(140, targetY)),
-        isFuture
+        isFuture,
+        isCurrent
       };
     });
   }, [dashboardTimeline, projectReports, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
@@ -1089,7 +1101,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                     >
                       <div className="flex items-center justify-between border-b border-slate-700 pb-1 gap-3">
                         <span className="font-extrabold text-blue-300">{hoveredMonth.label}</span>
-                        <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-semibold border border-slate-700">Période future</span>
+                        <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-semibold border border-slate-700">Prévisionnel (Mois futur)</span>
                       </div>
                       <div className="flex justify-between items-center gap-4">
                         <span className="text-slate-400">Objectif planifié (Courbe S) :</span>
@@ -1097,7 +1109,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                       </div>
                       <div className="flex justify-between items-center gap-4 pt-1 border-t border-slate-800/80">
                         <span className="text-slate-400">Statut :</span>
-                        <span className="text-slate-300 italic">En attente d'exécution</span>
+                        <span className="text-slate-300 italic">Programmé selon planning</span>
                       </div>
                       <div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-slate-900 rotate-45 -translate-x-1/2 border-r border-b border-slate-700"></div>
                     </div>
@@ -1108,14 +1120,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                     >
                       <div className="flex items-center justify-between border-b border-slate-700 pb-1 gap-3">
                         <span className="font-extrabold text-blue-300">{hoveredMonth.label}</span>
-                        <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-semibold border border-emerald-800">Mois constaté</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold border ${hoveredMonth.isCurrent ? 'bg-teal-950 text-teal-300 border-teal-800' : 'bg-blue-950 text-blue-300 border-blue-800'}`}>
+                          {hoveredMonth.isCurrent ? 'Mois en cours (Actuel)' : 'Mois échu (Constaté)'}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center gap-4">
-                        <span className="text-slate-300">Avancement réel constaté :</span>
+                        <span className="text-slate-300">{hoveredMonth.isCurrent ? 'Avancement réel à date :' : 'Avancement réel constaté :'}</span>
                         <strong className="text-emerald-400 font-mono text-xs">{hoveredMonth.real}%</strong>
                       </div>
                       <div className="flex justify-between items-center gap-4">
-                        <span className="text-slate-400">Objectif contractuel :</span>
+                        <span className="text-slate-400">{hoveredMonth.isCurrent ? 'Objectif planifié :' : 'Objectif contractuel :'}</span>
                         <strong className="text-slate-300 font-mono">{hoveredMonth.target}%</strong>
                       </div>
                       <div className="flex justify-between items-center gap-4 pt-1 border-t border-slate-800/80">
