@@ -89,34 +89,34 @@ export const StockModule: React.FC = () => {
     name: '',
     category: 'Matériaux Liants',
     unit: 'sacs',
-    warehouse: 'Magasin Bingerville (Chantier)',
-    minThreshold: 50,
-    currentStock: 100,
-    averageUnitPrice: 4800,
+    warehouse: '',
+    minThreshold: 0,
+    currentStock: 0,
+    averageUnitPrice: 0,
   });
 
   // ÉTATS DE SAISIE DE MOUVEMENT
   const [movementType, setMovementType] = useState<StockMovementType>('Entrée');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
-  const [movementWarehouse, setMovementWarehouse] = useState<string>('Magasin Bingerville (Chantier)');
-  const [destinationWarehouse, setDestinationWarehouse] = useState<string>('Magasin Songon (Chantier)');
-  const [movementQty, setMovementQty] = useState<number>(50);
+  const [movementWarehouse, setMovementWarehouse] = useState<string>('');
+  const [destinationWarehouse, setDestinationWarehouse] = useState<string>('');
+  const [movementQty, setMovementQty] = useState<number>(0);
   const [movementUnitPrice, setMovementUnitPrice] = useState<number>(0);
   const [wbsCode, setWbsCode] = useState<string>('');
-  const [activityName, setActivityName] = useState<string>('Béton armé pour Voiles & Radiers bassins');
-  const [sourceDoc, setSourceDoc] = useState<string>('BL-2026-089-SOCIMAC');
-  const [notes, setNotes] = useState<string>('Livraison conforme avec vérification bon de livraison');
+  const [activityName, setActivityName] = useState<string>('');
+  const [sourceDoc, setSourceDoc] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
 
   // ÉTATS DE SAISIE INVENTAIRE PHYSIQUE
   const [inventoryWarehouse, setInventoryWarehouse] = useState<string>('TOUS');
   const [inventoryCounts, setInventoryCounts] = useState<Record<string, number>>({});
-  const [inventoryJustification, setInventoryJustification] = useState<string>('Ajustement suite au comptage physique périodique');
+  const [inventoryJustification, setInventoryJustification] = useState<string>('');
 
   // ÉTATS DE SAISIE RÉSERVATION
-  const [reservedQty, setReservedQty] = useState<number>(20);
+  const [reservedQty, setReservedQty] = useState<number>(0);
   const [reservedForProject, setReservedForProject] = useState<string>(selectedProject?.id || '');
   const [reservationWbs, setReservationWbs] = useState<string>('');
-  const [reservationNotes, setReservationNotes] = useState<string>('Réservation pour coulage béton prévu sous 48h');
+  const [reservationNotes, setReservationNotes] = useState<string>('');
 
   // Auto-initialisation des sélections par défaut quand les articles et projets sont chargés
   React.useEffect(() => {
@@ -775,10 +775,10 @@ export const StockModule: React.FC = () => {
                 name: '',
                 category: 'Matériaux Liants',
                 unit: 'sacs',
-                warehouse: warehouses[0]?.name || 'Magasin Bingerville (Chantier)',
-                minThreshold: 50,
-                currentStock: 100,
-                averageUnitPrice: 4800,
+                warehouse: warehouses[0]?.name || '',
+                minThreshold: 0,
+                currentStock: 0,
+                averageUnitPrice: 0,
               });
               setShowAddArticleModal(true);
             }}

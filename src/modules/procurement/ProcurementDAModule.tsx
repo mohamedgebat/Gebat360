@@ -1372,7 +1372,7 @@ export const ProcurementDAModule: React.FC<ProcurementDAModuleProps> = ({
                           {da.code}
                         </td>
                         <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                          {da.createdAt || '08/08/2026'}
+                          {da.createdAt || '—'}
                         </td>
                         <td className="py-3 px-3 font-bold text-slate-800">
                           {da.projectName || selectedProject?.name}
@@ -1471,7 +1471,7 @@ export const ProcurementDAModule: React.FC<ProcurementDAModuleProps> = ({
                     Fiche Demande d'Achat : <span className="font-mono text-blue-600">{viewingDA.code}</span>
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Créée le {viewingDA.createdAt || '08/08/2026'} par <strong>{viewingDA.createdBy || 'Demandeur'}</strong>
+                    Créée le {viewingDA.createdAt || '—'} par <strong>{viewingDA.createdBy || 'Demandeur'}</strong>
                   </p>
                 </div>
               </div>
