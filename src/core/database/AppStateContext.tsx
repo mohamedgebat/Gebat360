@@ -578,16 +578,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter((item: any) => !String(item.id || '').startsWith('STK-'));
+          return clean;
+        }
       } catch (e) {}
     }
     return INITIAL_STOCK_ITEMS;
   });
 
   useEffect(() => {
-    if (stockItems.length > 0) {
-      localStorage.setItem('gebat_stock_items', JSON.stringify(stockItems));
-    }
+    localStorage.setItem('gebat_stock_items', JSON.stringify(stockItems));
   }, [stockItems]);
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() => {
@@ -612,7 +613,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const clean = parsed.filter((da: any) => !String(da.id || '').startsWith('DA-2026-00'));
+            return clean;
+          }
         } catch (e) {}
       }
     }
@@ -620,9 +624,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    if (purchaseRequests.length > 0) {
-      safeSaveToStorage('gebat_purchase_requests', purchaseRequests);
-    }
+    safeSaveToStorage('gebat_purchase_requests', purchaseRequests);
   }, [purchaseRequests]);
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
@@ -631,7 +633,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const clean = parsed.filter((po: any) => !String(po.id || '').startsWith('PO-2026-') && !String(po.id || '').startsWith('BC-GEBAT-'));
+            return clean;
+          }
         } catch (e) {}
       }
     }
@@ -639,9 +644,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    if (purchaseOrders.length > 0) {
-      safeSaveToStorage('gebat_purchase_orders', purchaseOrders);
-    }
+    safeSaveToStorage('gebat_purchase_orders', purchaseOrders);
   }, [purchaseOrders]);
 
   const [receipts, setReceipts] = useState<GoodsReceipt[]>(() => {
@@ -667,16 +670,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter((m: any) => !String(m.id || '').startsWith('MVT-2026-'));
+          return clean;
+        }
       } catch (e) {}
     }
     return INITIAL_STOCK_MOVEMENTS;
   });
 
   useEffect(() => {
-    if (stockMovements.length > 0) {
-      localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
-    }
+    localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
     const saved = localStorage.getItem('gebat_daily_reports');

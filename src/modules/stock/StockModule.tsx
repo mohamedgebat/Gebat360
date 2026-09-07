@@ -188,9 +188,9 @@ export const StockModule: React.FC = () => {
       return false;
     });
 
-    const recommended = matches.length > 0 ? matches : [stockItems[0]];
-    const otherItems = stockItems.filter(i => !recommended.some(r => r.id === i.id));
-    const allOrdered = [...recommended, ...otherItems];
+    const recommended = matches.length > 0 ? matches : (stockItems.length > 0 ? [stockItems[0]] : []);
+    const otherItems = stockItems.filter(i => i && !recommended.some(r => r && r.id === i.id));
+    const allOrdered = [...recommended, ...otherItems].filter(Boolean);
 
     const plannedQty = Math.round(node?.plannedQty || 50);
 
