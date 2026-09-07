@@ -459,12 +459,17 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     });
   }, [dashboardTimeline, projectReports, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
 
-  // 2. Graphique ÉVOLUTION DES COÛTS (12 DERNIERS MOIS) : Données 100% réelles filtrées par projet
+  // 2. Graphique ÉVOLUTION DES COÛTS : Données 100% réelles filtrées par projet (EVM / SSOT)
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
     label: string;
+    monthName: string;
+    year: string;
+    key: string;
     budget: number;
     engaged: number;
     actual: number;
+    isFuture: boolean;
+    isCurrent: boolean;
   } | null>(null);
 
   const maxCostScale = useMemo(() => {
@@ -473,71 +478,50 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   }, [totalBudgetDs, engagedAmount, actualCostAmount]);
 
   const costMonthsData = useMemo(() => {
-    const monthLabels = [
-      { label: 'Fév 26', monthName: 'Fév', year: '2026', key: '2026-02' },
-      { label: 'Mar 26', monthName: 'Mar', year: '2026', key: '2026-03' },
-      { label: 'Avr 26', monthName: 'Avr', year: '2026', key: '2026-04' },
-      { label: 'Mai 26', monthName: 'Mai', year: '2026', key: '2026-05' },
-      { label: 'Juin 26', monthName: 'Juin', year: '2026', key: '2026-06' },
-      { label: 'Juil 26', monthName: 'Juil', year: '2026', key: '2026-07' },
-      { label: 'Aoû 26', monthName: 'Aoû', year: '2026', key: '2026-08' },
-      { label: 'Sep 26', monthName: 'Sep', year: '2026', key: '2026-09' },
-      { label: 'Oct 26', monthName: 'Oct', year: '2026', key: '2026-10' },
-      { label: 'Nov 26', monthName: 'Nov', year: '2026', key: '2026-11' },
-      { label: 'Déc 26', monthName: 'Déc', year: '2026', key: '2026-12' },
-      { label: 'Jan 27', monthName: 'Jan', year: '2027', key: '2027-01' },
-    ];
+    const monthLabels = dashboardTimeline.months;
+    const count = monthLabels.length;
+
+    const validReports = filteredDailyReports.filter(r => {
+      const s = (r.status || '').toUpperCase();
+      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+    });
 
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;
+      const isCurrent = m.key === activeMonthCutoff;
 
-      // 1. Budget prévu cumulé calculé selon l'échéancier réel et la courbe d'engagement prévisionnelle (Baseline S-Curve)
-      let budget = 0;
-      const startKey = dashboardTimeline.months[0]?.key || '2026-06';
-      const endKey = dashboardTimeline.months[dashboardTimeline.months.length - 1]?.key || '2027-09';
+      // 1. Budget prévu cumulé calculé selon l'échéancier réel et la courbe de référence S-Curve BTP (Baseline S-Curve)
+      const t = count > 1 ? index / (count - 1) : 1;
+      const sFactor = 3 * Math.pow(t, 2) - 2 * Math.pow(t, 3);
+      const budget = Math.round(totalBudgetDs * sFactor);
 
-      if (m.key < startKey) {
-        budget = 0;
-      } else if (m.key >= endKey) {
-        budget = totalBudgetDs;
-      } else {
-        const totalDuration = Math.max(1, dashboardTimeline.months.length - 1);
-        const currentStep = dashboardTimeline.months.findIndex(mon => mon.key === m.key);
-        const t = Math.max(0, Math.min(1, (currentStep >= 0 ? currentStep : index) / totalDuration));
-        const sFactor = 3 * Math.pow(t, 2) - 2 * Math.pow(t, 3);
-        budget = Math.round(totalBudgetDs * sFactor);
-      }
-
-      // 2. Engagements réels créés jusqu'à cette date (DAs / POs)
-      const monthEngaged = filteredPurchaseRequests
-        .filter(da => {
+      // 2. Engagements réels créés jusqu'à cette date (DAs / Bons de commande issus de la BD)
+      let finalEngaged = 0;
+      if (!isFuture) {
+        const daList = filteredPurchaseRequests.filter(da => {
           const dateStr = String(da.createdAt || da.desiredDate || '');
-          if (!dateStr) return true;
+          if (!dateStr) return false;
           const ym = normalizeDateToYearMonth(dateStr);
           return ym ? ym <= m.key : false;
-        })
-        .reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
+        });
+        const monthEngaged = daList.reduce((sum, da) => sum + (Number(da.estimatedTotal || da.estimatedAmount || da.totalAmount) || 0), 0);
+        finalEngaged = (isCurrent && monthEngaged === 0 && engagedAmount > 0) ? engagedAmount : monthEngaged;
+      }
 
-      const finalEngaged = !isFuture && m.key === activeMonthCutoff && monthEngaged === 0 ? engagedAmount : monthEngaged;
-
-      // 3. Coût réel cumulé (0 strict s'il n'y a pas de rapports de production validés à cette date)
+      // 3. Coût réel cumulé issu des rapports journaliers de production validés de la base de données
       let actual = 0;
       if (!isFuture) {
-        const monthReports = filteredDailyReports.filter(r => {
+        const monthReports = validReports.filter(r => {
           const ym = normalizeDateToYearMonth(r.date);
           return ym ? ym <= m.key : false;
         });
-        const validReports = monthReports.filter(r => {
-          const s = (r.status || '').toUpperCase();
-          return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-        });
 
-        if (validReports.length === 0) {
-          actual = 0; // Strictement 0 si aucun rapport validé n'est enregistré à cette date
-        } else if (m.key === activeMonthCutoff) {
+        if (monthReports.length === 0) {
+          actual = isCurrent ? actualCostAmount : 0;
+        } else if (isCurrent && actualCostAmount > 0) {
           actual = actualCostAmount;
         } else {
-          actual = validReports.reduce((s, r) => {
+          actual = monthReports.reduce((s, r) => {
             let cost = Number(r.totalCost);
             const qte = Number(r.realizedQty) || 0;
             const pu = Number(r.pu) || 0;
@@ -547,7 +531,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         }
       }
 
-      const x = Math.round((index / 11) * 360);
+      const x = Math.round((index / (count - 1 || 1)) * 395);
       const yBudget = Math.round(115 - (budget / maxCostScale) * 100);
       const yEngaged = Math.round(115 - (finalEngaged / maxCostScale) * 100);
       const yActual = Math.round(115 - (actual / maxCostScale) * 100);
@@ -556,6 +540,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         label: m.label,
         monthName: m.monthName,
         year: m.year,
+        key: m.key,
         budget,
         engaged: finalEngaged,
         actual,
@@ -563,7 +548,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         yBudget: Math.max(10, Math.min(115, yBudget)),
         yEngaged: Math.max(10, Math.min(115, yEngaged)),
         yActual: Math.max(10, Math.min(112, yActual)),
-        isFuture
+        isFuture,
+        isCurrent
       };
     });
   }, [dashboardTimeline, filteredDailyReports, filteredPurchaseRequests, totalBudgetDs, maxCostScale, activeMonthCutoff, engagedAmount, actualCostAmount]);
@@ -1404,7 +1390,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">ÉVOLUTION DES COÛTS (12 DERNIERS MOIS)</h3>
+              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">ÉVOLUTION DES COÛTS & ENGAGEMENTS</h3>
               <DataInsight metricId="suivi_depenses" title="Évolution Chronologique des Coûts & Engagements" context={{ totalBudgetDs, engagedAmount, actualCostAmount }} onNavigate={onNavigate} />
             </div>
             <div className="flex items-center gap-4 text-[11px] font-bold">
@@ -1447,7 +1433,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                       className="h-full flex-1 cursor-pointer flex justify-center items-center group"
                       onMouseEnter={() => setHoveredCostMonth(item)}
                     >
-                      {hoveredCostMonth?.label === item.label && (
+                      {hoveredCostMonth?.key === item.key && (
                         <div className="w-0.5 h-full bg-blue-500/30 border-r border-dashed border-blue-500 pointer-events-none"></div>
                       )}
                     </div>
@@ -1463,10 +1449,12 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                   </defs>
 
                   {/* AIRE DÉGRADÉE D'ORANGE DYNAMIQUE (Uniquement mois échus jusqu'à la production réelle) */}
-                  <polygon
-                    fill="url(#orangeGradient)"
-                    points={`0,120 ${costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yActual}`).join(' ')} ${costMonthsData.filter(pt => !pt.isFuture).pop()?.x || 0},120`}
-                  />
+                  {costMonthsData.filter(pt => !pt.isFuture).length > 0 && (
+                    <polygon
+                      fill="url(#orangeGradient)"
+                      points={`${costMonthsData[0]?.x || 0},120 ${costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yActual}`).join(' ')} ${costMonthsData.filter(pt => !pt.isFuture).pop()?.x || 0},120`}
+                    />
+                  )}
 
                   {/* 1. COURBE BUDGET (DS) - LIGNE BLEUE FINE EN POINTILLÉS (Planning baseline) */}
                   <polyline
@@ -1477,37 +1465,44 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                     points={costMonthsData.map(pt => `${pt.x},${pt.yBudget}`).join(' ')}
                   />
 
-                  {/* 2. COURBE ENGAGÉ - LIGNE VERTE FINE (Uniquement mois échus) */}
-                  <polyline
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yEngaged}`).join(' ')}
-                  />
+                  {/* 2. COURBE ENGAGÉ - LIGNE VERTE FINE (Uniquement mois échus et mois en cours) */}
+                  {costMonthsData.filter(pt => !pt.isFuture).length > 1 && (
+                    <polyline
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yEngaged}`).join(' ')}
+                    />
+                  )}
 
-                  {/* 3. COURBE COÛT RÉEL - LIGNE ORANGE FINE (Uniquement mois échus enregistrés) */}
-                  <polyline
-                    fill="none"
-                    stroke="#f97316"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yActual}`).join(' ')}
-                  />
+                  {/* 3. COURBE COÛT RÉEL - LIGNE ORANGE FINE (Uniquement mois échus et mois en cours) */}
+                  {costMonthsData.filter(pt => !pt.isFuture).length > 1 && (
+                    <polyline
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={costMonthsData.filter(pt => !pt.isFuture).map(pt => `${pt.x},${pt.yActual}`).join(' ')}
+                    />
+                  )}
 
-                  {/* POINTS LÉGERS SUR LES INTERSECTIONS DYNAMIKES (Uniquement mois échus) */}
-                  {costMonthsData.filter(pt => !pt.isFuture).map((pt, idx) => {
-                    const isSelected = hoveredCostMonth?.label === pt.label;
+                  {/* POINTS LÉGERS SUR LES INTERSECTIONS DYNAMIQUES */}
+                  {costMonthsData.map((pt, idx) => {
+                    const isSelected = hoveredCostMonth?.key === pt.key;
                     return (
                       <g key={idx}>
-                        {/* Budget (losange bleu fin) */}
+                        {/* Budget (losange bleu fin sur tous les points de jalon) */}
                         <rect x={pt.x - 2} y={pt.yBudget - 2} width="4" height="4" fill="#1e3a8a" transform={`rotate(45 ${pt.x} ${pt.yBudget})`} />
-                        {/* Engagé (point vert fin) */}
-                        <circle cx={pt.x} cy={pt.yEngaged} r={isSelected ? "3.5" : "2"} fill="#10b981" />
-                        {/* Coût réel (point orange fin) */}
-                        <circle cx={pt.x} cy={pt.yActual} r={isSelected ? "4" : "2.5"} fill="#f97316" stroke="#ffffff" strokeWidth="1" />
+                        {/* Engagé et Coût réel (uniquement sur mois échus et en cours) */}
+                        {!pt.isFuture && (
+                          <>
+                            <circle cx={pt.x} cy={pt.yEngaged} r={isSelected ? "3.5" : "2"} fill="#10b981" />
+                            <circle cx={pt.x} cy={pt.yActual} r={isSelected ? "4" : "2.5"} fill="#f97316" stroke="#ffffff" strokeWidth="1" />
+                          </>
+                        )}
                       </g>
                     );
                   })}
@@ -1516,9 +1511,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                 {/* INFOBULLE COMPACTE LÉGÈRE 100% INTÉGRÉE DANS LA CARTE */}
                 {hoveredCostMonth ? (
                   (() => {
-                    const hoveredIndex = costMonthsData.findIndex(d => d.label === hoveredCostMonth.label);
-                    const isRight = hoveredIndex >= 6;
-                    const formatAmt = (amt: number) => {
+                    const hoveredIndex = costMonthsData.findIndex(d => d.key === hoveredCostMonth.key);
+                    const isRight = hoveredIndex >= costMonthsData.length / 2;
+                    const formatAmt = (amt: number, isFut: boolean) => {
+                      if (isFut) return '— (Non échu)';
+                      if (amt >= 1000000000) return `${(amt / 1e9).toFixed(2)} Mds FCFA`;
+                      if (amt >= 1000000) return `${(amt / 1e6).toFixed(1)} M FCFA`;
+                      if (amt > 0) return `${new Intl.NumberFormat('fr-FR').format(Math.round(amt))} FCFA`;
+                      return `0 FCFA`;
+                    };
+                    const formatBudgetAmt = (amt: number) => {
                       if (amt >= 1000000000) return `${(amt / 1e9).toFixed(2)} Mds FCFA`;
                       if (amt >= 1000000) return `${(amt / 1e6).toFixed(1)} M FCFA`;
                       if (amt > 0) return `${new Intl.NumberFormat('fr-FR').format(Math.round(amt))} FCFA`;
@@ -1527,66 +1529,82 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
                     return (
                       <div
                         className={`absolute bg-white/95 backdrop-blur-xs text-slate-900 px-3 py-2 rounded-xl shadow-lg border border-slate-200 text-[10px] space-y-1 z-30 pointer-events-none transition-all duration-150 ${isRight ? '-translate-x-full' : ''}`}
-                        style={{ left: isRight ? `${(hoveredIndex / 11) * 70 + 25}%` : `${(hoveredIndex / 11) * 70 + 5}%`, top: '8px' }}
+                        style={{ left: isRight ? `${(hoveredIndex / (costMonthsData.length - 1 || 1)) * 60 + 25}%` : `${(hoveredIndex / (costMonthsData.length - 1 || 1)) * 60 + 5}%`, top: '8px' }}
                       >
-                        <span className="font-extrabold text-slate-900 block text-[10.5px] border-b border-slate-100 pb-0.5 whitespace-nowrap">{hoveredCostMonth.label}</span>
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-0.5">
+                          <span className="font-extrabold text-slate-900 block text-[10.5px] whitespace-nowrap">{hoveredCostMonth.label}</span>
+                          <span className={`text-[8.5px] px-1.5 py-0.2 rounded font-bold ${hoveredCostMonth.isCurrent ? 'bg-blue-100 text-blue-800' : hoveredCostMonth.isFuture ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {hoveredCostMonth.isCurrent ? 'Mois en cours' : hoveredCostMonth.isFuture ? 'Prévisionnel' : 'Réalisé'}
+                          </span>
+                        </div>
                         <div className="flex items-center justify-between gap-3 whitespace-nowrap">
                           <span className="flex items-center gap-1 font-semibold text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-blue-900"></span>Budget (DS) :</span>
-                          <strong className="font-mono text-slate-900 font-extrabold">{formatAmt(hoveredCostMonth.budget)}</strong>
+                          <strong className="font-mono text-slate-900 font-extrabold">{formatBudgetAmt(hoveredCostMonth.budget)}</strong>
                         </div>
                         <div className="flex items-center justify-between gap-3 whitespace-nowrap">
                           <span className="flex items-center gap-1 font-semibold text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Engagé :</span>
-                          <strong className="font-mono text-emerald-700 font-extrabold">{formatAmt(hoveredCostMonth.engaged)}</strong>
+                          <strong className="font-mono text-emerald-700 font-extrabold">{formatAmt(hoveredCostMonth.engaged, hoveredCostMonth.isFuture)}</strong>
                         </div>
                         <div className="flex items-center justify-between gap-3 whitespace-nowrap">
                           <span className="flex items-center gap-1 font-semibold text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Coût réel :</span>
-                          <strong className="font-mono text-orange-600 font-extrabold">{formatAmt(hoveredCostMonth.actual)}</strong>
+                          <strong className="font-mono text-orange-600 font-extrabold">{formatAmt(hoveredCostMonth.actual, hoveredCostMonth.isFuture)}</strong>
                         </div>
                       </div>
                     );
                   })()
                 ) : (
-                  /* BULLE PAR DÉFAUT SUR LE MOIS COURANT À DATE (JUILLET 2026) */
+                  /* BULLE PAR DÉFAUT SUR LE MOIS COURANT À DATE */
                   <div 
                     className="absolute bg-white/95 backdrop-blur-xs text-slate-900 px-3 py-2 rounded-xl shadow-lg border border-slate-200 text-[10px] space-y-1 z-20 pointer-events-none -translate-x-1/2"
                     style={{ left: '45%', top: '8px' }}
                   >
-                    <span className="font-extrabold text-slate-900 block text-[10.5px] border-b border-slate-100 pb-0.5 whitespace-nowrap">Juillet 2026 (À date)</span>
+                    <span className="font-extrabold text-slate-900 block text-[10.5px] border-b border-slate-100 pb-0.5 whitespace-nowrap">
+                      {dashboardTimeline.months.find(m => m.key === activeMonthCutoff)?.label || 'Septembre 2026'} (À date)
+                    </span>
                     <div className="flex items-center justify-between gap-3 text-slate-600 whitespace-nowrap">
                       <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-blue-900"></span>Budget (DS) :</span>
-                      <strong className="font-mono text-slate-900">{(totalBudgetDs / 1e9).toFixed(2)} Mds FCFA</strong>
+                      <strong className="font-mono text-slate-900 font-extrabold">
+                        {totalBudgetDs >= 1e9 ? `${(totalBudgetDs / 1e9).toFixed(2)} Mds FCFA` : `${(totalBudgetDs / 1e6).toFixed(1)} M FCFA`}
+                      </strong>
                     </div>
                     <div className="flex items-center justify-between gap-3 text-slate-600 whitespace-nowrap">
                       <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Engagé :</span>
-                      <strong className="font-mono text-emerald-700">{(engagedAmount / 1e9).toFixed(2)} Mds FCFA</strong>
+                      <strong className="font-mono text-emerald-700 font-extrabold">
+                        {engagedAmount >= 1e9 ? `${(engagedAmount / 1e9).toFixed(2)} Mds FCFA` : `${(engagedAmount / 1e6).toFixed(1)} M FCFA`}
+                      </strong>
                     </div>
                     <div className="flex items-center justify-between gap-3 text-slate-600 whitespace-nowrap">
                       <span className="flex items-center gap-1 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Coût réel :</span>
-                      <strong className="font-mono text-orange-600 font-extrabold">{(actualCostAmount / 1e6).toFixed(2)} M FCFA</strong>
+                      <strong className="font-mono text-orange-600 font-extrabold">
+                        {actualCostAmount >= 1e9 ? `${(actualCostAmount / 1e9).toFixed(2)} Mds FCFA` : `${(actualCostAmount / 1e6).toFixed(1)} M FCFA`}
+                      </strong>
                     </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* AXE X DES MOIS SANS RÉTATION 26/27 ET BANDE DES ANNÉES COULORÉES */}
+            {/* AXE X DES MOIS ET BANDE DES ANNÉES */}
             <div className="space-y-1 pl-8 pt-2">
               <div className="flex justify-between text-[9.5px] font-extrabold text-slate-600">
                 {costMonthsData.map(m => (
-                  <span key={m.label} className={m.monthName === 'Juil' ? 'text-blue-900 font-black' : ''}>
+                  <span key={m.key} className={m.isCurrent ? 'text-blue-900 font-black underline' : ''}>
                     {m.monthName}
                   </span>
                 ))}
               </div>
 
-              {/* BANDE D'ANNÉES 2026 ET 2027 DISTINCTES AVEC COULEURS */}
+              {/* BANDE D'ANNÉES DYNAMIQUES DU PROJET */}
               <div className="flex justify-between items-center gap-1 pt-0.5">
-                <div className="flex-1 bg-blue-600 text-white font-extrabold text-[9px] py-0.5 rounded text-center shadow-2xs tracking-wider">
-                  2026
-                </div>
-                <div className="w-[8%] bg-amber-500 text-white font-extrabold text-[9px] py-0.5 rounded text-center shadow-2xs tracking-wider">
-                  2027
-                </div>
+                {dashboardTimeline.yearBands.map((yb, idx) => (
+                  <div 
+                    key={yb.year} 
+                    style={{ width: `${yb.pct}%` }} 
+                    className={`${idx % 2 === 0 ? 'bg-blue-600' : 'bg-amber-500'} text-white font-extrabold text-[9px] py-0.5 rounded text-center shadow-2xs tracking-wider`}
+                  >
+                    {yb.year}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
