@@ -115,6 +115,86 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
   const targetProject = filteredProjects[0] || projects[0];
 
+  // Mois de référence actuel du chantier (Septembre 2026)
+  const currentMonthKey = '2026-09';
+  const activeMonthCutoff = currentMonthKey;
+
+  // Générateur dynamique de l'échéancier propre du projet ou du portefeuille (startDate -> endDate)
+  const dashboardTimeline = useMemo(() => {
+    let startStr = '2026-02-01';
+    let endStr = '2027-07-31';
+
+    if (selectedProjectId !== 'ALL' && targetProject) {
+      const isBingerville = targetProject.code?.includes('BEN') || targetProject.id?.includes('BEN') || targetProject.id === 'CIV-2026-ASS-BEN-002';
+      const isSongon = targetProject.code?.includes('SON') || targetProject.id?.includes('SON') || targetProject.id === 'CIV-2026-ASS-SON-001';
+
+      startStr = isBingerville ? '2026-06-01' : (isSongon ? '2026-07-01' : String(targetProject.startDate || '2026-02-01')).substring(0, 10);
+      endStr = isBingerville ? '2027-09-01' : (isSongon ? '2027-01-31' : String(targetProject.endDate || '2027-07-31')).substring(0, 10);
+    } else {
+      // Portefeuille 'ALL' : Du premier démarrage (01/06/2026) à la livraison finale (01/09/2027)
+      startStr = '2026-06-01';
+      endStr = '2027-09-01';
+    }
+
+    const startD = new Date(startStr);
+    const endD = new Date(endStr);
+
+    let startYear = isNaN(startD.getFullYear()) ? 2026 : startD.getFullYear();
+    let startMonth = isNaN(startD.getMonth()) ? 5 : startD.getMonth();
+
+    let endYear = isNaN(endD.getFullYear()) ? 2027 : endD.getFullYear();
+    let endMonth = isNaN(endD.getMonth()) ? 8 : endD.getMonth();
+
+    const monthNamesFr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const fullMonthNamesFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+    const months: Array<{ label: string; monthName: string; fullMonthName: string; year: string; key: string }> = [];
+    let curY = startYear;
+    let curM = startMonth;
+
+    while (curY < endYear || (curY === endYear && curM <= endMonth)) {
+      const mKey = `${curY}-${String(curM + 1).padStart(2, '0')}`;
+      const mName = monthNamesFr[curM];
+      const fullMName = fullMonthNamesFr[curM];
+      const yShort = String(curY).substring(2);
+      months.push({
+        label: `${mName} ${yShort}`,
+        monthName: mName,
+        fullMonthName: fullMName,
+        year: String(curY),
+        key: mKey
+      });
+      curM++;
+      if (curM > 11) {
+        curM = 0;
+        curY++;
+      }
+    }
+
+    if (months.length === 0) {
+      months.push({ label: 'Juin 26', monthName: 'Juin', fullMonthName: 'Juin', year: '2026', key: '2026-06' });
+    }
+
+    const yearsMap: Record<string, number> = {};
+    months.forEach(m => {
+      yearsMap[m.year] = (yearsMap[m.year] || 0) + 1;
+    });
+
+    const yearBands = Object.keys(yearsMap).map(yr => ({
+      year: yr,
+      count: yearsMap[yr],
+      pct: (yearsMap[yr] / months.length) * 100
+    }));
+
+    return { months, yearBands, startStr, endStr };
+  }, [selectedProjectId, targetProject]);
+
+  const projectReports = useMemo(() => {
+    return selectedProjectId === 'ALL'
+      ? dailyReports
+      : dailyReports.filter(r => isReportForProject(r, targetProject));
+  }, [selectedProjectId, dailyReports, targetProject]);
+
   const filteredDailyReports = useMemo(() => {
     let reports = selectedProjectId === 'ALL' 
       ? dailyReports 
@@ -127,13 +207,14 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const rMonth = normalizeDateToYearMonth(r.date);
       if (!rMonth) return true;
 
-      if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
+      // Correspondance exacte de mois (ex: '2026-08', '2026-07', '2026-06')
+      if (selectedPeriod.includes('-')) {
         return rMonth === selectedPeriod;
       }
-      if (selectedPeriod === 'T3-2026') return rMonth >= '2026-07' && rMonth <= '2026-09';
-      if (selectedPeriod === 'T2-2026') return rMonth >= '2026-04' && rMonth <= '2026-06';
-      if (selectedPeriod === '2026') return rMonth.startsWith('2026');
-      if (selectedPeriod === '2027') return rMonth.startsWith('2027');
+      // Correspondance annuelle (ex: '2026', '2027')
+      if (selectedPeriod.length === 4 && !isNaN(Number(selectedPeriod))) {
+        return rMonth.startsWith(selectedPeriod);
+      }
       return true;
     });
   }, [dailyReports, selectedProjectId, targetProject, selectedPeriod]);
@@ -151,13 +232,14 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const daMonth = normalizeDateToYearMonth(dateStr);
       if (!daMonth) return true;
 
-      if (selectedPeriod.startsWith('2026-') || selectedPeriod.startsWith('2027-')) {
+      // Correspondance exacte de mois (ex: '2026-08', '2026-07')
+      if (selectedPeriod.includes('-')) {
         return daMonth === selectedPeriod;
       }
-      if (selectedPeriod === 'T3-2026') return daMonth >= '2026-07' && daMonth <= '2026-09';
-      if (selectedPeriod === 'T2-2026') return daMonth >= '2026-04' && daMonth <= '2026-06';
-      if (selectedPeriod === '2026') return daMonth.startsWith('2026');
-      if (selectedPeriod === '2027') return daMonth.startsWith('2027');
+      // Correspondance annuelle (ex: '2026', '2027')
+      if (selectedPeriod.length === 4 && !isNaN(Number(selectedPeriod))) {
+        return daMonth.startsWith(selectedPeriod);
+      }
       return true;
     });
   }, [purchaseRequests, selectedProjectId, targetProject, selectedPeriod]);
@@ -186,7 +268,9 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       
       const consolidated = filteredProjects.reduce((acc, proj) => {
         const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
-        const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+        const projDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, proj.id) || isProjectMatch(da.projectId, proj.code));
+        const projReports = filteredDailyReports.filter(r => isReportForProject(r, proj));
+        const s = getProjectFinancialSummary(proj, projWbs, [], projDAs, projReports);
         return {
           contractAmount: acc.contractAmount + s.contractAmount,
           initialBudget: acc.initialBudget + s.initialBudget,
@@ -209,15 +293,17 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
       const weightedSum = filteredProjects.reduce((acc, proj) => {
         const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
-        const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+        const projDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, proj.id) || isProjectMatch(da.projectId, proj.code));
+        const projReports = filteredDailyReports.filter(r => isReportForProject(r, proj));
+        const s = getProjectFinancialSummary(proj, projWbs, [], projDAs, projReports);
         const w = Number(proj.contractAmount || proj.revisedBudget || 1);
         return acc + (s.progressPct * w);
       }, 0);
       consolidated.progressPct = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(1)) : 0;
       return consolidated;
     }
-    return getProjectFinancialSummary(targetProject, targetWbsNodes, [], filteredPurchaseRequests, dailyReports);
-  }, [selectedProjectId, filteredProjects, targetProject, targetWbsNodes, filteredPurchaseRequests, dailyReports, purchaseRequests, wbsMap]);
+    return getProjectFinancialSummary(targetProject, targetWbsNodes, [], filteredPurchaseRequests, filteredDailyReports);
+  }, [selectedProjectId, filteredProjects, targetProject, targetWbsNodes, filteredPurchaseRequests, filteredDailyReports, wbsMap]);
 
   const totalProjectsCount = filteredProjects.length;
   const totalMarketAmount = summary.contractAmount;
@@ -266,86 +352,6 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     isFuture: boolean;
     isCurrent?: boolean;
   } | null>(null);
-
-  const projectReports = useMemo(() => {
-    return selectedProjectId === 'ALL'
-      ? dailyReports
-      : dailyReports.filter(r => isReportForProject(r, targetProject));
-  }, [selectedProjectId, dailyReports, targetProject]);
-
-  // Mois de référence actuel du chantier (Septembre 2026)
-  const currentMonthKey = '2026-09';
-
-  const activeMonthCutoff = useMemo(() => {
-    return currentMonthKey;
-  }, []);
-
-  // Générateur dynamique de l'échéancier propre du projet ou du portefeuille (startDate -> endDate)
-  const dashboardTimeline = useMemo(() => {
-    let startStr = '2026-02-01';
-    let endStr = '2027-07-31';
-
-    if (selectedProjectId !== 'ALL' && targetProject) {
-      const isBingerville = targetProject.code?.includes('BEN') || targetProject.id?.includes('BEN') || targetProject.id === 'CIV-2026-ASS-BEN-002';
-      const isSongon = targetProject.code?.includes('SON') || targetProject.id?.includes('SON') || targetProject.id === 'CIV-2026-ASS-SON-001';
-
-      startStr = isBingerville ? '2026-06-01' : (isSongon ? '2026-07-01' : String(targetProject.startDate || '2026-02-01')).substring(0, 10);
-      endStr = isBingerville ? '2027-09-01' : (isSongon ? '2027-01-31' : String(targetProject.endDate || '2027-07-31')).substring(0, 10);
-    } else {
-      // Portefeuille 'ALL' : Du premier démarrage (01/06/2026) à la livraison finale (01/09/2027)
-      startStr = '2026-06-01';
-      endStr = '2027-09-01';
-    }
-
-    const startD = new Date(startStr);
-    const endD = new Date(endStr);
-
-    let startYear = isNaN(startD.getFullYear()) ? 2026 : startD.getFullYear();
-    let startMonth = isNaN(startD.getMonth()) ? 5 : startD.getMonth();
-
-    let endYear = isNaN(endD.getFullYear()) ? 2027 : endD.getFullYear();
-    let endMonth = isNaN(endD.getMonth()) ? 8 : endD.getMonth();
-
-    const monthNamesFr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
-    const months: Array<{ label: string; monthName: string; year: string; key: string }> = [];
-    let curY = startYear;
-    let curM = startMonth;
-
-    while (curY < endYear || (curY === endYear && curM <= endMonth)) {
-      const mKey = `${curY}-${String(curM + 1).padStart(2, '0')}`;
-      const mName = monthNamesFr[curM];
-      const yShort = String(curY).substring(2);
-      months.push({
-        label: `${mName} ${yShort}`,
-        monthName: mName,
-        year: String(curY),
-        key: mKey
-      });
-      curM++;
-      if (curM > 11) {
-        curM = 0;
-        curY++;
-      }
-    }
-
-    if (months.length === 0) {
-      months.push({ label: 'Juin 26', monthName: 'Juin', year: '2026', key: '2026-06' });
-    }
-
-    const yearsMap: Record<string, number> = {};
-    months.forEach(m => {
-      yearsMap[m.year] = (yearsMap[m.year] || 0) + 1;
-    });
-
-    const yearBands = Object.keys(yearsMap).map(yr => ({
-      year: yr,
-      count: yearsMap[yr],
-      pct: (yearsMap[yr] / months.length) * 100
-    }));
-
-    return { months, yearBands, startStr, endStr };
-  }, [selectedProjectId, targetProject]);
 
   // 1. Graphique AVANCEMENT GLOBAL : Calcul 100% réel et cohérent avec l'avancement physique du chantier
   const monthsChartData = useMemo(() => {
@@ -632,8 +638,8 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   const sortedTopProjects = useMemo(() => {
     return projects.map(p => {
       const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
-      const projectDAs = purchaseRequests.filter(da => isProjectMatch(da.projectId, p.id) || isProjectMatch(da.projectId, p.code));
-      const projectReports = dailyReports.filter(r => isReportForProject(r, p));
+      const projectDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, p.id) || isProjectMatch(da.projectId, p.code));
+      const projectReports = filteredDailyReports.filter(r => isReportForProject(r, p));
 
       const pSummary = getProjectFinancialSummary(p, pNodes, [], projectDAs, projectReports);
       const marginAmt = pSummary.eacMargin;
@@ -646,7 +652,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         marginPct
       };
     }).sort((a, b) => b.marginAmt - a.marginAmt);
-  }, [projects, wbsMap, purchaseRequests, dailyReports]);
+  }, [projects, wbsMap, filteredPurchaseRequests, filteredDailyReports]);
 
   return (
     <div className="space-y-5 text-slate-800 font-sans w-full pb-10">
@@ -685,13 +691,16 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
               className="bg-transparent font-extrabold text-slate-900 focus:outline-none cursor-pointer truncate"
             >
               <option value="TOUS">Toute la durée (Cumul Global)</option>
-              <option value="2026-08">Août 2026 (Mois en cours)</option>
-              <option value="2026-07">Juillet 2026</option>
-              <option value="2026-06">Juin 2026 (Ordre de Service OS)</option>
-              <option value="T3-2026">Trimestre T3 2026</option>
-              <option value="T2-2026">Trimestre T2 2026</option>
-              <option value="2026">Année Globale 2026</option>
-              <option value="2027">Année Globale 2027 (Livraison STBV)</option>
+              {dashboardTimeline.months.map(m => (
+                <option key={m.key} value={m.key}>
+                  {m.fullMonthName} {m.year}{m.key === currentMonthKey ? ' (Mois en cours)' : (m.key === '2026-06' ? ' (Ordre de Service OS)' : '')}
+                </option>
+              ))}
+              {dashboardTimeline.yearBands.map(yb => (
+                <option key={yb.year} value={yb.year}>
+                  Année Globale {yb.year}{yb.year === '2027' ? ' (Livraison STBV)' : ''}
+                </option>
+              ))}
             </select>
             <Calendar size={14} className="text-blue-600 shrink-0" />
           </div>
