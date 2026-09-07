@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import { useAppState, isTestAlert } from '../../core/database/AppStateContext';
 import { apiService } from '../../core/database/apiService';
 import {
   ShieldAlert, AlertTriangle, Cpu, HardDrive, Server, Database, Activity, RefreshCw,
@@ -99,11 +99,7 @@ export const AlertsDriftsModule: React.FC = () => {
   // ALERTES OPERATIONNELLES FILTREES
   const filteredAlerts = useMemo(() => {
     return (alerts || []).filter(a => {
-      const strId = String(a.id || '').toUpperCase();
-      const strCode = String(a.code || '').toUpperCase();
-      const strTitle = String(a.title || '').toLowerCase();
-      const isMock = strId === 'ALT-2026-001' || strId === 'ALT-BUD-01' || strCode === 'ALT-BUD-01' || strTitle.includes('eac supérieur') || strTitle.includes('lycée');
-      if (isMock) return false;
+      if (isTestAlert(a)) return false;
 
       const matchesCategory = selectedCategory === 'TOUS' || a.category === selectedCategory || a.module === selectedCategory;
       const matchesSeverity = selectedSeverity === 'TOUS' || a.severity === selectedSeverity;

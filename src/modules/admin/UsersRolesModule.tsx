@@ -60,7 +60,7 @@ export const UsersRolesModule: React.FC = () => {
   const [newUserEmployeeCode, setNewUserEmployeeCode] = useState(`EMP-2026-${String(users.length + 1).padStart(3, '0')}`);
   const [newUserRole, setNewUserRole] = useState<Role>('Conducteur de Travaux');
   const [newUserCompany, setNewUserCompany] = useState('GEBAT SA');
-  const [newUserProjectId, setNewUserProjectId] = useState(projects[0]?.id || 'CIV-2026-ASS-001');
+  const [newUserProjectId, setNewUserProjectId] = useState(projects[0]?.id || 'CIV-2026-ASS-SON-001');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [defaultPassword, setDefaultPassword] = useState('Gebat@2026!');
   const [showPassword, setShowPassword] = useState(false);

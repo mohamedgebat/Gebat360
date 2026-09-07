@@ -47,56 +47,25 @@ export const WorkflowsEngineModule: React.FC = () => {
       });
     }
 
-    // DOSSIERS DE DÉMONSTRATION COMPLÉMENTAIRES
-    const hasPendingDA = list.some(i => i.status === 'En attente');
-    if (!hasPendingDA) {
-      list.push(
-        {
-          id: 'VAL-DA-2026-948123',
-          category: 'DA',
-          object: 'Demande d’Achat DA-2026-948123 — Ciment CPJ 42.5 NF (500 Sacs 50kg)',
-          amount: 2500000,
-          projectId: 'CIV-2026-ASS-BEN-002',
-          projectName: 'Station de traitement des boues de vidange de Bingerville',
-          wbsCode: '02.02.001',
-          initiator: 'Kouassi Jean (Conducteur de Travaux)',
-          date: new Date().toISOString().substring(0, 10),
-          urgency: 'Normale',
-          budgetImpact: 'Dans le budget',
-          attachments: ['Devis_SOCIMAC_Ciment.pdf'],
-          status: 'En attente'
-        },
-        {
-          id: 'VAL-BC-2026-042',
-          category: 'BC',
-          object: 'Bon de Commande BC-GEBAT-2026-042 — Fer à béton FeE500 (20 Tonnes)',
-          amount: 16520000,
-          projectId: 'CIV-2026-ASS-SON-001',
-          projectName: 'Projet d’Assainissement Songon',
-          wbsCode: '03.01.002',
-          initiator: 'Yao N’Dri (Responsable Achats)',
-          date: new Date(Date.now() - 86400000).toISOString().substring(0, 10),
-          urgency: 'Urgent',
-          budgetImpact: 'Dans le budget',
-          attachments: ['BC_Signe_ACI.pdf'],
-          status: 'En attente'
-        },
-        {
-          id: 'VAL-ALT-2026-009',
+    // 2. ALERTES DE DÉPASSEMENT EN ATTENTE DE VALIDATION
+    if (alerts && alerts.length > 0) {
+      alerts.filter(a => a.status === 'Actif' || a.status === 'ACTIVE').forEach(alt => {
+        list.push({
+          id: `VAL-ALT-${alt.id || alt.code}`,
           category: 'Dépassement',
-          object: 'Dépassement Budgétaire N° Prix 200.1.3 — Béton de propreté C 150 (+12% vs DS)',
-          amount: 320000,
-          projectId: 'CIV-2026-ASS-BEN-002',
-          projectName: 'Station de traitement des boues de vidange de Bingerville',
-          wbsCode: '200.1.3',
-          initiator: 'Moteur de Contrôle Budgétaire Automatic Engine',
-          date: new Date().toISOString().substring(0, 10),
-          urgency: 'Très urgent',
-          budgetImpact: 'Dépassement Majeur (>=5%)',
-          attachments: ['Analyse_Ecart_200.1.3.pdf'],
+          object: `${alt.title || 'Alerte Dépassement Budgétaire'} (${alt.code || alt.id})`,
+          amount: Number(alt.observedValue || 0),
+          projectId: alt.projectId || 'CIV-2026-ASS-BEN-002',
+          projectName: alt.projectName || (alt.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
+          wbsCode: alt.wbsCode || 'WBS',
+          initiator: 'Moteur de Contrôle Budgétaire',
+          date: alt.createdAt || new Date().toISOString().substring(0, 10),
+          urgency: alt.severity === 'Critique' ? 'Très urgent' : 'Urgent',
+          budgetImpact: 'Dépassement Budgétaire',
+          attachments: ['Rapport_Alerte.pdf'],
           status: 'En attente'
-        }
-      );
+        });
+      });
     }
 
     return list;
@@ -178,90 +147,64 @@ export const WorkflowsEngineModule: React.FC = () => {
 
   // ÉCHANTILLONNAGE DE CONTROLES THREE-WAY MATCH DYNAMIQUES
   const threeWayChecks = useMemo<ThreeWayMatchCheck[]>(() => {
-    return [
-      {
-        id: 'TWM-001',
-        invoiceCode: 'FACT-SOC-2026-088',
-        poCode: 'BC-GEBAT-2026-042',
-        receiptCode: 'REC-2026-089',
-        supplier: 'SOCIMAC Cimenteries',
-        article: 'Ciment CPJ 42.5 (Sacs 50kg)',
-        poQty: 500,
-        poUnitPrice: 5000,
-        poTaxes: 18,
-        poTotalAmount: 2950000,
-        receiptQty: 500,
-        receiptUnitPrice: 5000,
-        receiptTaxes: 18,
-        receiptTotalAmount: 2950000,
-        invoiceQty: 500,
-        invoiceUnitPrice: 5000,
-        invoiceTaxes: 18,
-        invoiceTotalAmount: 2950000,
-        qtyVariancePct: 0,
-        priceVariancePct: 0,
-        taxVariancePct: 0,
-        amountVariancePct: 0,
-        status: 'Conforme',
-        blockingReason: null,
-        createdAt: '2026-08-20',
-      },
-      {
-        id: 'TWM-002',
-        invoiceCode: 'FACT-FER-2026-014',
-        poCode: 'BC-GEBAT-2026-039',
-        receiptCode: 'REC-2026-085',
-        supplier: 'ACIÉRIES DE CÔTE D’IVOIRE',
-        article: 'Fer à béton FeE500 (Tonne)',
-        poQty: 20,
-        poUnitPrice: 700000,
-        poTaxes: 18,
-        poTotalAmount: 16520000,
-        receiptQty: 20,
-        receiptUnitPrice: 700000,
-        receiptTaxes: 18,
-        receiptTotalAmount: 16520000,
-        invoiceQty: 21,
-        invoiceUnitPrice: 735000,
-        invoiceTaxes: 18,
-        invoiceTotalAmount: 18218700,
-        qtyVariancePct: 5.0,
-        priceVariancePct: 5.0,
-        taxVariancePct: 0,
-        amountVariancePct: 10.28,
-        status: 'Écart Détecté',
-        blockingReason: `Surfacturation de 5.0% sur PU (735 000 vs 700 000 FCFA) et surquantité de +1T non livrée`,
-        createdAt: '2026-08-22',
-      },
-      {
-        id: 'TWM-003',
-        invoiceCode: 'FACT-CAR-2026-091',
-        poCode: 'BC-GEBAT-2026-045',
-        receiptCode: 'REC-2026-094',
-        supplier: 'SOCIÉTÉ IVOIRIENNE DE CARRIÈRES',
-        article: 'Graveleux Latéritique 0/31.5 (m3)',
-        poQty: 300,
-        poUnitPrice: 12000,
-        poTaxes: 18,
-        poTotalAmount: 4248000,
-        receiptQty: 300,
-        receiptUnitPrice: 12000,
-        receiptTaxes: 18,
-        receiptTotalAmount: 4248000,
-        invoiceQty: 300,
-        invoiceUnitPrice: 12000,
-        invoiceTaxes: 18,
-        invoiceTotalAmount: 4248000,
-        qtyVariancePct: 0,
-        priceVariancePct: 0,
-        taxVariancePct: 0,
-        amountVariancePct: 0,
-        status: 'Conforme',
-        blockingReason: null,
-        createdAt: '2026-08-24',
-      }
-    ];
-  }, []);
+    if (purchaseOrders && purchaseOrders.length > 0) {
+      return purchaseOrders.map((po, idx) => {
+        const matchingReceipt = (receipts || []).find(r => r.poId === po.id || r.poCode === po.code);
+        const poQty = Number(po.totalQuantity || po.items?.reduce((s, it) => s + (it.quantity || 0), 0) || 100);
+        const poUnitPrice = Number(po.unitPrice || (po.totalAmount ? Math.round(po.totalAmount / poQty) : 5000));
+        const poTotal = Number(po.totalAmount || (poQty * poUnitPrice));
+        
+        const receiptQty = matchingReceipt ? Number(matchingReceipt.receivedQuantity || poQty) : poQty;
+        const receiptUnitPrice = matchingReceipt ? Number(matchingReceipt.unitPrice || poUnitPrice) : poUnitPrice;
+        const receiptTotal = matchingReceipt ? Number(matchingReceipt.totalAmount || (receiptQty * receiptUnitPrice)) : poTotal;
+
+        const invoiceQty = poQty;
+        const invoiceUnitPrice = poUnitPrice;
+        const invoiceTotal = poTotal;
+
+        const qtyDiff = Math.abs(receiptQty - poQty);
+        const qtyVariancePct = poQty > 0 ? (qtyDiff / poQty) * 100 : 0;
+        const priceDiff = Math.abs(receiptUnitPrice - poUnitPrice);
+        const priceVariancePct = poUnitPrice > 0 ? (priceDiff / poUnitPrice) * 100 : 0;
+        const amountDiff = Math.abs(receiptTotal - poTotal);
+        const amountVariancePct = poTotal > 0 ? (amountDiff / poTotal) * 100 : 0;
+
+        const isDiscrepancy = qtyVariancePct > threeWayConfig.qtyTolerancePct ||
+                              priceVariancePct > threeWayConfig.priceTolerancePct ||
+                              amountVariancePct > threeWayConfig.amountTolerancePct;
+
+        return {
+          id: `TWM-${po.id || idx + 1}`,
+          invoiceCode: `FACT-${po.code?.replace('BC-', '') || idx + 1}`,
+          poCode: po.code || `BC-GEBAT-2026-${String(idx + 1).padStart(3, '0')}`,
+          receiptCode: matchingReceipt?.code || `REC-2026-${String(idx + 1).padStart(3, '0')}`,
+          supplier: po.supplierName || po.supplier || 'Fournisseur BTP Agréé',
+          article: po.items?.[0]?.description || po.description || 'Matériaux Chantier',
+          poQty,
+          poUnitPrice,
+          poTaxes: 18,
+          poTotalAmount: poTotal,
+          receiptQty,
+          receiptUnitPrice,
+          receiptTaxes: 18,
+          receiptTotalAmount: receiptTotal,
+          invoiceQty,
+          invoiceUnitPrice,
+          invoiceTaxes: 18,
+          invoiceTotalAmount: invoiceTotal,
+          qtyVariancePct: Math.round(qtyVariancePct * 100) / 100,
+          priceVariancePct: Math.round(priceVariancePct * 100) / 100,
+          taxVariancePct: 0,
+          amountVariancePct: Math.round(amountVariancePct * 100) / 100,
+          status: isDiscrepancy ? 'Écart Détecté' : 'Conforme',
+          blockingReason: isDiscrepancy ? `Écart constaté hors tolérance (Seuil max: ${threeWayConfig.amountTolerancePct}%)` : null,
+          createdAt: po.createdAt ? po.createdAt.substring(0, 10) : new Date().toISOString().substring(0, 10),
+        };
+      });
+    }
+
+    return [];
+  }, [purchaseOrders, receipts, threeWayConfig]);
 
   // CALCUL STATISTIQUES KPIS CENTRALISÉS
   const pendingCount = items.filter(i => i.status === 'En attente').length;

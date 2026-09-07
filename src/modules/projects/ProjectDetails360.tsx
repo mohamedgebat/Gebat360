@@ -514,7 +514,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   };
 
   // Formateur propre des dates au format français DD/MM/YYYY
-  const formatDateFr = (dateStr?: string | Date | null, fallback = '01/06/2026') => {
+  const formatDateFr = (dateStr?: string | Date | null, fallback = '') => {
     if (!dateStr) return fallback;
     try {
       const str = String(dateStr).trim();
@@ -3256,56 +3256,9 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
             {/* LISTE AUDIT TRAILS */}
             {(() => {
-              const baseAuditList = [
-                {
-                  id: 'LOG-001',
-                  timestamp: '2026-08-18 14:32:10',
-                  user: 'SEA Alphonse',
-                  role: 'Directeur Projet',
-                  module: 'PRODUCTION',
-                  action: 'VALIDATION_RAPPORT',
-                  objectRef: project.code,
-                  detail: 'Validation définitive du rapport journalier CR-2026-08-18 (Avancement voiles BA +2.4%)',
-                  status: 'Conforme'
-                },
-                {
-                  id: 'LOG-002',
-                  timestamp: '2026-08-17 11:15:45',
-                  user: 'KOUASSI Roger',
-                  role: 'Conducteur Travaux',
-                  module: 'ACHATS',
-                  action: 'CREATION_DA',
-                  objectRef: project.code,
-                  detail: 'Émission de la Demande d\'Achat DA-2026-004 pour 45 T de ciment CPJ 42.5 (Contrôle budgétaire OK)',
-                  status: 'Conforme'
-                },
-                {
-                  id: 'LOG-003',
-                  timestamp: '2026-08-15 09:40:22',
-                  user: 'Directeur Général',
-                  role: 'Direction Générale',
-                  module: 'BUDGET',
-                  action: 'APPROBATION_EVM',
-                  objectRef: project.code,
-                  detail: 'Validation du franchissement de jalon EVM et clôture de la situation mensuelle N°01',
-                  status: 'Conforme'
-                },
-                {
-                  id: 'LOG-004',
-                  timestamp: '2026-08-10 16:20:00',
-                  user: 'Contrôleur de Gestion',
-                  role: 'Contrôle Gestion',
-                  module: 'BUDGET',
-                  action: 'IMPORT_SSOT_DS',
-                  objectRef: project.code,
-                  detail: 'Synchronisation et consolidation du Déboursé Sec d\'Objectif V0 depuis le fichier Excel SSOT',
-                  status: 'Conforme'
-                }
-              ];
-
-              const combinedLogs = [...projectLogs.map(l => ({
+              const combinedLogs = projectLogs.map(l => ({
                 id: l.id,
-                timestamp: l.timestamp || l.createdAt || '2026-08-18 12:00:00',
+                timestamp: l.timestamp || l.createdAt || new Date().toISOString().replace('T', ' ').substring(0, 19),
                 user: l.user || project.manager || 'Admin Système',
                 role: l.role || 'Utilisateur',
                 module: l.module || 'SYSTEME',
@@ -3313,7 +3266,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                 objectRef: l.objectRef || project.code,
                 detail: l.newValue || l.justification || 'Opération validée sur la base de données.',
                 status: 'Conforme'
-              })), ...baseAuditList];
+              }));
 
               const filteredLogs = combinedLogs.filter(l => {
                 const q = auditSearch.toLowerCase().trim();

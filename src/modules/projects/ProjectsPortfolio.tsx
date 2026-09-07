@@ -35,9 +35,9 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
   const [starredProjects, setStarredProjects] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('gebat_starred_projects');
-      return saved ? JSON.parse(saved) : { 'CIV-2026-ASS-001': true };
+      return saved ? JSON.parse(saved) : { 'CIV-2026-ASS-SON-001': true };
     } catch {
-      return { 'CIV-2026-ASS-001': true };
+      return { 'CIV-2026-ASS-SON-001': true };
     }
   });
 

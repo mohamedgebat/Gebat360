@@ -18,7 +18,7 @@ export const ProcurementValidationModule: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('TOUS');
 
   const formatFrenchDate = (dateStr: string | undefined): string => {
-    if (!dateStr) return '08/08/2026';
+    if (!dateStr) return '';
     if (dateStr.includes('T')) {
       const rawDatePart = dateStr.split('T')[0];
       const rawTimePart = dateStr.split('T')[1]?.replace('Z', '').split('.')[0];

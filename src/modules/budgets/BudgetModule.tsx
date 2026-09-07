@@ -47,7 +47,7 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
   const { projects, updateProject, addAuditLog, currentUser } = useAppState();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
-    return initialProjectId || projects[0]?.id || 'CIV-2026-ASS-001';
+    return initialProjectId || projects[0]?.id || 'CIV-2026-ASS-SON-001';
   });
 
   useEffect(() => {

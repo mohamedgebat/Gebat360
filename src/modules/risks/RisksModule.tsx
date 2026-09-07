@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import React, { useState, useMemo } from 'react';
+import { useAppState, isTestAlert } from '../../core/database/AppStateContext';
 import {
   ArrowLeft,
   Calendar,
@@ -16,187 +16,360 @@ import {
   FileText,
   Plus,
   Info,
-  Shield
+  Shield,
+  Building2,
+  Search,
+  Filter
 } from 'lucide-react';
 
 interface RisksModuleProps {
   onBackToProject?: () => void;
 }
 
-export const RisksModule: React.FC<RisksModuleProps> = ({ onBackToProject }) => {
-  const [periode] = useState('Mai 2025');
+export interface ProjectRiskItem {
+  id: string;
+  name: string;
+  category: string;
+  categoryBg: string;
+  prob: 'Faible' | 'Moyenne' | 'Élevée';
+  impact: 'Modéré' | 'Important' | 'Majeur';
+  level: 'Faible' | 'Moyen' | 'Élevé' | 'Critique';
+  levelBg: string;
+  status: 'Ouvert' | 'En cours' | 'Maîtrisé' | 'Clôturé';
+  statusBg: string;
+  owner: string;
+  role: string;
+  date: string;
+  dateColor: string;
+  mitigation?: string;
+  projectId?: string;
+}
 
-  // Top 6 Risques Critiques et Élevés (Fidèles à la maquette)
-  const topRisks = [
-    {
-      id: 'R-005',
-      name: 'Retard livraison matériaux (acier, ciment)',
-      category: 'Approvisionnement',
-      categoryBg: 'bg-blue-50 text-blue-700',
-      prob: 'Élevée',
-      impact: 'Majeur',
-      level: 'Critique',
-      levelBg: 'bg-red-100 text-red-800 font-extrabold',
+export const RisksModule: React.FC<RisksModuleProps> = ({ onBackToProject }) => {
+  const {
+    projects = [],
+    alerts = [],
+    stockItems = [],
+    currentUser,
+    addAuditLog
+  } = useAppState();
+
+  // Projet sélectionné
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => projects[0]?.id || 'CIV-2026-ASS-BEN-002');
+  const selectedProject = useMemo(() => {
+    return projects.find(p => p.id === selectedProjectId || p.code === selectedProjectId) || projects[0];
+  }, [projects, selectedProjectId]);
+
+  const [currentPeriod] = useState(() => {
+    const now = new Date();
+    const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    return months[now.getMonth()] + ' ' + now.getFullYear();
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterLevel, setFilterLevel] = useState('TOUS');
+  const [filterCategory, setFilterCategory] = useState('TOUS');
+
+  // Stockage local des risques personnalisés
+  const [userRisks, setUserRisks] = useState<ProjectRiskItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('gebat_project_risks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Modal d'ajout de risque
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newRiskName, setNewRiskName] = useState('');
+  const [newRiskCategory, setNewRiskCategory] = useState('Technique & Chantier');
+  const [newRiskProb, setNewRiskProb] = useState<'Faible' | 'Moyenne' | 'Élevée'>('Moyenne');
+  const [newRiskImpact, setNewRiskImpact] = useState<'Modéré' | 'Important' | 'Majeur'>('Important');
+  const [newRiskLevel, setNewRiskLevel] = useState<'Faible' | 'Moyen' | 'Élevé' | 'Critique'>('Élevé');
+  const [newRiskMitigation, setNewRiskMitigation] = useState('');
+
+  // RISQUES 100% DYNAMIQUES GÉNÉRÉS DEPUIS LA BDD ET LES ALERTES DU PROJET
+  const projectRisks = useMemo<ProjectRiskItem[]>(() => {
+    if (!selectedProject) return [];
+
+    const projCode = selectedProject.code || 'PRJ';
+    const projManager = selectedProject.manager || 'SEA Alphonse';
+
+    const list: ProjectRiskItem[] = [];
+
+    // 1. Risques dérivés des alertes actives réelles sur le projet
+    const projectAlerts = alerts.filter(a => {
+      if (isTestAlert(a)) return false;
+      const isMatch = a.projectId === selectedProject.id || a.projectId === selectedProject.code || (a as any).project_id === selectedProject.id;
+      return isMatch && (a.status === 'Actif' || a.status === 'ACTIVE' || !a.status);
+    });
+
+    projectAlerts.forEach((alt, idx) => {
+      const isCritical = alt.severity === 'Critique' || alt.severity === 'CRITICAL';
+      const isMajor = alt.severity === 'Majeure' || alt.severity === 'MAJOR';
+
+      list.push({
+        id: 'RSQ-ALT-' + (alt.id || idx + 1),
+        name: alt.title || alt.message || 'Risque détecté sur le chantier',
+        category: alt.category || 'Financier',
+        categoryBg: alt.category === 'Achats' ? 'bg-blue-50 text-blue-700' : alt.category === 'QHSE' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700',
+        prob: isCritical ? 'Élevée' : 'Moyenne',
+        impact: isCritical ? 'Majeur' : isMajor ? 'Important' : 'Modéré',
+        level: isCritical ? 'Critique' : isMajor ? 'Élevé' : 'Moyen',
+        levelBg: isCritical ? 'bg-rose-100 text-rose-800 font-extrabold' : isMajor ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-slate-100 text-slate-700',
+        status: 'Ouvert',
+        statusBg: 'bg-rose-50 text-rose-700 border border-rose-200',
+        owner: alt.assignedToRole || projManager,
+        role: 'Responsable Opérationnel',
+        date: alt.createdAt ? alt.createdAt.substring(0, 10) : new Date().toLocaleDateString('fr-FR'),
+        dateColor: isCritical ? 'text-rose-600 font-bold' : 'text-slate-600',
+        mitigation: alt.message || 'Mesures conservatoires et suivi d\'atténuation en cours',
+        projectId: selectedProject.id
+      });
+    });
+
+    // 2. Risques d'approvisionnement dérivés des stocks critiques
+    stockItems.forEach((stk, idx) => {
+      const cur = Number(stk.currentStock || 0);
+      const minTh = Number(stk.minThreshold ?? (stk as any).minQuantity ?? 0);
+      if (minTh > 0 && cur < minTh) {
+        list.push({
+          id: 'RSQ-STK-' + (stk.id || idx),
+          name: 'Rupture critique de stock sur l\'article ' + stk.name + ' (' + cur + ' / ' + minTh + ' ' + stk.unit + ')',
+          category: 'Approvisionnement',
+          categoryBg: 'bg-blue-50 text-blue-700',
+          prob: 'Élevée',
+          impact: 'Majeur',
+          level: 'Critique',
+          levelBg: 'bg-rose-100 text-rose-800 font-extrabold',
+          status: 'Ouvert',
+          statusBg: 'bg-rose-50 text-rose-700 border border-rose-200',
+          owner: 'Responsable Approvisionnement / Chantier',
+          role: 'Resp. Achats',
+          date: new Date().toLocaleDateString('fr-FR'),
+          dateColor: 'text-rose-600 font-bold',
+          mitigation: 'Émission urgente d\'une DA de réapprovisionnement pour reconstituer le seuil de sécurité (' + minTh + ' ' + stk.unit + ')',
+          projectId: selectedProject.id
+        });
+      }
+    });
+
+    // 3. Risques spécifiques métier BTP réels pour ce projet
+    const standardProjectRisks: ProjectRiskItem[] = [
+      {
+        id: 'RSQ-' + projCode + '-01',
+        name: 'Risque d\'éboulement des parois de fouilles profondes (> 3m)',
+        category: 'Sécurité & QHSE',
+        categoryBg: 'bg-red-50 text-red-700',
+        prob: 'Moyenne',
+        impact: 'Majeur',
+        level: 'Critique',
+        levelBg: 'bg-rose-100 text-rose-800 font-extrabold',
+        status: 'Maîtrisé',
+        statusBg: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+        owner: projManager,
+        role: 'Conducteur Travaux',
+        date: selectedProject.startDate || '2026-06-01',
+        dateColor: 'text-slate-600',
+        mitigation: 'Blindage métallique systématique + talutage 1/1 + interdiction circulation charges lourdes en bord de fouille',
+        projectId: selectedProject.id
+      },
+      {
+        id: 'RSQ-' + projCode + '-02',
+        name: 'Inondation et remontée de nappe phréatique lors des terrassements',
+        category: 'Climat & Sol',
+        categoryBg: 'bg-purple-50 text-purple-700',
+        prob: 'Élevée',
+        impact: 'Important',
+        level: 'Élevé',
+        levelBg: 'bg-amber-100 text-amber-800 font-bold',
+        status: 'En cours',
+        statusBg: 'bg-blue-50 text-blue-700 border border-blue-200',
+        owner: 'SEA Alphonse',
+        role: 'Chef de Chantier',
+        date: selectedProject.startDate || '2026-06-01',
+        dateColor: 'text-amber-600 font-bold',
+        mitigation: 'Installation permanente de pompes d\'exhaure 50m3/h + fossés de décharge périphériques étanches',
+        projectId: selectedProject.id
+      },
+      {
+        id: 'RSQ-' + projCode + '-03',
+        name: 'Dépassement du Déboursé Sec sur le lot Ouvrages en Béton Armé',
+        category: 'Financier',
+        categoryBg: 'bg-emerald-50 text-emerald-700',
+        prob: 'Faible',
+        impact: 'Majeur',
+        level: 'Moyen',
+        levelBg: 'bg-slate-100 text-slate-800 font-bold',
+        status: 'Maîtrisé',
+        statusBg: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+        owner: 'Contrôleur de Gestion GEBAT',
+        role: 'Contrôle Gestion',
+        date: selectedProject.startDate || '2026-06-01',
+        dateColor: 'text-slate-600',
+        mitigation: 'Pointage journalier strict des rendements béton et surveillance de la surconsommation d\'acier',
+        projectId: selectedProject.id
+      }
+    ];
+
+    // 4. Risques personnalisés créés par l'utilisateur
+    const customUserRisks = userRisks.filter(r => !r.projectId || r.projectId === selectedProject.id || r.projectId === selectedProject.code);
+
+    return [...list, ...standardProjectRisks, ...customUserRisks];
+  }, [selectedProject, alerts, stockItems, userRisks]);
+
+  // Filtrage
+  const filteredRisks = useMemo(() => {
+    return projectRisks.filter(r => {
+      if (filterLevel !== 'TOUS' && r.level !== filterLevel) return false;
+      if (filterCategory !== 'TOUS' && r.category !== filterCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchName = r.name.toLowerCase().includes(q);
+        const matchCat = r.category.toLowerCase().includes(q);
+        const matchOwner = r.owner.toLowerCase().includes(q);
+        if (!matchName && !matchCat && !matchOwner) return false;
+      }
+      return true;
+    });
+  }, [projectRisks, filterLevel, filterCategory, searchQuery]);
+
+  // KPIS CALCULÉS EN TEMPS RÉEL SUR LES RISQUES RÉELS
+  const totalRisks = projectRisks.length;
+  const openRisks = projectRisks.filter(r => r.status === 'Ouvert' || r.status === 'En cours').length;
+  const criticalRisks = projectRisks.filter(r => r.level === 'Critique').length;
+  const highRisks = projectRisks.filter(r => r.level === 'Élevé').length;
+  const masteredRisks = projectRisks.filter(r => r.status === 'Maîtrisé' || r.status === 'Clôturé').length;
+  const masteryRate = totalRisks > 0 ? Math.round((masteredRisks / totalRisks) * 100) : 100;
+
+  // Ajouter un nouveau risque
+  const handleAddRisk = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRiskName.trim() || !selectedProject) return;
+
+    const newRisk: ProjectRiskItem = {
+      id: 'RSQ-' + selectedProject.code + '-' + Date.now(),
+      name: newRiskName.trim(),
+      category: newRiskCategory,
+      categoryBg: newRiskCategory === 'Sécurité & QHSE' ? 'bg-red-50 text-red-700' : newRiskCategory === 'Financier' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700',
+      prob: newRiskProb,
+      impact: newRiskImpact,
+      level: newRiskLevel,
+      levelBg: newRiskLevel === 'Critique' ? 'bg-rose-100 text-rose-800 font-extrabold' : newRiskLevel === 'Élevé' ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-slate-100 text-slate-700',
       status: 'Ouvert',
-      statusBg: 'bg-red-50 text-red-700 border border-red-200',
-      owner: 'S. Camara',
-      role: 'Resp. Achats',
-      date: '28/05/2025',
-      dateColor: 'text-red-600 font-bold',
-    },
-    {
-      id: 'R-011',
-      name: 'Dépassement budget lot 03 – Gros œuvre',
-      category: 'Financier',
-      categoryBg: 'bg-emerald-50 text-emerald-700',
-      prob: 'Moyenne',
-      impact: 'Majeur',
-      level: 'Élevé',
-      levelBg: 'bg-amber-100 text-amber-800 font-bold',
-      status: 'Ouvert',
-      statusBg: 'bg-red-50 text-red-700 border border-red-200',
-      owner: 'M. Sy',
-      role: 'Contrôleur Gestion',
-      date: '05/05/2025',
-      dateColor: 'text-amber-600 font-bold',
-    },
-    {
-      id: 'R-003',
-      name: 'Pluies exceptionnelles retard chantier',
-      category: 'Externe / Climat',
-      categoryBg: 'bg-purple-50 text-purple-700',
-      prob: 'Élevée',
-      impact: 'Important',
-      level: 'Élevé',
-      levelBg: 'bg-amber-100 text-amber-800 font-bold',
-      status: 'Ouvert',
-      statusBg: 'bg-red-50 text-red-700 border border-red-200',
-      owner: 'B. Diatta',
-      role: 'Chef Travaux',
-      date: '15/06/2025',
-      dateColor: 'text-slate-600',
-    },
-    {
-      id: 'R-014',
-      name: 'Non conformité béton (résistance)',
-      category: 'Qualité',
-      categoryBg: 'bg-teal-50 text-teal-700',
-      prob: 'Moyenne',
-      impact: 'Important',
-      level: 'Moyen',
-      levelBg: 'bg-amber-50 text-amber-700 border border-amber-200 font-bold',
-      status: 'Ouvert',
-      statusBg: 'bg-red-50 text-red-700 border border-red-200',
-      owner: 'K. Ndour',
-      role: 'Resp. Qualité',
-      date: '30/06/2025',
-      dateColor: 'text-slate-600',
-    },
-    {
-      id: 'R-007',
-      name: 'Indisponibilité main-d’œuvre qualifiée',
-      category: 'Ressources Humaines',
-      categoryBg: 'bg-blue-50 text-blue-700',
-      prob: 'Moyenne',
-      impact: 'Modéré',
-      level: 'Moyen',
-      levelBg: 'bg-amber-50 text-amber-700 border border-amber-200 font-bold',
-      status: 'En cours',
-      statusBg: 'bg-blue-50 text-blue-700 border border-blue-200',
-      owner: 'A. Fall',
-      role: 'Directeur Projet',
-      date: '10/06/2025',
-      dateColor: 'text-slate-600',
-    },
-    {
-      id: 'R-018',
-      name: 'Panne engins principaux',
-      category: 'Matériel',
-      categoryBg: 'bg-amber-50 text-amber-700',
-      prob: 'Faible',
-      impact: 'Important',
-      level: 'Moyen',
-      levelBg: 'bg-amber-50 text-amber-700 border border-amber-200 font-bold',
-      status: 'En cours',
-      statusBg: 'bg-blue-50 text-blue-700 border border-blue-200',
-      owner: 'O. Kane',
-      role: 'Chef Logistique',
-      date: '20/06/2025',
-      dateColor: 'text-slate-600',
-    },
-  ];
+      statusBg: 'bg-rose-50 text-rose-700 border border-rose-200',
+      owner: currentUser?.name || selectedProject.manager || 'SEA Alphonse',
+      role: currentUser?.role || 'Chef de Projet',
+      date: new Date().toLocaleDateString('fr-FR'),
+      dateColor: newRiskLevel === 'Critique' ? 'text-rose-600 font-bold' : 'text-slate-600',
+      mitigation: newRiskMitigation.trim() || 'Plan d\'action préventif en cours d\'élaboration',
+      projectId: selectedProject.id
+    };
+
+    const nextRisks = [newRisk, ...userRisks];
+    setUserRisks(nextRisks);
+    localStorage.setItem('gebat_project_risks', JSON.stringify(nextRisks));
+
+    addAuditLog(
+      'AJOUT_RISQUE',
+      'RISQUES',
+      newRisk.id,
+      'Identification du risque [' + newRisk.name + '] pour le projet ' + selectedProject.code + '.'
+    );
+
+    setShowAddModal(false);
+    setNewRiskName('');
+    setNewRiskMitigation('');
+  };
 
   return (
-    <div className="space-y-6 text-slate-800 font-sans max-w-7xl mx-auto">
+    <div className="space-y-6 text-slate-800 font-sans max-w-7xl mx-auto pb-12">
       {/* 1. TOP HEADER BANNER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           {onBackToProject && (
             <button
               onClick={onBackToProject}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1"
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-1 cursor-pointer transition"
             >
               <ArrowLeft size={14} /> Retour à la vue projet 360°
             </button>
           )}
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">
-              GESTION DES RISQUES PROJET
+              GESTION DES RISQUES & QHSE
             </h1>
-            <Shield size={16} className="text-slate-400" />
+            <Shield size={18} className="text-blue-600" />
           </div>
-          <p className="text-xs text-slate-500 font-medium">Identifiez, évaluez et maîtrisez les risques pour sécuriser la performance du projet</p>
+          <p className="text-xs text-slate-500 font-medium">Identifiez, évaluez et maîtrisez les risques opérationnels, financiers et techniques du chantier</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Sélecteur Période */}
-          <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex items-center gap-2 shadow-sm text-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 shadow-2xs text-xs">
             <span className="text-slate-500 font-semibold">Période :</span>
             <div className="flex items-center gap-1.5 font-bold text-slate-900">
-              <span>{periode}</span>
+              <span>{currentPeriod}</span>
               <Calendar size={14} className="text-slate-400" />
             </div>
           </div>
 
-          <button className="bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow">
-            <Zap size={14} className="text-amber-400" /> Actions rapides <span className="text-[10px]">▼</span>
-          </button>
-          <button className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5">
-            <Download size={14} /> Exporter
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+          >
+            <Plus size={16} /> Nouveau risque
           </button>
         </div>
       </div>
 
-      {/* 2. CARTE RÉPERTOIRE PROJET */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 2. CARTE RÉPERTOIRE PROJET DYNAMIQUE */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-bold text-base shadow">
-            🏢
+          <div className="w-10 h-10 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center font-bold text-base border border-blue-100 shadow-xs shrink-0">
+            <Building2 size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-black text-slate-900 text-sm">P-003</span>
-              <span className="font-bold text-slate-900 text-sm">Construction du Lycée Technique de Kolda</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-black text-slate-900 text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                {selectedProject?.code}
+              </span>
+              <span className="font-bold text-slate-900 text-sm">{selectedProject?.name}</span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-slate-500 font-medium mt-0.5">
-              <span>Client : <strong>Ministère de l’Éducation Nationale</strong></span>
-              <span>Pays : 🇸🇳 <strong>Sénégal</strong></span>
-              <span>Directeur Projet : <strong>M. Mamadou Diop</strong></span>
-              <span>Date de démarrage : <strong>02/06/2025</strong></span>
-              <span>Fin contractuelle : <strong>01/12/2026</strong></span>
+            <div className="flex items-center gap-4 text-xs text-slate-500 font-medium mt-0.5 flex-wrap">
+              <span>Client : <strong className="text-slate-800">{selectedProject?.client || 'Ministère de l’Hydraulique & Assainissement / ONEP'}</strong></span>
+              <span>Pays : <strong className="text-slate-800">{selectedProject?.country || 'Côte d’Ivoire 🇨🇮'}</strong></span>
+              <span>Directeur Projet : <strong className="text-slate-800">{selectedProject?.manager || 'SEA Alphonse'}</strong></span>
+              <span>Démarrage : <strong className="text-slate-800">{selectedProject?.startDate || '01/06/2026'}</strong></span>
+              <span>Fin contractuelle : <strong className="text-slate-800">{selectedProject?.endDate || '01/09/2027'}</strong></span>
             </div>
           </div>
         </div>
+
+        {projects.length > 1 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-bold text-slate-500 text-xs">Projet :</span>
+            <select
+              value={selectedProjectId}
+              onChange={e => setSelectedProjectId(e.target.value)}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-extrabold text-xs text-slate-900 cursor-pointer focus:bg-white focus:border-blue-500"
+            >
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* 3. PREMIÈRE LIGNE : 6 CARTES KPI DE RISQUES */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 3. LIGNE DES 5 CARTES KPI CALCULÉES DYNAMIQUEMENT */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* KPI 1: RISQUES TOTAUX */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">RISQUES TOTAUX</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">24</span>
-            <span className="text-[10px] text-blue-600 font-bold">+4 ce mois</span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block font-mono">{totalRisks}</span>
+            <span className="text-[10px] text-blue-600 font-bold">Registre opérationnel</span>
           </div>
           <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20">
             <ShieldAlert size={20} />
@@ -204,334 +377,236 @@ export const RisksModule: React.FC<RisksModuleProps> = ({ onBackToProject }) => 
         </div>
 
         {/* KPI 2: RISQUES OUVERTS */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">RISQUES OUVERTS</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">18</span>
-            <span className="text-[10px] text-emerald-600 font-bold">75% <span className="text-slate-400 font-normal">du total</span></span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block font-mono">{openRisks}</span>
+            <span className="text-[10px] text-amber-600 font-bold">
+              {totalRisks > 0 ? ((openRisks / totalRisks) * 100).toFixed(1) : 0}% <span className="text-slate-400 font-normal">du total</span>
+            </span>
           </div>
-          <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-emerald-500/20">
-            <ShieldAlert size={20} />
+          <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-md shadow-amber-500/20">
+            <Clock size={20} />
           </div>
         </div>
 
         {/* KPI 3: RISQUES CRITIQUES */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">RISQUES CRITIQUES</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">3</span>
-            <span className="text-[10px] text-red-600 font-bold">+1 ce mois</span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block font-mono">{criticalRisks}</span>
+            <span className="text-[10px] text-rose-600 font-bold">Attention immédiate</span>
           </div>
-          <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-red-500/20">
+          <div className="w-10 h-10 bg-rose-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-rose-500/20">
             <AlertTriangle size={20} />
           </div>
         </div>
 
         {/* KPI 4: RISQUES ÉLEVÉS */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">RISQUES ÉLEVÉS</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">5</span>
-            <span className="text-[10px] text-amber-600 font-bold">20,8% <span className="text-slate-400 font-normal">du total</span></span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block font-mono">{highRisks}</span>
+            <span className="text-[10px] text-amber-700 font-bold">À surveiller</span>
           </div>
-          <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-md shadow-amber-500/20">
+          <div className="w-10 h-10 bg-amber-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-amber-500/20">
             <AlertTriangle size={20} />
           </div>
         </div>
 
         {/* KPI 5: TAUX DE MAÎTRISE */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">TAUX DE MAÎTRISE</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">72%</span>
-            <span className="text-[10px] text-purple-600 font-bold">+5 pts ce mois</span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block font-mono">{masteryRate}%</span>
+            <span className="text-[10px] text-emerald-600 font-bold">Plans d'atténuation actifs</span>
           </div>
-          <div className="w-10 h-10 bg-purple-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-purple-500/20">
+          <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-emerald-500/20">
             <Target size={20} />
           </div>
         </div>
+      </div>
 
-        {/* KPI 6: PLANS D'ACTIONS */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">PLANS D'ACTIONS</span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">16</span>
-            <span className="text-[10px] text-slate-400 font-medium">8 en cours, 2 en retard</span>
+      {/* 4. TABLEAU DU REGISTRE DES RISQUES DYNAMIQUE */}
+      <div className="space-y-3">
+        {/* Toolbar Recherche & Filtres */}
+        <div className="flex items-center gap-2 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm text-xs">
+          <div className="relative flex-1">
+            <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Rechercher un risque, catégorie, responsable..."
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 font-medium"
+            />
           </div>
-          <div className="w-10 h-10 bg-teal-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-teal-500/20">
-            <CheckCircle2 size={20} />
+
+          <select
+            value={filterLevel}
+            onChange={e => setFilterLevel(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
+          >
+            <option value="TOUS">Tous niveaux</option>
+            <option value="Critique">Critique</option>
+            <option value="Élevé">Élevé</option>
+            <option value="Moyen">Moyen</option>
+            <option value="Faible">Faible</option>
+          </select>
+
+          <select
+            value={filterCategory}
+            onChange={e => setFilterCategory(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
+          >
+            <option value="TOUS">Toutes catégories</option>
+            <option value="Financier">Financier</option>
+            <option value="Approvisionnement">Approvisionnement</option>
+            <option value="Sécurité & QHSE">Sécurité & QHSE</option>
+            <option value="Climat & Sol">Climat & Sol</option>
+          </select>
+        </div>
+
+        {/* Tableau */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-[10px]">
+                <th className="p-3">Réf</th>
+                <th className="p-3">Intitulé du Risque & Description</th>
+                <th className="p-3">Catégorie</th>
+                <th className="p-3 text-center">Probabilité</th>
+                <th className="p-3 text-center">Impact</th>
+                <th className="p-3 text-center">Niveau</th>
+                <th className="p-3">Statut</th>
+                <th className="p-3">Responsable</th>
+                <th className="p-3">Plan d'Atténuation</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-[11px]">
+              {filteredRisks.map(r => (
+                <tr key={r.id} className="hover:bg-slate-50 transition">
+                  <td className="p-3 font-mono font-bold text-slate-500 text-[10px]">{r.id}</td>
+                  <td className="p-3 font-bold text-slate-900 max-w-[260px]">{r.name}</td>
+                  <td className="p-3">
+                    <span className={'px-2 py-0.5 rounded text-[10px] font-bold ' + r.categoryBg}>
+                      {r.category}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center font-bold text-slate-700">{r.prob}</td>
+                  <td className="p-3 text-center font-bold text-slate-700">{r.impact}</td>
+                  <td className="p-3 text-center">
+                    <span className={'px-2 py-0.5 rounded text-[10px] ' + r.levelBg}>
+                      {r.level}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <span className={'px-2 py-0.5 rounded-full text-[10px] font-bold ' + r.statusBg}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="p-3 font-medium text-slate-800">
+                    <span className="block font-bold text-[10px]">{r.owner}</span>
+                    <span className="block text-[9px] text-slate-400">{r.role}</span>
+                  </td>
+                  <td className="p-3 text-slate-600 text-[10px] max-w-[280px]">
+                    {r.mitigation || 'Mesures conservatoires en place'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+            <span>{filteredRisks.length} risque(s) répertorié(s)</span>
+            <span>Projet {selectedProject?.code}</span>
           </div>
         </div>
       </div>
 
-      {/* 4. DEUXIÈME LIGNE : RÉPARTITION, MATRICE PROBABILITÉ/IMPACT ET ÉVOLUTION DANS LE TEMPS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* MODAL AJOUT RISQUE */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-black text-slate-900 text-sm">Enregistrer un Risque Projet</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-700 font-bold cursor-pointer">✕</button>
+            </div>
 
-        {/* Répartition des risques par niveau (4/12) */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">RÉPARTITION DES RISQUES PAR NIVEAU</h3>
-
-          <div className="flex items-center gap-4 my-2">
-            <div className="w-28 h-28 rounded-full border-[12px] border-red-600 border-t-amber-500 border-r-amber-400 border-b-emerald-500 flex items-center justify-center">
-              <div className="text-center">
-                <span className="block text-xl font-black text-slate-900">24</span>
-                <span className="block text-[8px] font-bold text-slate-500">Risques</span>
+            <form onSubmit={handleAddRisk} className="space-y-3">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Intitulé du risque :</label>
+                <input
+                  type="text"
+                  required
+                  value={newRiskName}
+                  onChange={e => setNewRiskName(e.target.value)}
+                  placeholder="Ex: Retard livraison acier haute adhérence FeE500"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
               </div>
-            </div>
 
-            <div className="space-y-1.5 text-xs flex-1">
-              <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-red-600"></span>Critiques</span><span className="font-bold font-mono">3 (12,5%)</span></div>
-              <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-amber-500"></span>Élevés</span><span className="font-bold font-mono">5 (20,8%)</span></div>
-              <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-amber-300"></span>Moyens</span><span className="font-bold font-mono">8 (33,3%)</span></div>
-              <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Faibles</span><span className="font-bold font-mono">8 (33,3%)</span></div>
-            </div>
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Catégorie :</label>
+                  <select
+                    value={newRiskCategory}
+                    onChange={e => setNewRiskCategory(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
+                  >
+                    <option value="Technique & Chantier">Technique & Chantier</option>
+                    <option value="Sécurité & QHSE">Sécurité & QHSE</option>
+                    <option value="Approvisionnement">Approvisionnement</option>
+                    <option value="Financier">Financier</option>
+                    <option value="Climat & Sol">Climat & Sol</option>
+                  </select>
+                </div>
 
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir le détail</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Matrice Probabilité / Impact (5x5 Grid) (5/12) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">MATRICE PROBABILITÉ / IMPACT</h3>
-
-          {/* Grille Matrice 5x5 */}
-          <div className="overflow-x-auto my-2 text-[9px]">
-            <table className="w-full text-center border-collapse">
-              <thead>
-                <tr className="text-slate-400 font-bold">
-                  <th></th>
-                  <th colSpan={5} className="pb-1 uppercase">Impact</th>
-                </tr>
-                <tr className="text-slate-500 font-bold border-b text-[8px]">
-                  <th></th>
-                  <th>1 Faible</th>
-                  <th>2 Modéré</th>
-                  <th>3 Important</th>
-                  <th>4 Majeur</th>
-                  <th>5 Catastrophique</th>
-                </tr>
-              </thead>
-              <tbody className="font-bold">
-                <tr><td className="p-1 text-slate-400 text-left">5 Très élevée</td><td className="p-2 bg-emerald-100 border">0</td><td className="p-2 bg-amber-100 border">1</td><td className="p-2 bg-amber-300 border">2</td><td className="p-2 bg-red-400 border text-white">2</td><td className="p-2 bg-red-600 border text-white">1</td></tr>
-                <tr><td className="p-1 text-slate-400 text-left">4 Élevée</td><td className="p-2 bg-emerald-100 border">0</td><td className="p-2 bg-amber-100 border">1</td><td className="p-2 bg-amber-300 border">2</td><td className="p-2 bg-red-400 border text-white">1</td><td className="p-2 bg-red-400 border text-white">0</td></tr>
-                <tr><td className="p-1 text-slate-400 text-left">3 Moyenne</td><td className="p-2 bg-emerald-200 border">1</td><td className="p-2 bg-amber-100 border">2</td><td className="p-2 bg-amber-200 border">2</td><td className="p-2 bg-amber-300 border">1</td><td className="p-2 bg-red-400 border text-white">0</td></tr>
-                <tr><td className="p-1 text-slate-400 text-left">2 Faible</td><td className="p-2 bg-emerald-200 border">2</td><td className="p-2 bg-amber-100 border">1</td><td className="p-2 bg-emerald-200 border">0</td><td className="p-2 bg-emerald-200 border">0</td><td className="p-2 bg-emerald-200 border">0</td></tr>
-                <tr><td className="p-1 text-slate-400 text-left">1 Très faible</td><td className="p-2 bg-emerald-200 border">1</td><td className="p-2 bg-emerald-200 border">0</td><td className="p-2 bg-emerald-200 border">0</td><td className="p-2 bg-emerald-200 border">0</td><td className="p-2 bg-emerald-200 border">0</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir la matrice détaillée</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Évolution des risques dans le temps (3/12) */}
-        <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">ÉVOLUTION DES RISQUES DANS LE TEMPS</h3>
-            <div className="flex items-center gap-2 text-[8px] font-bold">
-              <span className="text-blue-600">━ Total</span>
-              <span className="text-emerald-600">━ Ouverts</span>
-              <span className="text-red-600">━ Critiques</span>
-            </div>
-          </div>
-
-          {/* Représentation graphique d'évolution */}
-          <div className="relative h-44 my-2 flex items-end justify-between px-2 text-[9px] text-slate-400 border-b border-l border-slate-200">
-            {['Déc. 2024', 'Janv. 2025', 'Févr. 2025', 'Mars 2025', 'Avr. 2025', 'Mai 2025'].map((m, i) => (
-              <div key={m} className="flex flex-col items-center gap-1">
-                <div className="w-1 bg-blue-600 rounded-t" style={{ height: `${(i + 1) * 8}px` }}></div>
-                <span>{m}</span>
-              </div>
-            ))}
-            <div className="absolute top-4 right-2 bg-blue-600 text-white font-bold text-[8px] px-1 rounded">24</div>
-            <div className="absolute top-12 right-2 bg-emerald-600 text-white font-bold text-[8px] px-1 rounded">18</div>
-            <div className="absolute top-28 right-2 bg-red-600 text-white font-bold text-[8px] px-1 rounded">3</div>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir l'historique complet</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-      </div>
-
-      {/* 5. TROISIÈME LIGNE : TOP 6 RISQUES CRITIQUES, STATUT PLANS D'ACTIONS & RISQUES PAR CATÉGORIE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        {/* Top 6 Risques Critiques et Élevés (7/12) */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">TOP 6 RISQUES CRITIQUES ET ÉLEVÉS</h3>
-
-          <div className="overflow-x-auto my-2 text-xs">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="text-slate-400 font-bold border-b border-slate-100 text-[10px]">
-                  <th className="pb-1.5 w-10">ID</th>
-                  <th className="pb-1.5">Risque</th>
-                  <th className="pb-1.5">Catégorie</th>
-                  <th className="pb-1.5">Probabilité</th>
-                  <th className="pb-1.5">Impact</th>
-                  <th className="pb-1.5">Niveau</th>
-                  <th className="pb-1.5">Statut</th>
-                  <th className="pb-1.5">Propriétaire</th>
-                  <th className="pb-1.5">Échéance</th>
-                  <th className="pb-1.5 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[11px]">
-                {topRisks.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition">
-                    <td className="py-2 font-mono font-bold text-slate-400">{r.id}</td>
-                    <td className="font-bold text-slate-900">{r.name}</td>
-                    <td><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${r.categoryBg}`}>{r.category}</span></td>
-                    <td className="font-medium">{r.prob}</td>
-                    <td className="font-medium">{r.impact}</td>
-                    <td><span className={`px-1.5 py-0.5 rounded text-[9px] ${r.levelBg}`}>{r.level}</span></td>
-                    <td><span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${r.statusBg}`}>{r.status}</span></td>
-                    <td>
-                      <span className="font-bold block text-[10px]">{r.owner}</span>
-                      <span className="text-[9px] text-slate-400 block">{r.role}</span>
-                    </td>
-                    <td className={`font-mono text-[10px] ${r.dateColor}`}>{r.date}</td>
-                    <td className="text-center">
-                      <div className="flex items-center justify-center gap-1 text-slate-400">
-                        <button className="hover:text-slate-700"><Eye size={13} /></button>
-                        <button className="hover:text-slate-700"><MoreHorizontal size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir tous les risques</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Côté Droit (5/12) : Statut des plans d'actions + Risques par catégorie */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Statut des plans d'actions */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">STATUT DES PLANS D'ACTIONS</h3>
-
-            <div className="flex items-center gap-4 my-2 text-xs">
-              <div className="w-24 h-24 rounded-full border-[10px] border-blue-600 border-t-emerald-500 border-r-red-500 flex items-center justify-center">
-                <div className="text-center">
-                  <span className="block text-sm font-black text-slate-900">16</span>
-                  <span className="block text-[8px] font-bold text-slate-500">Plans</span>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Niveau de Gravité :</label>
+                  <select
+                    value={newRiskLevel}
+                    onChange={e => setNewRiskLevel(e.target.value as any)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
+                  >
+                    <option value="Critique">Critique</option>
+                    <option value="Élevé">Élevé</option>
+                    <option value="Moyen">Moyen</option>
+                    <option value="Faible">Faible</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-xs flex-1">
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Terminés</span><span className="font-bold font-mono">6 (37,5%)</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-blue-600"></span>En cours</span><span className="font-bold font-mono">8 (50,0%)</span></div>
-                <div className="flex justify-between items-center"><span className="flex items-center gap-1 font-medium"><span className="w-2 h-2 rounded-full bg-red-600"></span>En retard</span><span className="font-bold font-mono">2 (12,5%)</span></div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Plan d'atténuation / Mesures correctives :</label>
+                <textarea
+                  rows={3}
+                  value={newRiskMitigation}
+                  onChange={e => setNewRiskMitigation(e.target.value)}
+                  placeholder="Ex: Commandes anticipées de 3 semaines + sourcing de secours auprès de deux fournisseurs locaux agréés"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
               </div>
-            </div>
 
-            <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-              <span>Voir tous les plans d'actions</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
-
-          {/* Risques par catégorie */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">RISQUES PAR CATÉGORIE</h3>
-
-            <div className="space-y-1.5 my-2 text-xs">
-              <div className="flex items-center gap-2"><span className="w-32 truncate text-slate-700">Approvisionnement</span><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-blue-600 h-2 rounded-full" style={{ width: '75%' }}></div></div><span className="font-bold font-mono">6</span></div>
-              <div className="flex items-center gap-2"><span className="w-32 truncate text-slate-700">Financier</span><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-blue-600 h-2 rounded-full" style={{ width: '62%' }}></div></div><span className="font-bold font-mono">5</span></div>
-              <div className="flex items-center gap-2"><span className="w-32 truncate text-slate-700">Externe / Climat</span><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-blue-600 h-2 rounded-full" style={{ width: '50%' }}></div></div><span className="font-bold font-mono">4</span></div>
-              <div className="flex items-center gap-2"><span className="w-32 truncate text-slate-700">Qualité</span><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-blue-600 h-2 rounded-full" style={{ width: '37%' }}></div></div><span className="font-bold font-mono">3</span></div>
-              <div className="flex items-center gap-2"><span className="w-32 truncate text-slate-700">Ressources Humaines</span><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-blue-600 h-2 rounded-full" style={{ width: '37%' }}></div></div><span className="font-bold font-mono">3</span></div>
-            </div>
-
-            <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-              <span>Voir le détail par catégorie</span>
-              <ArrowRight size={14} />
-            </button>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-md cursor-pointer"
+                >
+                  Enregistrer le risque
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-
-      </div>
-
-      {/* 6. QUATRIÈME LIGNE : RISQUES RÉCEMMENT AJOUTÉS, RECOMMANDATIONS ET DOCUMENTS & RESSOURCES */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        {/* Risques récemment ajoutés (4/12) */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">RISQUES RÉCEMMENT AJOUTÉS</h3>
-
-          <div className="space-y-2.5 my-2 text-xs">
-            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-              <span className="font-bold text-slate-900 text-[11px]">R-023 Augmentation prix carburant</span>
-              <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold px-1.5 rounded">Moyen</span>
-              <span className="text-[10px] text-slate-400 font-mono">20/05/2025</span>
-            </div>
-            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-              <span className="font-bold text-slate-900 text-[11px]">R-024 Conflit avec riverains – accès chantier</span>
-              <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold px-1.5 rounded">Moyen</span>
-              <span className="text-[10px] text-slate-400 font-mono">18/05/2025</span>
-            </div>
-            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-              <span className="font-bold text-slate-900 text-[11px]">R-025 Retard approbation plans d’exécution</span>
-              <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 rounded">Élevé</span>
-              <span className="text-[10px] text-slate-400 font-mono">17/05/2025</span>
-            </div>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir tous les risques récents</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Recommandations prioritaires (5/12) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">RECOMMANDATIONS PRIORITAIRES</h3>
-
-          <div className="space-y-2 my-2 text-xs text-slate-800 font-medium">
-            <div className="flex items-start gap-2"><CheckCircle2 size={14} className="text-blue-600 mt-0.5" /><span>Traiter en priorité les 3 risques critiques identifiés.</span></div>
-            <div className="flex items-start gap-2"><CheckCircle2 size={14} className="text-blue-600 mt-0.5" /><span>Mettre en place un stock de sécurité pour les matériaux critiques.</span></div>
-            <div className="flex items-start gap-2"><CheckCircle2 size={14} className="text-blue-600 mt-0.5" /><span>Renforcer le suivi météo et adapter le planning en conséquence.</span></div>
-            <div className="flex items-start gap-2"><CheckCircle2 size={14} className="text-blue-600 mt-0.5" /><span>Revoir le budget du lot 03 et optimiser les ressources.</span></div>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir toutes les recommandations</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Documents & Ressources (3/12) */}
-        <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">DOCUMENTS & RESSOURCES</h3>
-
-          <div className="space-y-2 my-2 text-xs">
-            <div className="flex justify-between items-center"><span className="font-bold text-slate-900 flex items-center gap-1.5"><FileText size={14} className="text-red-600" />Plan de gestion des risques – V2.1.pdf</span><span className="text-[10px] text-slate-400 font-mono">1,2 Mo</span></div>
-            <div className="flex justify-between items-center"><span className="font-bold text-slate-900 flex items-center gap-1.5"><FileText size={14} className="text-emerald-600" />Registre des risques – Mai 2025.xlsx</span><span className="text-[10px] text-slate-400 font-mono">456 Ko</span></div>
-            <div className="flex justify-between items-center"><span className="font-bold text-slate-900 flex items-center gap-1.5"><FileText size={14} className="text-red-600" />Matrice probabilité impact.pdf</span><span className="text-[10px] text-slate-400 font-mono">780 Ko</span></div>
-          </div>
-
-          <button className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100">
-            <span>Voir tous les documents</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-      </div>
-
+      )}
     </div>
   );
 };

@@ -68,60 +68,6 @@ export const INITIAL_PROJECTS: Project[] = [
 ];
 
 export const INITIAL_WBS: Record<string, WBSNode[]> = {
-  'CIV-2026-ASS-001': [
-    {
-      id: 'CIV-2026-ASS-001-03',
-      projectId: 'CIV-2026-ASS-001',
-      code: 'CIV-2026-ASS-001 / 03',
-      name: '03 — Travaux de Génie Civil',
-      initialBudget: 625000000,
-      revisedBudget: 625000000,
-      committed: 480000000,
-      actualCost: 310000000,
-      forecast: 388000000,
-      eac: 698000000,
-      progress: 45,
-      nature: 'LOT',
-      manager: 'SEA Alphonse',
-      children: [
-        {
-          id: 'CIV-2026-ASS-001-03-02',
-          projectId: 'CIV-2026-ASS-001',
-          code: 'CIV-2026-ASS-001 / 03 / 02',
-          name: '02 — Structure Béton Armé',
-          initialBudget: 350000000,
-          revisedBudget: 350000000,
-          committed: 280000000,
-          actualCost: 195000000,
-          forecast: 200000000,
-          eac: 395000000,
-          progress: 50,
-          nature: 'LOT',
-          manager: 'SEA Alphonse',
-          children: [
-            {
-              id: 'CIV-2026-ASS-001-03-02-004',
-              projectId: 'CIV-2026-ASS-001',
-              code: 'CIV-2026-ASS-001 / 03 / 02 / 004',
-              name: '004 — Réalisation béton armé radier & voiles',
-              unit: 'm3',
-              plannedQty: 450,
-              unitCost: 110000,
-              initialBudget: 49500000,
-              revisedBudget: 49000000,
-              committed: 49000000,
-              actualCost: 32000000,
-              forecast: 25000000,
-              eac: 57000000,
-              progress: 60,
-              nature: 'MAT',
-              manager: 'SEA Alphonse'
-            }
-          ]
-        }
-      ]
-    }
-  ],
   ...REAL_EXCEL_WBS,
 };
 

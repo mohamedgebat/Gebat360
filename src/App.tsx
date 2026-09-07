@@ -223,21 +223,21 @@ const MainApp: React.FC = () => {
       case 'dashboard-alerts':
         return (
           <AlertsCenterModule
-            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+            onBackToProject={() => setSelectedProjectId(projects[0]?.id || 'CIV-2026-ASS-SON-001')}
           />
         );
 
       case 'btp-risks':
         return (
           <RisksModule
-            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+            onBackToProject={() => setSelectedProjectId(projects[0]?.id || 'CIV-2026-ASS-SON-001')}
           />
         );
 
       case 'analytics-performance':
         return (
           <PerformanceAnalyticsModule
-            onBackToProject={() => setSelectedProjectId('CIV-2026-ASS-001')}
+            onBackToProject={() => setSelectedProjectId(projects[0]?.id || 'CIV-2026-ASS-SON-001')}
           />
         );
 

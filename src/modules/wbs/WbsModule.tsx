@@ -657,9 +657,15 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
         const lotChildren: WbsHierarchyNode[] = acts.map((act, aIdx) => {
           const actCode = act.priceNo || `${lotCode}.${String(aIdx + 1).padStart(2, '0')}`;
           const qty = Number(act.contractQty || 1);
-          const pu = Number(act.marketUnitPrice || 5000);
+          const pu = Number(act.marketUnitPrice || 0);
           const mktAmt = Number(act.marketAmount || (qty * pu));
-          const dsAmt = Number(act.calculatedDsAmount || act.importedDsAmount || Math.round(mktAmt * 0.8));
+          const dsAmt = (act.calculatedDsAmount !== undefined && act.calculatedDsAmount !== null)
+            ? Number(act.calculatedDsAmount)
+            : (act.importedDsAmount !== undefined && act.importedDsAmount !== null
+              ? Number(act.importedDsAmount)
+              : (act.dsAmount !== undefined && act.dsAmount !== null
+                ? Number(act.dsAmount)
+                : Math.round(mktAmt * 0.8)));
 
           // Calcul réel depuis les rapports journaliers et engagements
           const linkedReports = dailyReports.filter(r => {
@@ -754,8 +760,8 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
       dynamicChildren = standaloneLots;
     }
 
-    const calculatedTotalMarche = Number(selectedProject.contractAmount || 0) || dynamicChildren.reduce((s, c) => s + c.contractAmount, 0);
-    const calculatedTotalBudgetDs = Number(selectedProject.revisedBudget || selectedProject.initialBudget || 0) || dynamicChildren.reduce((s, c) => s + c.budgetDs, 0);
+    const calculatedTotalMarche = dynamicChildren.reduce((s, c) => s + c.contractAmount, 0) || Number(selectedProject.contractAmount || 0);
+    const calculatedTotalBudgetDs = dynamicChildren.reduce((s, c) => s + c.budgetDs, 0) || Number(selectedProject.revisedBudget || selectedProject.initialBudget || 0);
     const calculatedCommitted = dynamicChildren.reduce((s, c) => s + c.committed, 0);
     const calculatedActualCost = dynamicChildren.reduce((s, c) => s + c.actualCost, 0);
     const calculatedForecast = dynamicChildren.reduce((s, c) => s + (c.forecast || c.budgetDs), 0);
@@ -1274,7 +1280,7 @@ export const WbsModule: React.FC<WbsModuleProps> = ({ onBackToProject }) => {
               {formatCompactMds((treeData.contractAmount || (treeData.budgetDs * 1.25)) - treeData.eac, true)}
             </div>
             <div className="text-[11px] font-bold text-emerald-600">
-              {((((treeData.contractAmount || (treeData.budgetDs * 1.25)) - treeData.eac) / (treeData.contractAmount || 1)) * 100).toFixed(1)}% de la valeur kontr.
+              {((((treeData.contractAmount || (treeData.budgetDs * 1.25)) - treeData.eac) / (treeData.contractAmount || 1)) * 100).toFixed(1)}% du montant contrat
             </div>
           </div>
           <div className="p-3 bg-amber-500 text-white rounded-full shadow-md shrink-0">
