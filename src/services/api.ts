@@ -369,4 +369,37 @@ export class ApiService {
   static async getCostNatures(): Promise<any[]> {
     return this.request<any[]>('/cost-natures');
   }
+
+  // 13. Sous-traitance & Situations
+  static async getSubcontracts(projectId?: string): Promise<any[]> {
+    const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    return this.request<any[]>(`/subcontracts${q}`);
+  }
+
+  static async createSubcontract(st: any): Promise<any> {
+    return this.request<any>('/subcontracts', {
+      method: 'POST',
+      body: JSON.stringify(st),
+    });
+  }
+
+  static async updateSubcontract(id: string, updates: any): Promise<any> {
+    return this.request<any>(`/subcontracts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  static async deleteSubcontract(id: string): Promise<any> {
+    return this.request<any>(`/subcontracts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  static async addSubcontractSituation(subcontractId: string, situationData: any): Promise<any> {
+    return this.request<any>(`/subcontracts/${subcontractId}/situations`, {
+      method: 'POST',
+      body: JSON.stringify(situationData),
+    });
+  }
 }

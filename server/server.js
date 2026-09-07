@@ -513,7 +513,53 @@ async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 18. Ajouter site_id et entity_id dans audit_logs si absents
+    // 18. Table subcontracts & subcontract_situations
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS subcontracts (
+        id VARCHAR(64) PRIMARY KEY,
+        project_id VARCHAR(64) NOT NULL,
+        code VARCHAR(64) NOT NULL,
+        company VARCHAR(255) NOT NULL,
+        lot_code VARCHAR(64),
+        lot_name VARCHAR(255),
+        manager VARCHAR(150),
+        contact_phone VARCHAR(50),
+        contact_email VARCHAR(150),
+        contract_amount DECIMAL(15,2) DEFAULT 0,
+        amendments DECIMAL(15,2) DEFAULT 0,
+        invoiced DECIMAL(15,2) DEFAULT 0,
+        guarantee5 DECIMAL(15,2) DEFAULT 0,
+        paid_amount DECIMAL(15,2) DEFAULT 0,
+        progress DECIMAL(5,2) DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'En cours',
+        start_date VARCHAR(30),
+        end_date VARCHAR(30),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS subcontract_situations (
+        id VARCHAR(64) PRIMARY KEY,
+        subcontract_id VARCHAR(64) NOT NULL,
+        situation_number INT DEFAULT 1,
+        period_month VARCHAR(20),
+        submission_date VARCHAR(30),
+        gross_amount DECIMAL(15,2) DEFAULT 0,
+        retention_rate DECIMAL(5,2) DEFAULT 5,
+        retention_amount DECIMAL(15,2) DEFAULT 0,
+        net_amount DECIMAL(15,2) DEFAULT 0,
+        progress_pct DECIMAL(5,2) DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'Validé',
+        notes TEXT,
+        validated_by VARCHAR(150),
+        validated_at VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 19. Ajouter site_id et entity_id dans audit_logs si absents
     const [auditSiteCols] = await conn.query("SHOW COLUMNS FROM audit_logs LIKE 'site_id'");
     if (auditSiteCols.length === 0) {
       await conn.query("ALTER TABLE audit_logs ADD COLUMN site_id INT NULL");
@@ -2181,6 +2227,241 @@ app.get(['/api/v1/audit-logs', '/api/audit-logs', '/api/v1/audit'], requireAuth,
     res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Erreur récupération audit trail', detail: err.message });
+  }
+});
+
+// ==============================================================================
+// 10. SOUS-TRAITANCE & SITUATIONS MENSUELLES (SUBCONTRACTS & SITUATIONS)
+// ==============================================================================
+app.get(['/api/v1/subcontracts', '/api/subcontracts'], requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    let query = 'SELECT * FROM subcontracts';
+    const params = [];
+    if (projectId && projectId !== 'ALL') {
+      query += ' WHERE project_id = ?';
+      params.push(projectId);
+    }
+    query += ' ORDER BY created_at DESC';
+    const [subcontracts] = await pool.query(query, params);
+
+    // Charger les situations pour chaque contrat
+    const [situations] = await pool.query('SELECT * FROM subcontract_situations ORDER BY situation_number ASC');
+    const situationsMap = {};
+    for (const s of situations) {
+      if (!situationsMap[s.subcontract_id]) situationsMap[s.subcontract_id] = [];
+      situationsMap[s.subcontract_id].push({
+        id: s.id,
+        subcontractId: s.subcontract_id,
+        situationNumber: s.situation_number,
+        periodMonth: s.period_month,
+        submissionDate: s.submission_date,
+        grossAmount: Number(s.gross_amount),
+        retentionRate: Number(s.retention_rate),
+        retentionAmount: Number(s.retention_amount),
+        netAmount: Number(s.net_amount),
+        progressPct: Number(s.progress_pct),
+        status: s.status,
+        notes: s.notes,
+        validatedBy: s.validated_by,
+        validatedAt: s.validated_at
+      });
+    }
+
+    const formatted = subcontracts.map(st => ({
+      id: st.id,
+      projectId: st.project_id,
+      code: st.code,
+      company: st.company,
+      lotCode: st.lot_code,
+      lotName: st.lot_name,
+      manager: st.manager,
+      contactPhone: st.contact_phone,
+      contactEmail: st.contact_email,
+      contractAmount: Number(st.contract_amount),
+      amendments: Number(st.amendments),
+      invoiced: Number(st.invoiced),
+      guarantee5: Number(st.guarantee5),
+      paidAmount: Number(st.paid_amount),
+      progress: Number(st.progress),
+      status: st.status,
+      startDate: st.start_date,
+      endDate: st.end_date,
+      notes: st.notes,
+      situations: situationsMap[st.id] || [],
+      createdAt: st.created_at
+    }));
+
+    res.status(200).json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération des sous-traitants', detail: err.message });
+  }
+});
+
+app.post(['/api/v1/subcontracts', '/api/subcontracts'], requireAuth, async (req, res) => {
+  try {
+    const {
+      projectId,
+      code,
+      company,
+      lotCode,
+      lotName,
+      manager,
+      contactPhone,
+      contactEmail,
+      contractAmount,
+      startDate,
+      endDate,
+      notes
+    } = req.body;
+
+    if (!projectId || !company || !contractAmount) {
+      return res.status(400).json({ error: 'Paramètres obligatoires manquants (projectId, company, contractAmount).' });
+    }
+
+    const id = req.body.id || `ST-${Date.now()}`;
+    const contractCode = code || `CTR-ST-${Date.now().toString().slice(-4)}`;
+    const amt = Number(contractAmount) || 0;
+
+    await pool.query(
+      `INSERT INTO subcontracts (id, project_id, code, company, lot_code, lot_name, manager, contact_phone, contact_email, contract_amount, amendments, invoiced, guarantee5, paid_amount, progress, status, start_date, end_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 'En cours', ?, ?, ?)`,
+      [id, projectId, contractCode, company, lotCode || '', lotName || '', manager || '', contactPhone || '', contactEmail || '', amt, startDate || '', endDate || '', notes || '']
+    );
+
+    // Audit Log
+    try {
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_name, user_role, action, module, object_ref, justification)
+         VALUES (?, ?, ?, ?, 'SUBCONTRACT_CREATED', 'SOUS_TRAITANCE', ?, ?)`,
+        [`AUD-${Date.now()}`, req.user?.id || 'USR-001', req.user?.name || 'Admin', req.user?.role || 'SUPER_ADMIN', id, `Création contrat sous-traitance : ${company} (${amt} FCFA)`]
+      );
+    } catch (e) {}
+
+    res.status(201).json({
+      id,
+      projectId,
+      code: contractCode,
+      company,
+      lotCode: lotCode || '',
+      lotName: lotName || '',
+      manager: manager || '',
+      contactPhone: contactPhone || '',
+      contactEmail: contactEmail || '',
+      contractAmount: amt,
+      amendments: 0,
+      invoiced: 0,
+      guarantee5: 0,
+      paidAmount: 0,
+      progress: 0,
+      status: 'En cours',
+      startDate: startDate || '',
+      endDate: endDate || '',
+      notes: notes || '',
+      situations: []
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur lors de la création du contrat sous-traitant', detail: err.message });
+  }
+});
+
+app.post(['/api/v1/subcontracts/:id/situations', '/api/subcontracts/:id/situations'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { periodMonth, submissionDate, grossAmount, progressPct, notes } = req.body;
+
+    const [stRows] = await pool.query('SELECT * FROM subcontracts WHERE id = ?', [id]);
+    if (stRows.length === 0) {
+      return res.status(404).json({ error: 'Contrat sous-traitant introuvable.' });
+    }
+
+    const gross = Number(grossAmount) || 0;
+    const retention = Math.round(gross * 0.05);
+    const net = gross - retention;
+    const prog = Math.min(100, Math.max(0, Number(progressPct) || 0));
+
+    const [existingSits] = await pool.query('SELECT COUNT(*) as count FROM subcontract_situations WHERE subcontract_id = ?', [id]);
+    const sitNum = (existingSits[0].count || 0) + 1;
+    const sitId = `SIT-${id}-${sitNum}`;
+
+    await pool.query(
+      `INSERT INTO subcontract_situations (id, subcontract_id, situation_number, period_month, submission_date, gross_amount, retention_rate, retention_amount, net_amount, progress_pct, status, notes, validated_by, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 5, ?, ?, ?, 'Validé', ?, ?, NOW())`,
+      [sitId, id, sitNum, periodMonth || '2026-08', submissionDate || new Date().toISOString().substring(0, 10), gross, retention, net, prog, notes || '', req.user?.name || 'Directeur Projet']
+    );
+
+    // Mettre à jour les cumuls du contrat
+    await pool.query(
+      `UPDATE subcontracts 
+       SET invoiced = invoiced + ?, guarantee5 = guarantee5 + ?, progress = GREATEST(progress, ?)
+       WHERE id = ?`,
+      [gross, retention, prog, id]
+    );
+
+    res.status(201).json({
+      id: sitId,
+      subcontractId: id,
+      situationNumber: sitNum,
+      periodMonth,
+      submissionDate,
+      grossAmount: gross,
+      retentionRate: 5,
+      retentionAmount: retention,
+      netAmount: net,
+      progressPct: prog,
+      status: 'Validé',
+      notes,
+      validatedBy: req.user?.name || 'Directeur Projet'
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la situation sous-traitant', detail: err.message });
+  }
+});
+
+app.patch(['/api/v1/subcontracts/:id', '/api/subcontracts/:id'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    const fields = [];
+    const values = [];
+
+    if (updates.company !== undefined) { fields.push('company = ?'); values.push(updates.company); }
+    if (updates.lotCode !== undefined) { fields.push('lot_code = ?'); values.push(updates.lotCode); }
+    if (updates.lotName !== undefined) { fields.push('lot_name = ?'); values.push(updates.lotName); }
+    if (updates.manager !== undefined) { fields.push('manager = ?'); values.push(updates.manager); }
+    if (updates.contactPhone !== undefined) { fields.push('contact_phone = ?'); values.push(updates.contactPhone); }
+    if (updates.contactEmail !== undefined) { fields.push('contact_email = ?'); values.push(updates.contactEmail); }
+    if (updates.contractAmount !== undefined) { fields.push('contract_amount = ?'); values.push(Number(updates.contractAmount)); }
+    if (updates.amendments !== undefined) { fields.push('amendments = ?'); values.push(Number(updates.amendments)); }
+    if (updates.invoiced !== undefined) { fields.push('invoiced = ?'); values.push(Number(updates.invoiced)); }
+    if (updates.guarantee5 !== undefined) { fields.push('guarantee5 = ?'); values.push(Number(updates.guarantee5)); }
+    if (updates.paidAmount !== undefined) { fields.push('paid_amount = ?'); values.push(Number(updates.paidAmount)); }
+    if (updates.progress !== undefined) { fields.push('progress = ?'); values.push(Number(updates.progress)); }
+    if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+    if (updates.startDate !== undefined) { fields.push('start_date = ?'); values.push(updates.startDate); }
+    if (updates.endDate !== undefined) { fields.push('end_date = ?'); values.push(updates.endDate); }
+    if (updates.notes !== undefined) { fields.push('notes = ?'); values.push(updates.notes); }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Aucun champ à mettre à jour' });
+    }
+
+    values.push(id);
+    await pool.query(`UPDATE subcontracts SET ${fields.join(', ')} WHERE id = ?`, values);
+    res.status(200).json({ message: 'Contrat sous-traitant mis à jour avec succès' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur lors de la mise à jour du contrat sous-traitant', detail: err.message });
+  }
+});
+
+app.delete(['/api/v1/subcontracts/:id', '/api/subcontracts/:id'], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM subcontract_situations WHERE subcontract_id = ?', [id]);
+    await pool.query('DELETE FROM subcontracts WHERE id = ?', [id]);
+    res.status(200).json({ message: 'Contrat sous-traitant supprimé avec succès' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur lors de la suppression du contrat sous-traitant', detail: err.message });
   }
 });
 

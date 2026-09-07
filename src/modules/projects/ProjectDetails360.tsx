@@ -51,7 +51,9 @@ import {
   File,
   FileCode,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  Trash2,
+  Edit3
 } from 'lucide-react';
 import { DataInsight } from '../../shared/components/DataInsight';
 
@@ -90,7 +92,21 @@ interface ProjectDetails360Props {
 }
 
 export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId, onBack, onSelectProject, onNavigateView }) => {
-  const { projects = [], wbsMap = {}, purchaseRequests = [], auditLogs = [], dailyReports = [], alerts = [] } = useAppState();
+  const {
+    projects = [],
+    wbsMap = {},
+    purchaseRequests = [],
+    auditLogs = [],
+    dailyReports = [],
+    alerts = [],
+    subcontracts = [],
+    createSubcontract,
+    updateSubcontract,
+    deleteSubcontract,
+    addSubcontractSituation,
+    currentUser
+  } = useAppState();
+
   const [activeTab, setActiveTab] = useState<string>(() => {
     return sessionStorage.getItem(`gebat_360_tab_${projectId}`) || 'overview';
   });
@@ -103,6 +119,31 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   const [daSearch, setDaSearch] = useState<string>('');
   const [daStatusFilter, setDaStatusFilter] = useState<string>('ALL');
   const [selectedDaModal, setSelectedDaModal] = useState<any | null>(null);
+
+  // États du module Sous-traitance
+  const [stSearch, setStSearch] = useState<string>('');
+  const [stStatusFilter, setStStatusFilter] = useState<string>('ALL');
+  const [isNewSubcontractModalOpen, setIsNewSubcontractModalOpen] = useState<boolean>(false);
+  const [selectedSubcontractForSituation, setSelectedSubcontractForSituation] = useState<any | null>(null);
+  const [selectedSubcontractDetails, setSelectedSubcontractDetails] = useState<any | null>(null);
+
+  // Formulaire Nouveau Contrat ST
+  const [newStCompany, setNewStCompany] = useState<string>('');
+  const [newStLotId, setNewStLotId] = useState<string>('');
+  const [newStManager, setNewStManager] = useState<string>('');
+  const [newStPhone, setNewStPhone] = useState<string>('');
+  const [newStEmail, setNewStEmail] = useState<string>('');
+  const [newStAmount, setNewStAmount] = useState<number | string>('');
+  const [newStStartDate, setNewStStartDate] = useState<string>('');
+  const [newStEndDate, setNewStEndDate] = useState<string>('');
+  const [newStNotes, setNewStNotes] = useState<string>('');
+
+  // Formulaire Nouvelle Situation ST
+  const [situationPeriod, setSituationPeriod] = useState<string>('2026-08');
+  const [situationDate, setSituationDate] = useState<string>(new Date().toISOString().substring(0, 10));
+  const [situationGrossAmount, setSituationGrossAmount] = useState<number | string>('');
+  const [situationProgressPct, setSituationProgressPct] = useState<number | string>('');
+  const [situationNotes, setSituationNotes] = useState<string>('');
 
   const [docCategoryFilter, setDocCategoryFilter] = useState<string>('ALL');
   const [docSearch, setDocSearch] = useState<string>('');
@@ -537,265 +578,174 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return { bcws, bcwp, acwp, cpi, spi, vac, engagementRate };
   }, [revisedBudget, progressPct, project.progress, totalActualCost, totalEac, totalCommitted]);
 
-  // Référentiel 100% Dynamique & Réel des Marchés de Sous-traitance (SSOT)
+  // 100% Dynamique & Réel des Marchés de Sous-traitance (SSOT Persistant en BDD)
   const subcontractsList = useMemo(() => {
-    const baseST = realNatureTotals.ST > 0 
-      ? realNatureTotals.ST 
-      : isSongon 
-      ? 76000000 
-      : isBingerville 
-      ? 64000000 
-      : Math.round((contractAmount > 0 ? contractAmount : 400000000) * 0.16);
+    if (!project) return [];
+    return subcontracts.filter(st => {
+      return st.projectId === project.id || 
+             st.projectId === project.code || 
+             isProjectMatch(st.projectId, project.id) || 
+             isProjectMatch(st.projectId, project.code);
+    });
+  }, [subcontracts, project]);
 
-    const progNum = Number(progressPct) || 0;
+  const filteredSubcontractsList = useMemo(() => {
+    return subcontractsList.filter(st => {
+      const q = stSearch.toLowerCase().trim();
+      const matchSearch = !q ||
+        (st.company || '').toLowerCase().includes(q) ||
+        (st.lotName || '').toLowerCase().includes(q) ||
+        (st.lotCode || '').toLowerCase().includes(q) ||
+        (st.manager || '').toLowerCase().includes(q);
+      
+      const matchStatus = stStatusFilter === 'ALL' || st.status === stStatusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [subcontractsList, stSearch, stStatusFilter]);
 
-    if (isSongon) {
-      const c1Amt = Math.round(baseST * 0.35); // 26 600 000 FCFA
-      const c2Amt = Math.round(baseST * 0.12); // 9 120 000 FCFA
-      const c3Amt = Math.round(baseST * 0.25); // 19 000 000 FCFA
-      const c4Amt = Math.round(baseST * 0.18); // 13 680 000 FCFA
-      const c5Amt = Math.max(0, baseST - (c1Amt + c2Amt + c3Amt + c4Amt)); // 7 600 000 FCFA
+  const totalContractST = useMemo(() => {
+    const listSum = subcontractsList.reduce((s, st) => s + (Number(st.contractAmount) || 0), 0);
+    return listSum > 0 ? listSum : (realNatureTotals.ST > 0 ? realNatureTotals.ST : 0);
+  }, [subcontractsList, realNatureTotals.ST]);
 
-      const c1Invoiced = Math.round(c1Amt * Math.min(1, Math.max(0.15, (progNum / 100) * 3.5)));
-      const c2Invoiced = c2Amt; // 100% exécuté et validé en phase préliminaire
-      const c3Invoiced = progNum > 5 ? Math.round(c3Amt * ((progNum - 5) / 100) * 0.8) : 0;
-      const c4Invoiced = 0;
-      const c5Invoiced = 0;
-
-      return [
-        {
-          id: 'ST-01',
-          company: 'SIT - SOCIÉTÉ IVOIRIENNE DE TERRASSEMENT',
-          lotCode: '100.1',
-          lotName: 'Terrassements généraux, Déblais & Plateforme STEP',
-          manager: 'KOUASSI Roger',
-          contractAmount: c1Amt,
-          amendments: 0,
-          invoiced: c1Invoiced,
-          guarantee5: Math.round(c1Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c1Invoiced / c1Amt) * 100)),
-          status: 'En cours'
-        },
-        {
-          id: 'ST-02',
-          company: 'GÉO-AFRIQUE SONDAGES & ESSAIS SOL (LBTP)',
-          lotCode: '000.1',
-          lotName: 'Reconnaissance géotechnique & Essais de portance',
-          manager: 'Dr. OUATTARA Ibrahima',
-          contractAmount: c2Amt,
-          amendments: 0,
-          invoiced: c2Invoiced,
-          guarantee5: Math.round(c2Invoiced * 0.05),
-          progress: 100,
-          status: 'Clôturé'
-        },
-        {
-          id: 'ST-03',
-          company: 'IVOIRE ÉTANCHÉITÉ & VRD SARL',
-          lotCode: '200.3',
-          lotName: 'Étanchéité lourde des bassins, voiles & radiers',
-          manager: 'BAMBA Seydou',
-          contractAmount: c3Amt,
-          amendments: 0,
-          invoiced: c3Invoiced,
-          guarantee5: Math.round(c3Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c3Invoiced / c3Amt) * 100)),
-          status: progNum > 5 ? 'En cours' : 'Actif'
-        },
-        {
-          id: 'ST-04',
-          company: 'EMCI - ELECTRO-MÉCANIQUE DE CÔTE D\'IVOIRE',
-          lotCode: '200.4',
-          lotName: 'Équipements de pompage immergés & automates',
-          manager: 'KOFFI Emmanuel',
-          contractAmount: c4Amt,
-          amendments: 0,
-          invoiced: c4Invoiced,
-          guarantee5: Math.round(c4Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        },
-        {
-          id: 'ST-05',
-          company: 'SASM - SERRURERIE INDUSTRIELLE ABIDJAN',
-          lotCode: '200.2',
-          lotName: 'Grilles dégrillage inox, trappes & passerelles',
-          manager: 'TRAORÉ Moussa',
-          contractAmount: c5Amt,
-          amendments: 0,
-          invoiced: c5Invoiced,
-          guarantee5: Math.round(c5Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        }
-      ];
-    } else if (isBingerville) {
-      const c1Amt = Math.round(baseST * 0.35); // 22 400 000 FCFA
-      const c2Amt = Math.round(baseST * 0.12); // 7 680 000 FCFA
-      const c3Amt = Math.round(baseST * 0.25); // 16 000 000 FCFA
-      const c4Amt = Math.round(baseST * 0.18); // 11 520 000 FCFA
-      const c5Amt = Math.max(0, baseST - (c1Amt + c2Amt + c3Amt + c4Amt)); // 6 400 000 FCFA
-
-      const c1Invoiced = Math.round(c1Amt * Math.min(1, Math.max(0.12, (progNum / 100) * 3.5)));
-      const c2Invoiced = c2Amt;
-      const c3Invoiced = progNum > 5 ? Math.round(c3Amt * ((progNum - 5) / 100) * 0.8) : 0;
-      const c4Invoiced = 0;
-      const c5Invoiced = 0;
-
-      return [
-        {
-          id: 'ST-01',
-          company: 'SOGEA-VRD CÔTE D\'IVOIRE',
-          lotCode: '02.01',
-          lotName: 'Terrassements généraux, Fouilles en grande masse & VRD',
-          manager: 'KOUADIO Patrice',
-          contractAmount: c1Amt,
-          amendments: 0,
-          invoiced: c1Invoiced,
-          guarantee5: Math.round(c1Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c1Invoiced / c1Amt) * 100)),
-          status: 'En cours'
-        },
-        {
-          id: 'ST-02',
-          company: 'LABOGEM CI - CONTRÔLE GÉOTECHNIQUE',
-          lotCode: '01.01',
-          lotName: 'Sondages pressiométriques & Contrôles béton',
-          manager: 'Dr. KONE Seydou',
-          contractAmount: c2Amt,
-          amendments: 0,
-          invoiced: c2Invoiced,
-          guarantee5: Math.round(c2Invoiced * 0.05),
-          progress: 100,
-          status: 'Clôturé'
-        },
-        {
-          id: 'ST-03',
-          company: 'ETANCHE-PLUS AFRIQUE SARL',
-          lotCode: '03.02',
-          lotName: 'Étanchéité cuvelage & Joints hydrogonflants',
-          manager: 'TOURE Adama',
-          contractAmount: c3Amt,
-          amendments: 0,
-          invoiced: c3Invoiced,
-          guarantee5: Math.round(c3Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c3Invoiced / c3Amt) * 100)),
-          status: progNum > 5 ? 'En cours' : 'Actif'
-        },
-        {
-          id: 'ST-04',
-          company: 'HYDRO-SYSTEMS CI',
-          lotCode: '04.01',
-          lotName: 'Groupes électropompes d\'exhaure & Tuyauteries inox',
-          manager: 'GNAHOUÉ Marc',
-          contractAmount: c4Amt,
-          amendments: 0,
-          invoiced: c4Invoiced,
-          guarantee5: Math.round(c4Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        },
-        {
-          id: 'ST-05',
-          company: 'AFRIQUE CHAUDRONNERIE BTP',
-          lotCode: '04.02',
-          lotName: 'Serrurerie industrielle, Passerelles & Vannes murales',
-          manager: 'YAPO Jean-Luc',
-          contractAmount: c5Amt,
-          amendments: 0,
-          invoiced: c5Invoiced,
-          guarantee5: Math.round(c5Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        }
-      ];
-    } else {
-      const c1Amt = Math.round(baseST * 0.35);
-      const c2Amt = Math.round(baseST * 0.12);
-      const c3Amt = Math.round(baseST * 0.25);
-      const c4Amt = Math.round(baseST * 0.18);
-      const c5Amt = Math.max(0, baseST - (c1Amt + c2Amt + c3Amt + c4Amt));
-
-      const c1Invoiced = Math.round(c1Amt * Math.min(1, (progNum / 100) * 3));
-      const c2Invoiced = c2Amt;
-      const c3Invoiced = progNum > 10 ? Math.round(c3Amt * ((progNum - 10) / 100)) : 0;
-      const c4Invoiced = 0;
-      const c5Invoiced = 0;
-
-      return [
-        {
-          id: 'ST-01',
-          company: 'ENTREPRISE IVOIRIENNE DE VRD',
-          lotCode: '02.01',
-          lotName: 'Terrassements généraux & Voirie',
-          manager: 'KOUADIO Patrice',
-          contractAmount: c1Amt,
-          amendments: 0,
-          invoiced: c1Invoiced,
-          guarantee5: Math.round(c1Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c1Invoiced / c1Amt) * 100)),
-          status: progNum > 0 ? 'En cours' : 'Actif'
-        },
-        {
-          id: 'ST-02',
-          company: 'LABORATOIRE BTP CONTRÔLE',
-          lotCode: '01.01',
-          lotName: 'Essais géotechniques & Contrôle qualité',
-          manager: 'Dr. KONE Seydou',
-          contractAmount: c2Amt,
-          amendments: 0,
-          invoiced: c2Invoiced,
-          guarantee5: Math.round(c2Invoiced * 0.05),
-          progress: 100,
-          status: 'Clôturé'
-        },
-        {
-          id: 'ST-03',
-          company: 'SOCIÉTÉ SPÉCIALISÉE D\'ÉTANCHÉITÉ',
-          lotCode: '03.02',
-          lotName: 'Étanchéité des ouvrages de rétention',
-          manager: 'TOURE Adama',
-          contractAmount: c3Amt,
-          amendments: 0,
-          invoiced: c3Invoiced,
-          guarantee5: Math.round(c3Invoiced * 0.05),
-          progress: Math.min(100, Math.round((c3Invoiced / c3Amt) * 100)),
-          status: progNum > 10 ? 'En cours' : 'Actif'
-        },
-        {
-          id: 'ST-04',
-          company: 'INGÉNIERIE HYDRAULIQUE & ÉNERGIE',
-          lotCode: '04.01',
-          lotName: 'Pompage et équipements électromécaniques',
-          manager: 'GNAHOUÉ Marc',
-          contractAmount: c4Amt,
-          amendments: 0,
-          invoiced: c4Invoiced,
-          guarantee5: Math.round(c4Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        },
-        {
-          id: 'ST-05',
-          company: 'MÉTALLERIE ET SERRURERIE INDUSTRIELLE',
-          lotCode: '04.02',
-          lotName: 'Serrurerie industrielle & Équipements de sécurité',
-          manager: 'YAPO Jean-Luc',
-          contractAmount: c5Amt,
-          amendments: 0,
-          invoiced: c5Invoiced,
-          guarantee5: Math.round(c5Invoiced * 0.05),
-          progress: 0,
-          status: 'Actif'
-        }
-      ];
-    }
-  }, [realNatureTotals.ST, isSongon, isBingerville, progressPct, contractAmount]);
-
-  const totalContractST = useMemo(() => subcontractsList.reduce((s, st) => s + st.contractAmount, 0), [subcontractsList]);
-  const totalInvoicedST = useMemo(() => subcontractsList.reduce((s, st) => s + st.invoiced, 0), [subcontractsList]);
-  const totalGuaranteeST = useMemo(() => subcontractsList.reduce((s, st) => s + st.guarantee5, 0), [subcontractsList]);
+  const totalInvoicedST = useMemo(() => subcontractsList.reduce((s, st) => s + (Number(st.invoiced) || 0), 0), [subcontractsList]);
+  const totalGuaranteeST = useMemo(() => subcontractsList.reduce((s, st) => s + (Number(st.guarantee5) || 0), 0), [subcontractsList]);
   const totalSoldeST = useMemo(() => Math.max(0, totalContractST - totalInvoicedST), [totalContractST, totalInvoicedST]);
+
+  // Handlers Sous-traitance
+  const handleCreateSubcontract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStCompany.trim() || !newStAmount || Number(newStAmount) <= 0) {
+      alert('Veuillez renseigner le nom de l\'entreprise et un montant de contrat valide.');
+      return;
+    }
+
+    const selectedLot = projectWbsNodes.find(n => n.id === newStLotId || n.code === newStLotId);
+
+    const stData: Partial<any> = {
+      projectId: project.id,
+      company: newStCompany.trim(),
+      lotCode: selectedLot?.code || 'LOT.ST',
+      lotName: selectedLot?.name || selectedLot?.description || 'Prestations spécialisées de sous-traitance',
+      manager: newStManager.trim() || 'Chargé d\'affaires',
+      contactPhone: newStPhone.trim(),
+      contactEmail: newStEmail.trim(),
+      contractAmount: Number(newStAmount),
+      startDate: newStStartDate || new Date().toISOString().substring(0, 10),
+      endDate: newStEndDate || '',
+      notes: newStNotes.trim(),
+    };
+
+    await createSubcontract(stData);
+
+    // Reset form & close
+    setNewStCompany('');
+    setNewStLotId('');
+    setNewStManager('');
+    setNewStPhone('');
+    setNewStEmail('');
+    setNewStAmount('');
+    setNewStStartDate('');
+    setNewStEndDate('');
+    setNewStNotes('');
+    setIsNewSubcontractModalOpen(false);
+  };
+
+  const handleAddSituation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSubcontractForSituation) return;
+    const gross = Number(situationGrossAmount);
+    if (isNaN(gross) || gross <= 0) {
+      alert('Veuillez saisir un montant brut de situation valide.');
+      return;
+    }
+
+    const prog = Math.min(100, Math.max(0, Number(situationProgressPct) || 0));
+
+    await addSubcontractSituation(selectedSubcontractForSituation.id, {
+      periodMonth: situationPeriod,
+      submissionDate: situationDate,
+      grossAmount: gross,
+      progressPct: prog,
+      notes: situationNotes.trim()
+    });
+
+    // Reset & close
+    setSituationGrossAmount('');
+    setSituationProgressPct('');
+    setSituationNotes('');
+    setSelectedSubcontractForSituation(null);
+  };
+
+  const handleDeleteSubcontract = async (id: string, name: string) => {
+    if (window.confirm(`Confirmez-vous la suppression du contrat sous-traitant "${name}" ? Cette action est irréversible.`)) {
+      await deleteSubcontract(id);
+      if (selectedSubcontractDetails?.id === id) {
+        setSelectedSubcontractDetails(null);
+      }
+    }
+  };
+
+  const handleExportSubcontractsCSV = () => {
+    if (!subcontractsList || subcontractsList.length === 0) {
+      alert('Aucun contrat sous-traitant à exporter pour ce projet.');
+      return;
+    }
+
+    const headers = [
+      'ID Contrat',
+      'Projet',
+      'Code Contrat',
+      'Entreprise Sous-traitante',
+      'Code Lot WBS',
+      'Désignation Lot WBS',
+      'Interlocuteur ST',
+      'Téléphone',
+      'Email',
+      'Montant Marché HT (FCFA)',
+      'Avenants (FCFA)',
+      'Cumul Facturé (FCFA)',
+      'Retenue Garantie 5% (FCFA)',
+      'Net Facturé (FCFA)',
+      'Solde Dû (FCFA)',
+      'Avancement (%)',
+      'Statut',
+      'Date Début',
+      'Date Fin'
+    ];
+
+    const rows = subcontractsList.map(st => [
+      st.id,
+      project?.code || st.projectId,
+      st.code,
+      `"${(st.company || '').replace(/"/g, '""')}"`,
+      st.lotCode,
+      `"${(st.lotName || '').replace(/"/g, '""')}"`,
+      `"${(st.manager || '').replace(/"/g, '""')}"`,
+      st.contactPhone || '',
+      st.contactEmail || '',
+      st.contractAmount,
+      st.amendments || 0,
+      st.invoiced || 0,
+      st.guarantee5 || 0,
+      Math.round((st.invoiced || 0) * 0.95),
+      Math.max(0, st.contractAmount - (st.invoiced || 0)),
+      st.progress || 0,
+      st.status,
+      st.startDate || '',
+      st.endDate || ''
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Sous_Traitance_${project?.code || 'Projet'}_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // 11 Onglets d'en-tête (MEDIA_1787742322311.PNG)
   const navTabs = [
@@ -2238,7 +2188,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           </div>
         </div>
       ) : activeTab === 'soustraitance' ? (
-        /* ONGLET SOUS-TRAITANCE 100% DYNAMIQUE */
+        /* ONGLET SOUS-TRAITANCE 100% DYNAMIQUE ET PERSISTANT */
         <div className="space-y-5">
           {/* STATS SOUS-TRAITANCE */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -2278,13 +2228,13 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
-                  onClick={() => alert('Nouveau contrat de sous-traitance')}
+                  onClick={() => setIsNewSubcontractModalOpen(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                 >
                   <Plus size={14} /> Nouveau contrat ST
                 </button>
                 <button
-                  onClick={() => alert(`Export situation sous-traitance ${project.code}`)}
+                  onClick={handleExportSubcontractsCSV}
                   className="bg-white hover:bg-slate-50 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-slate-200 shadow-xs transition cursor-pointer"
                 >
                   <Download size={14} /> Export Situations
@@ -2292,95 +2242,177 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
-                    <th className="py-2.5 px-3">Sous-traitant & Lot WBS</th>
-                    <th className="py-2.5 px-3">Interlocuteur</th>
-                    <th className="py-2.5 px-3 text-right">Montant Marché ST</th>
-                    <th className="py-2.5 px-3 text-right">Facturé à date</th>
-                    <th className="py-2.5 px-3 text-right">Retenue 5%</th>
-                    <th className="py-2.5 px-3 text-right">Solde Dû</th>
-                    <th className="py-2.5 px-3 text-center">Avancement</th>
-                    <th className="py-2.5 px-3 text-center">Statut</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y font-medium">
-                  {subcontractsList.map(st => {
-                    const solde = Math.max(0, st.contractAmount - st.invoiced);
-                    return (
-                      <tr key={st.id} className="hover:bg-slate-50 transition">
-                        <td className="py-2.5 px-3">
-                          <strong className="text-slate-900 block font-bold">{st.company}</strong>
-                          <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                            <span className="font-mono text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 text-[10px] font-bold">
-                              [{st.lotCode}]
-                            </span>
-                            <span>{st.lotName}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-700 font-medium">
-                          {st.manager}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                          {fmtMds(st.contractAmount)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-black text-purple-900">
-                          {fmtMds(st.invoiced)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-amber-700">
-                          {fmtMds(st.guarantee5)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-700">
-                          {fmtMds(solde)}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black inline-block ${
-                            st.progress === 100
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : st.progress > 0
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : 'bg-slate-100 text-slate-600 border border-slate-200'
-                          }`}>
-                            {st.progress.toFixed(0)}%
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] inline-block ${
-                            st.status === 'Clôturé'
-                              ? 'bg-slate-100 text-slate-700 border border-slate-200'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          }`}>
-                            {st.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-xs">
-                  <tr>
-                    <td colSpan={2} className="py-3 px-3 uppercase text-slate-900 font-black">
-                      Total Sous-traitance ({subcontractsList.length} contrats)
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-slate-900">
-                      {fmtMds(totalContractST)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-purple-900">
-                      {fmtMds(totalInvoicedST)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-amber-700">
-                      {fmtMds(totalGuaranteeST)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-slate-800">
-                      {fmtMds(totalSoldeST)}
-                    </td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              </table>
+            {/* FILTRES & RECHERCHE */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+              <div className="relative w-full sm:w-72">
+                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher sous-traitant, lot, responsable..."
+                  value={stSearch}
+                  onChange={e => setStSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Filter size={14} className="text-slate-400" />
+                <select
+                  value={stStatusFilter}
+                  onChange={e => setStStatusFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                >
+                  <option value="ALL">Tous les statuts</option>
+                  <option value="En cours">En cours</option>
+                  <option value="Actif">Actif</option>
+                  <option value="Clôturé">Clôturé</option>
+                  <option value="Suspendu">Suspendu</option>
+                </select>
+                <span className="text-[11px] text-slate-500 font-medium ml-2">
+                  {filteredSubcontractsList.length} sur {subcontractsList.length} contrat(s)
+                </span>
+              </div>
             </div>
+
+            {filteredSubcontractsList.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <Users size={40} className="text-slate-300 mx-auto" />
+                <p className="font-bold text-slate-700 text-xs">Aucun contrat de sous-traitance trouvé.</p>
+                <p className="text-slate-400 text-[11px] max-w-md mx-auto">
+                  Enregistrez vos entreprises partenaires et suivez précisément leurs situations mensuelles avec retenue de garantie légale 5%.
+                </p>
+                <button
+                  onClick={() => setIsNewSubcontractModalOpen(true)}
+                  className="mt-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} /> Créer un contrat de sous-traitance
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
+                      <th className="py-2.5 px-3">Sous-traitant & Lot WBS</th>
+                      <th className="py-2.5 px-3">Interlocuteur</th>
+                      <th className="py-2.5 px-3 text-right">Montant Marché ST</th>
+                      <th className="py-2.5 px-3 text-right">Facturé à date</th>
+                      <th className="py-2.5 px-3 text-right">Retenue 5%</th>
+                      <th className="py-2.5 px-3 text-right">Solde Dû</th>
+                      <th className="py-2.5 px-3 text-center">Avancement</th>
+                      <th className="py-2.5 px-3 text-center">Statut</th>
+                      <th className="py-2.5 px-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-medium">
+                    {filteredSubcontractsList.map(st => {
+                      const solde = Math.max(0, st.contractAmount - st.invoiced);
+                      return (
+                        <tr key={st.id} className="hover:bg-slate-50 transition">
+                          <td className="py-2.5 px-3">
+                            <strong className="text-slate-900 block font-bold">{st.company}</strong>
+                            <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+                              <span className="font-mono text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 text-[10px] font-bold">
+                                [{st.lotCode}]
+                              </span>
+                              <span className="truncate max-w-[200px]" title={st.lotName}>{st.lotName}</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="text-slate-800 font-semibold block">{st.manager}</span>
+                            {st.contactPhone && (
+                              <span className="text-[10px] text-slate-400 font-mono block">{st.contactPhone}</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                            {fmtMds(st.contractAmount)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-black text-purple-900">
+                            {fmtMds(st.invoiced)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-amber-700">
+                            {fmtMds(st.guarantee5)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                            {fmtMds(solde)}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black inline-block ${
+                              st.progress >= 100
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : st.progress > 0
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}>
+                              {st.progress.toFixed(0)}%
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] inline-block ${
+                              st.status === 'Clôturé'
+                                ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                                : st.status === 'En cours'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              {st.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedSubcontractForSituation(st);
+                                  setSituationGrossAmount('');
+                                  setSituationProgressPct(String(st.progress || 0));
+                                }}
+                                className="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition cursor-pointer flex items-center gap-1 font-bold text-[10px]"
+                                title="Enregistrer une situation mensuelle"
+                              >
+                                <Plus size={12} /> Situation
+                              </button>
+                              <button
+                                onClick={() => setSelectedSubcontractDetails(st)}
+                                className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg border border-slate-200 transition cursor-pointer"
+                                title="Voir la fiche contrat et historique des décomptes"
+                              >
+                                <Eye size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSubcontract(st.id, st.company)}
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded-lg border border-transparent hover:border-rose-200 transition cursor-pointer"
+                                title="Supprimer ce contrat"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-xs">
+                    <tr>
+                      <td colSpan={2} className="py-3 px-3 uppercase text-slate-900 font-black">
+                        Total Sous-traitance ({filteredSubcontractsList.length} contrats)
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-black text-slate-900">
+                        {fmtMds(totalContractST)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-black text-purple-900">
+                        {fmtMds(totalInvoicedST)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-black text-amber-700">
+                        {fmtMds(totalGuaranteeST)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-black text-slate-800">
+                        {fmtMds(totalSoldeST)}
+                      </td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       ) : activeTab === 'finance' ? (
@@ -3689,6 +3721,479 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
               >
                 <Download size={14} /> Télécharger
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 6: NOUVEAU CONTRAT SOUS-TRAITANCE                  */}
+      {/* ======================================================== */}
+      {isNewSubcontractModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-8">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">Nouveau Marché de Sous-traitance</h3>
+                  <p className="text-[11px] text-slate-500">Chantier : {project?.code} — {project?.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsNewSubcontractModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubcontract} className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Entreprise Sous-traitante (Raison Sociale) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ex: SEVRD SARL, LBTP CI, SOGEA VRD..."
+                  value={newStCompany}
+                  onChange={e => setNewStCompany(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Lot / Activité WBS Liée
+                  </label>
+                  <select
+                    value={newStLotId}
+                    onChange={e => setNewStLotId(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Sélectionner un lot WBS...</option>
+                    {projectWbsNodes.map(n => (
+                      <option key={n.id} value={n.id}>
+                        [{n.code}] {n.name || n.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Montant Contractuel HT (FCFA) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="ex: 25000000"
+                    value={newStAmount}
+                    onChange={e => setNewStAmount(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Responsable ST</label>
+                  <input
+                    type="text"
+                    placeholder="Nom du chargé d'affaires"
+                    value={newStManager}
+                    onChange={e => setNewStManager(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Téléphone</label>
+                  <input
+                    type="tel"
+                    placeholder="+225 07 00 00 00 00"
+                    value={newStPhone}
+                    onChange={e => setNewStPhone(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="contact@entreprise.ci"
+                    value={newStEmail}
+                    onChange={e => setNewStEmail(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Date de Démarrage</label>
+                  <input
+                    type="date"
+                    value={newStStartDate}
+                    onChange={e => setNewStStartDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Date de Fin Prévisionnelle</label>
+                  <input
+                    type="date"
+                    value={newStEndDate}
+                    onChange={e => setNewStEndDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Périmètre des Travaux & Observations</label>
+                <textarea
+                  rows={2}
+                  placeholder="Détails des prestations, conditions particulières, délais..."
+                  value={newStNotes}
+                  onChange={e => setNewStNotes(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsNewSubcontractModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold rounded-xl text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check size={14} /> Enregistrer le Marché ST
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 7: NOUVELLE SITUATION / FACTURATION ST              */}
+      {/* ======================================================== */}
+      {selectedSubcontractForSituation && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-8">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                  <CreditCard size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">Nouvelle Situation de Sous-traitance</h3>
+                  <p className="text-[11px] text-slate-500">{selectedSubcontractForSituation.company}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSubcontractForSituation(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* SYNTHÈSE DU CONTRAT */}
+            <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 grid grid-cols-3 gap-2 text-center text-xs">
+              <div>
+                <span className="text-[10px] text-purple-700 font-bold block">Montant Marché</span>
+                <span className="font-mono font-black text-purple-900">{fmtMds(selectedSubcontractForSituation.contractAmount)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-purple-700 font-bold block">Déjà Facturé</span>
+                <span className="font-mono font-black text-purple-900">{fmtMds(selectedSubcontractForSituation.invoiced)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-purple-700 font-bold block">Avancement</span>
+                <span className="font-mono font-black text-emerald-700">{(selectedSubcontractForSituation.progress || 0).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleAddSituation} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Mois de la Situation <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="month"
+                    required
+                    value={situationPeriod}
+                    onChange={e => setSituationPeriod(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Date de Soumission / Constat
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={situationDate}
+                    onChange={e => setSituationDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Montant Brut de la Situation (FCFA) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="ex: 5000000"
+                    value={situationGrossAmount}
+                    onChange={e => setSituationGrossAmount(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Avancement Global Constaté (%) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    placeholder="ex: 35"
+                    value={situationProgressPct}
+                    onChange={e => setSituationProgressPct(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* DÉCOMPTE AUTOMATIQUE EN DIRECT */}
+              {Number(situationGrossAmount) > 0 && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Montant Brut de la Situation :</span>
+                    <span className="font-mono font-bold text-slate-900">{fmtMds(Number(situationGrossAmount))}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-amber-700">
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck size={12} /> Retenue de Garantie Légale (5%) :
+                    </span>
+                    <span className="font-mono font-bold">- {fmtMds(Math.round(Number(situationGrossAmount) * 0.05))}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-700 font-extrabold border-t border-slate-200 pt-1.5">
+                    <span>Montant Net à Facturer & Payer (95%) :</span>
+                    <span className="font-mono text-sm">{fmtMds(Math.round(Number(situationGrossAmount) * 0.95))}</span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Notes / Justification des travaux</label>
+                <textarea
+                  rows={2}
+                  placeholder="Description des métrés réalisés sur le lot WBS, PV d'attachement N°..."
+                  value={situationNotes}
+                  onChange={e => setSituationNotes(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcontractForSituation(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check size={14} /> Valider la Situation ST
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 8: FICHE DÉTAILLÉE & HISTORIQUE DES SITUATIONS     */}
+      {/* ======================================================== */}
+      {selectedSubcontractDetails && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-8">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">{selectedSubcontractDetails.company}</h3>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                    <span className="font-mono font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 text-[10px]">
+                      [{selectedSubcontractDetails.lotCode}]
+                    </span>
+                    <span>{selectedSubcontractDetails.lotName}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSubcontractDetails(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* SYNTHÈSE FINANCIÈRE */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase">Marché Initial HT</span>
+                <span className="font-mono font-black text-slate-900 text-sm block">{fmtMds(selectedSubcontractDetails.contractAmount)}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-purple-600 font-bold block uppercase">Cumul Facturé</span>
+                <span className="font-mono font-black text-purple-900 text-sm block">{fmtMds(selectedSubcontractDetails.invoiced)}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-amber-600 font-bold block uppercase">Retenue 5%</span>
+                <span className="font-mono font-black text-amber-700 text-sm block">{fmtMds(selectedSubcontractDetails.guarantee5)}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-emerald-600 font-bold block uppercase">Avancement</span>
+                <span className="font-mono font-black text-emerald-700 text-sm block">{(selectedSubcontractDetails.progress || 0).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            {/* INFORMATIONS CONTRACTUELLES */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600">
+                <div><strong>Interlocuteur :</strong> {selectedSubcontractDetails.manager || 'Non renseigné'}</div>
+                <div><strong>Téléphone :</strong> <span className="font-mono">{selectedSubcontractDetails.contactPhone || '—'}</span></div>
+                <div><strong>Email :</strong> {selectedSubcontractDetails.contactEmail || '—'}</div>
+                <div><strong>Période :</strong> {selectedSubcontractDetails.startDate || '—'} au {selectedSubcontractDetails.endDate || '—'}</div>
+              </div>
+              {selectedSubcontractDetails.notes && (
+                <div className="pt-2 border-t border-slate-200 text-slate-700 text-[11px] italic">
+                  "{selectedSubcontractDetails.notes}"
+                </div>
+              )}
+            </div>
+
+            {/* HISTORIQUE DES SITUATIONS */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-black text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <History size={14} className="text-purple-600" />
+                  Historique des Décomptes & Situations ({selectedSubcontractDetails.situations?.length || 0})
+                </h4>
+                <button
+                  onClick={() => {
+                    setSelectedSubcontractForSituation(selectedSubcontractDetails);
+                    setSelectedSubcontractDetails(null);
+                    setSituationGrossAmount('');
+                    setSituationProgressPct(String(selectedSubcontractDetails.progress || 0));
+                  }}
+                  className="text-purple-600 hover:text-purple-800 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus size={13} /> Ajouter une situation
+                </button>
+              </div>
+
+              {!selectedSubcontractDetails.situations || selectedSubcontractDetails.situations.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200 text-xs italic">
+                  Aucune situation mensuelle enregistrée pour l'instant sur ce contrat.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
+                        <th className="py-2 px-2.5">N° / Mois</th>
+                        <th className="py-2 px-2.5">Date</th>
+                        <th className="py-2 px-2.5 text-right">Montant Brut</th>
+                        <th className="py-2 px-2.5 text-right">Retenue 5%</th>
+                        <th className="py-2 px-2.5 text-right">Net Facturé</th>
+                        <th className="py-2 px-2.5 text-center">Avancement</th>
+                        <th className="py-2 px-2.5 text-center">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-medium">
+                      {selectedSubcontractDetails.situations.map((sit: any, sIdx: number) => (
+                        <tr key={sit.id || sIdx} className="hover:bg-slate-50">
+                          <td className="py-2 px-2.5">
+                            <span className="font-mono font-bold text-purple-700">Sit. N°{sit.situationNumber || (sIdx + 1)}</span>
+                            <span className="text-[10px] text-slate-400 block">{sit.periodMonth}</span>
+                          </td>
+                          <td className="py-2 px-2.5 font-mono text-slate-600">
+                            {sit.submissionDate}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-mono font-bold text-slate-900">
+                            {fmtMds(sit.grossAmount)}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-mono text-amber-700">
+                            {fmtMds(sit.retentionAmount || Math.round(sit.grossAmount * 0.05))}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-mono font-black text-emerald-700">
+                            {fmtMds(sit.netAmount || Math.round(sit.grossAmount * 0.95))}
+                          </td>
+                          <td className="py-2 px-2.5 text-center">
+                            <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              {sit.progressPct}%
+                            </span>
+                          </td>
+                          <td className="py-2 px-2.5 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {sit.status || 'Validé'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t">
+              <button
+                onClick={() => handleDeleteSubcontract(selectedSubcontractDetails.id, selectedSubcontractDetails.company)}
+                className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-1"
+              >
+                <Trash2 size={13} /> Supprimer le contrat
+              </button>
+              <button
+                onClick={() => setSelectedSubcontractDetails(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Fermer
               </button>
             </div>
           </div>

@@ -711,6 +711,47 @@ export interface AuditLog {
   justification?: string;
 }
 
+export interface SubcontractSituation {
+  id: string;
+  subcontractId: string;
+  situationNumber: number;
+  periodMonth: string; // ex: '2026-08'
+  submissionDate: string;
+  grossAmount: number; // Montant brut cumulé ou période
+  retentionRate: number; // Taux de retenue (ex: 5)
+  retentionAmount: number; // Retenue de garantie calculée
+  netAmount: number; // Montant net facturé
+  progressPct: number; // % avancement constaté
+  status: 'Brouillon' | 'Validé' | 'Payé';
+  notes?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
+export interface Subcontract {
+  id: string;
+  projectId: string;
+  code: string;
+  company: string;
+  lotCode: string;
+  lotName: string;
+  manager: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contractAmount: number;
+  amendments: number;
+  invoiced: number; // Cumul facturé
+  guarantee5: number; // Cumul retenue 5%
+  paidAmount: number;
+  progress: number;
+  status: 'Actif' | 'En cours' | 'Clôturé' | 'Suspendu';
+  startDate?: string;
+  endDate?: string;
+  notes?: string;
+  situations?: SubcontractSituation[];
+  createdAt?: string;
+}
+
 // ==================================================
 // MODULE DÉBOURSÉ SEC (DS) — TYPES & INTERFACES
 // ==================================================

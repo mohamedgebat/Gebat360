@@ -18,7 +18,9 @@ import {
   DEFAULT_COST_NATURES,
   Site,
   ValidationTask,
-  ValidationTaskStatus
+  ValidationTaskStatus,
+  Subcontract,
+  SubcontractSituation
 } from '../../types';
 import { INITIAL_USERS, PERMISSIONS_MATRIX } from '../permissions';
 import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
@@ -36,7 +38,8 @@ import {
   INITIAL_STOCK_MOVEMENTS,
   INITIAL_DAILY_REPORTS,
   INITIAL_ALERTS,
-  INITIAL_AUDIT_LOGS
+  INITIAL_AUDIT_LOGS,
+  INITIAL_SUBCONTRACTS
 } from './initialData';
 import { ApiService } from '../../services/api';
 
@@ -56,6 +59,7 @@ interface AppStateContextType {
   validationTasks: ValidationTask[];
   alerts: SystemAlert[];
   auditLogs: AuditLog[];
+  subcontracts: Subcontract[];
   sites: Site[];
   activeSiteId: number | 'ALL';
   setActiveSiteId: (siteId: number | 'ALL') => void;
@@ -70,6 +74,10 @@ interface AppStateContextType {
   createProject: (newProject: Omit<Project, 'id'>, wbsNodes?: WBSNode[]) => void;
   updateProject: (projectId: string, updatedData: Partial<Project>) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
+  createSubcontract: (stData: Partial<Subcontract>) => Promise<Subcontract>;
+  updateSubcontract: (id: string, updates: Partial<Subcontract>) => Promise<void>;
+  deleteSubcontract: (id: string) => Promise<void>;
+  addSubcontractSituation: (subcontractId: string, sitData: Partial<SubcontractSituation>) => Promise<void>;
   createDailyReport: (reportData: Omit<DailyReport, 'id' | 'createdAt' | 'reportCode'>) => void;
   updateDailyReportStatus: (reportId: string, status: any, comment?: string) => void;
   createValidationTask: (taskData: Omit<ValidationTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -828,6 +836,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [costNatures, setCostNatures] = useState<CostNatureConfig[]>(DEFAULT_COST_NATURES);
 
+  const [subcontracts, setSubcontracts] = useState<Subcontract[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_subcontracts');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return INITIAL_SUBCONTRACTS;
+  });
+
+  useEffect(() => {
+    if (subcontracts.length > 0) {
+      localStorage.setItem('gebat_subcontracts', JSON.stringify(subcontracts));
+    }
+  }, [subcontracts]);
+
   // Synchronisation 100% dynamique depuis la base de données MySQL via REST API
   const loadDatabaseData = async () => {
     try {
@@ -1126,6 +1153,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         console.warn('⚠️ Erreur chargement natures de coûts API:', e);
       }
 
+      try {
+        const dbST = await ApiService.getSubcontracts();
+        if (Array.isArray(dbST) && dbST.length > 0) {
+          setSubcontracts(dbST);
+          safeSaveToStorage('gebat_subcontracts', dbST);
+        }
+      } catch (e) {
+        console.warn('⚠️ Erreur chargement sous-traitants API:', e);
+      }
+
     } catch (err) {
       console.error('⚠️ Erreur chargement des données réelles depuis MySQL:', err);
     }
@@ -1325,6 +1362,135 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error(`⚠️ Erreur suppression projet ${projectId}:`, err);
     }
     addAuditLog('SUPPRESSION_PROJET', 'PROJETS', projectId, `Projet ${projectId} supprimé`);
+  };
+
+  const createSubcontract = async (stData: Partial<Subcontract>): Promise<Subcontract> => {
+    const id = stData.id || `ST-${Date.now()}`;
+    const newST: Subcontract = {
+      id,
+      projectId: stData.projectId || '',
+      code: stData.code || `CTR-ST-${Date.now().toString().slice(-4)}`,
+      company: stData.company || '',
+      lotCode: stData.lotCode || '',
+      lotName: stData.lotName || '',
+      manager: stData.manager || currentUser?.name || 'SEA Alphonse',
+      contactPhone: stData.contactPhone || '',
+      contactEmail: stData.contactEmail || '',
+      contractAmount: Number(stData.contractAmount) || 0,
+      amendments: Number(stData.amendments) || 0,
+      invoiced: Number(stData.invoiced) || 0,
+      guarantee5: Number(stData.guarantee5) || 0,
+      paidAmount: Number(stData.paidAmount) || 0,
+      progress: Number(stData.progress) || 0,
+      status: stData.status || 'En cours',
+      startDate: stData.startDate || '',
+      endDate: stData.endDate || '',
+      notes: stData.notes || '',
+      situations: stData.situations || [],
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    };
+
+    setSubcontracts(prev => {
+      const updated = [newST, ...prev.filter(s => s.id !== id)];
+      safeSaveToStorage('gebat_subcontracts', updated);
+      return updated;
+    });
+
+    try {
+      await ApiService.createSubcontract(newST);
+    } catch (e) {
+      console.warn('⚠️ Erreur création sous-traitant API:', e);
+    }
+
+    addAuditLog('CREATION_CONTRAT_ST', 'SOUS_TRAITANCE', newST.code, `Contrat ST ${newST.company} (${newST.contractAmount} FCFA) créé.`);
+    return newST;
+  };
+
+  const updateSubcontract = async (id: string, updates: Partial<Subcontract>) => {
+    setSubcontracts(prev => {
+      const updated = prev.map(st => st.id === id ? { ...st, ...updates } : st);
+      safeSaveToStorage('gebat_subcontracts', updated);
+      return updated;
+    });
+
+    try {
+      await ApiService.updateSubcontract(id, updates);
+    } catch (e) {
+      console.warn('⚠️ Erreur mise à jour sous-traitant API:', e);
+    }
+
+    addAuditLog('MAJ_CONTRAT_ST', 'SOUS_TRAITANCE', id, `Mise à jour contrat sous-traitance ${id}`);
+  };
+
+  const deleteSubcontract = async (id: string) => {
+    setSubcontracts(prev => {
+      const updated = prev.filter(st => st.id !== id);
+      safeSaveToStorage('gebat_subcontracts', updated);
+      return updated;
+    });
+
+    try {
+      await ApiService.deleteSubcontract(id);
+    } catch (e) {
+      console.warn('⚠️ Erreur suppression sous-traitant API:', e);
+    }
+
+    addAuditLog('SUPPRESSION_CONTRAT_ST', 'SOUS_TRAITANCE', id, `Suppression contrat sous-traitance ${id}`);
+  };
+
+  const addSubcontractSituation = async (subcontractId: string, sitData: Partial<SubcontractSituation>) => {
+    const gross = Number(sitData.grossAmount) || 0;
+    const retention = Math.round(gross * 0.05);
+    const net = gross - retention;
+    const prog = Math.min(100, Math.max(0, Number(sitData.progressPct) || 0));
+
+    const newSituation: SubcontractSituation = {
+      id: sitData.id || `SIT-${subcontractId}-${Date.now().toString().slice(-4)}`,
+      subcontractId,
+      situationNumber: sitData.situationNumber || 1,
+      periodMonth: sitData.periodMonth || '2026-08',
+      submissionDate: sitData.submissionDate || new Date().toISOString().substring(0, 10),
+      grossAmount: gross,
+      retentionRate: 5,
+      retentionAmount: retention,
+      netAmount: net,
+      progressPct: prog,
+      status: 'Validé',
+      notes: sitData.notes || '',
+      validatedBy: sitData.validatedBy || currentUser?.name || 'Directeur Projet',
+      validatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    };
+
+    setSubcontracts(prev => {
+      const updated = prev.map(st => {
+        if (st.id === subcontractId) {
+          const currentSituations = st.situations || [];
+          const updatedSituations = [...currentSituations, newSituation];
+          const newInvoiced = (st.invoiced || 0) + gross;
+          const newGuarantee = (st.guarantee5 || 0) + retention;
+          const newProgress = Math.max(st.progress || 0, prog);
+
+          return {
+            ...st,
+            invoiced: newInvoiced,
+            guarantee5: newGuarantee,
+            progress: newProgress,
+            situations: updatedSituations
+          };
+        }
+        return st;
+      });
+      safeSaveToStorage('gebat_subcontracts', updated);
+      return updated;
+    });
+
+    try {
+      await ApiService.addSubcontractSituation(subcontractId, sitData);
+    } catch (e) {
+      console.warn('⚠️ Erreur enregistrement situation ST API:', e);
+    }
+
+    addAuditLog('SITUATION_ST_VALIDEE', 'SOUS_TRAITANCE', subcontractId, `Situation N°${newSituation.situationNumber} validée pour un montant brut de ${gross} FCFA`);
   };
 
   // Helper find WBS Node recursively
@@ -2959,6 +3125,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return a.projectId ? isMatchingProjectKey(a.projectId) : true;
   });
 
+  const filteredSubcontracts = subcontracts.filter(st => {
+    if (activeSiteId === 'ALL') return true;
+    return isMatchingProjectKey(st.projectId);
+  });
+
   return (
     <AppStateContext.Provider
       value={{
@@ -2981,6 +3152,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         alerts: filteredAlerts,
         auditLogs,
         costNatures,
+        subcontracts: filteredSubcontracts,
         isBackendConnected,
         backendError,
         retryBackendConnection: checkBackendConnection,
@@ -2989,6 +3161,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         createProject,
         updateProject,
         deleteProject,
+        createSubcontract,
+        updateSubcontract,
+        deleteSubcontract,
+        addSubcontractSituation,
         createDA,
         updateDAStatus,
         approveDA,
