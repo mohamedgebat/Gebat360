@@ -801,11 +801,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
             const leafNodes = getLeaves(projTree);
             const totalPlanned = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
               return acc + budget;
             }, 0);
             const totalDone = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
               const prog = Number(n.progress || 0);
               return acc + (budget * (prog / 100));
             }, 0);
@@ -2706,11 +2706,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
             const leafNodes = getLeaves(projTree);
             const totalPlanned = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
               return acc + budget;
             }, 0);
             const totalDone = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 5000)) || 1);
+              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
               const prog = Number(n.progress || 0);
               return acc + (budget * (prog / 100));
             }, 0);
@@ -2885,8 +2885,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (targetProject) {
         const allReports = [...formattedReports, ...dailyReports];
         const projectReports = allReports.filter(r => r.projectId === projectId || r.projectId === targetProject.code);
-        const totalValueProduced = projectReports.reduce((s, r) => s + ((r.realizedQty || 0) * (r.pu || 5000) || (r.totalCost || 0)), 0);
-        const contractAmount = targetProject.contractAmount || targetProject.revisedBudget || 5000000000;
+        const totalValueProduced = projectReports.reduce((s, r) => s + ((r.realizedQty || 0) * (r.pu || 0) || (r.totalCost || 0)), 0);
+        const contractAmount = targetProject.contractAmount || targetProject.revisedBudget || 0;
         const calcProgress = contractAmount > 0 ? Math.min(100, parseFloat(((totalValueProduced / contractAmount) * 100).toFixed(1))) : 0;
 
         setProjects(pList => pList.map(p => p.id === targetProject.id ? { ...p, progress: calcProgress } : p));
