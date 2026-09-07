@@ -19,7 +19,7 @@ const formatQty = (val: number | undefined | null): string => {
 };
 
 const formatFrenchDate = (dateStr: string | undefined): string => {
-  if (!dateStr) return '08/08/2026';
+  if (!dateStr) return '—';
 
   if (dateStr.includes('T')) {
     const rawDatePart = dateStr.split('T')[0];

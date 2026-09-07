@@ -429,15 +429,15 @@ export const VueProjet360: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                     <span className="text-slate-400 text-[10px] uppercase font-bold">Date Ordre de Service (OS)</span>
-                    <div className="text-sm font-extrabold text-slate-900">{selected.startDate || '01/02/2026'}</div>
+                    <div className="text-sm font-extrabold text-slate-900">{formatFrenchDate(selected.startDate) || '—'}</div>
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                     <span className="text-slate-400 text-[10px] uppercase font-bold">Date de Fin Contractuelle</span>
-                    <div className="text-sm font-extrabold text-slate-900">{selected.endDate || '31/07/2027'}</div>
+                    <div className="text-sm font-extrabold text-slate-900">{formatFrenchDate(selected.endDate) || '—'}</div>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-1">
                     <span className="text-blue-800 text-[10px] uppercase font-bold">Durée d'Exécution</span>
-                    <div className="text-sm font-extrabold text-blue-900">{selected.durationMonths || 18} mois</div>
+                    <div className="text-sm font-extrabold text-blue-900">{selected.durationMonths ? `${selected.durationMonths} mois` : '—'}</div>
                   </div>
                 </div>
 
@@ -676,7 +676,7 @@ export const VueProjet360: React.FC = () => {
                 {(() => {
                   const reportsWithWorkers = dailyReports.filter(r => isProjectReportMatch(r, selected));
                   const avgWorkers = reportsWithWorkers.length > 0
-                    ? Math.round(reportsWithWorkers.reduce((sum, r) => sum + (Number(r.workersCount || r.workforceCount) || 18), 0) / reportsWithWorkers.length)
+                    ? Math.round(reportsWithWorkers.reduce((sum, r) => sum + (Number(r.workersCount || r.workforceCount) || 0), 0) / reportsWithWorkers.length)
                     : 0;
 
                   return (
@@ -715,7 +715,7 @@ export const VueProjet360: React.FC = () => {
                               <tr key={r.id} className="hover:bg-slate-50">
                                 <td className="p-2.5 text-slate-700 font-bold">{formatFrenchDate(r.date)}</td>
                                 <td className="p-2.5 font-sans font-bold text-slate-900">{r.activityName || 'Travaux de production'}</td>
-                                <td className="p-2.5 text-center text-blue-700 font-bold">{r.workersCount || r.workforceCount || 18} personnes</td>
+                                <td className="p-2.5 text-center text-blue-700 font-bold">{r.workersCount || r.workforceCount || 0} personnes</td>
                                 <td className="p-2.5 text-center font-sans text-slate-700">{r.weather || 'Ensoleillé / Chantier Sec'}</td>
                                 <td className="p-2.5 font-sans text-slate-800 font-bold">{r.createdBy || selected.manager || 'Conducteur'}</td>
                               </tr>

@@ -35,12 +35,12 @@ export const calculateActualCost = (
     .reduce((sum, r) => {
       let cost = Number(r.totalCost);
       const qte = Number(r.realizedQty) || 0;
-      const pu = Number(r.pu) || 5000;
-      if (isNaN(cost) || cost > MAX_SINGLE_REPORT_COST) {
-        cost = (qte > 0 && pu > 0 && (qte * pu) <= MAX_SINGLE_REPORT_COST) ? (qte * pu) : 1000000;
+      const pu = Number(r.pu) || 0;
+      if (isNaN(cost) || cost > MAX_SINGLE_REPORT_COST || cost <= 0) {
+        cost = (qte > 0 && pu > 0 && (qte * pu) <= MAX_SINGLE_REPORT_COST) ? (qte * pu) : 0;
       }
       if (cost > MAX_SINGLE_REPORT_COST) {
-        cost = 1000000;
+        cost = 0;
       }
       return sum + (cost || 0);
     }, 0);
@@ -80,7 +80,7 @@ export const calculateCommitted = (
   const wbsCommitted = wbsNodes.reduce((sum, n) => sum + Number(n.committed || 0), 0);
 
   const maxDirect = Math.max(daAmount, poAmount, wbsCommitted);
-  return maxDirect > 0 ? maxDirect : Math.round(actualCost * 1.08);
+  return maxDirect > 0 ? maxDirect : actualCost;
 };
 
 /**
@@ -94,11 +94,11 @@ export const calculateProgress = (
 ): number => {
   if (!project) return 0;
 
-  const budget = Number(project.revisedBudget || project.initialBudget || 1980000000);
+  const budget = Number(project.revisedBudget || project.initialBudget || 0);
 
   // A. Calcul via Valeur Acquise (EV) des rapports de production
   const projectReports = dailyReports.filter(r => isReportForProject(r, project));
-  const totalValueProduced = projectReports.reduce((s, r) => s + (Number(r.totalCost) || ((Number(r.realizedQty) || 0) * (Number(r.pu) || 5000)) || 0), 0);
+  const totalValueProduced = projectReports.reduce((s, r) => s + (Number(r.totalCost) || ((Number(r.realizedQty) || 0) * (Number(r.pu) || 0)) || 0), 0);
   const progressFromReports = budget > 0 ? parseFloat(((totalValueProduced / budget) * 100).toFixed(1)) : 0;
 
   // B. Calcul via Avancement WBS
@@ -205,8 +205,8 @@ export const consolidateProjectFinancials = (
     };
   }
 
-  const contractAmount = Number(project.contractAmount || 5000000000);
-  const initialBudget = Number(project.initialBudget || 1980000000);
+  const contractAmount = Number(project.contractAmount || 0);
+  const initialBudget = Number(project.initialBudget || 0);
   const sumWbsBudget = wbsNodes.reduce((s, n) => s + Number(n.revisedBudget || n.initialBudget || 0), 0);
   const revisedBudget = sumWbsBudget > 0 ? sumWbsBudget : Number(project.revisedBudget || initialBudget);
 

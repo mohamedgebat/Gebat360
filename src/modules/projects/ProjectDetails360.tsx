@@ -276,7 +276,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       const repActualCostVal = matchingReps.reduce((sum, r) => {
         let cost = Number(r.totalCost);
         const qte = Number(r.realizedQty) || 0;
-        const pu = Number(r.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 5000);
+        const pu = Number(r.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 0);
         if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
         return sum + (cost || 0);
       }, 0);
@@ -1795,7 +1795,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Effectif Moyen Site</span>
               <span className="text-2xl font-black text-purple-700 font-mono block">
-                {Math.round(projectReports.reduce((s, r) => s + (Number(r.workersCount || r.workforceCount) || 18), 0) / (projectReports.length || 1))}
+                {Math.round(projectReports.reduce((s, r) => s + (Number(r.workersCount || r.workforceCount) || 0), 0) / (projectReports.length || 1))}
               </span>
               <span className="text-[11px] text-purple-600 font-semibold block">Ouvriers & conducteurs mobilisés/j</span>
             </div>
@@ -1916,11 +1916,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                         const wbsCode = r.wbsCode || `WBS.${String((idx % 8) + 1).padStart(2, '0')}`;
                         const actName = r.activityName || r.taskName || 'Travaux de génie civil et béton armé';
                         const qte = Number(r.realizedQty) || 0;
-                        const unit = r.unit || 'm²';
-                        const pu = Number(r.pu) || 25000;
+                        const pu = Number(r.pu) || 0;
                         let cost = Number(r.totalCost);
                         if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
-                        const workers = Number(r.workersCount || r.workforceCount) || 18;
+                        const workers = Number(r.workersCount || r.workforceCount) || 0;
                         const weather = r.weather || 'Ensoleillé';
                         const status = r.status || 'Validé';
 
@@ -3325,7 +3324,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
               </div>
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <span className="text-[10px] text-slate-400 font-bold block">Effectif</span>
-                <strong className="text-slate-900">{selectedReportModal.workersCount || selectedReportModal.workforceCount || 18} ouvriers</strong>
+                <strong className="text-slate-900">{selectedReportModal.workersCount || selectedReportModal.workforceCount || 0} ouvriers</strong>
               </div>
             </div>
             <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200 text-xs space-y-1">
