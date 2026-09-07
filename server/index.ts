@@ -640,7 +640,7 @@ app.post('/api/v1/audit', async (req, res) => {
 // ==============================================================================
 app.get('/api/v1/users', async (req, res) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM users');
+    const [rows]: any = await pool.query('SELECT id, name, email, role, avatar, photo_url as photoUrl, phone, employee_code as employeeCode, company, status, created_at FROM users');
     res.json(rows || []);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -649,17 +649,20 @@ app.get('/api/v1/users', async (req, res) => {
 
 app.post(['/api/v1/admin/users', '/api/v1/users'], async (req, res) => {
   const u = req.body;
+  const photo = u.photoUrl || (u.avatar && (u.avatar.startsWith('data:') || u.avatar.startsWith('http')) ? u.avatar : null);
+  const avatarInitials = (u.avatar && !u.avatar.startsWith('data:') && !u.avatar.startsWith('http')) ? u.avatar : (u.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'US');
   try {
     await pool.query(
-      `INSERT INTO users (id, name, email, role, avatar)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO users (id, name, email, role, avatar, photo_url)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          name = VALUES(name),
          role = VALUES(role),
-         avatar = VALUES(avatar)`,
-      [u.id || `USR-${Date.now()}`, u.name, u.email, u.role || 'Super Admin', u.avatar || u.name?.substring(0, 2).toUpperCase() || 'US']
+         avatar = VALUES(avatar),
+         photo_url = VALUES(photo_url)`,
+      [u.id || `USR-${Date.now()}`, u.name, u.email, u.role || 'Super Admin', avatarInitials, photo]
     ).catch(() => {});
-    res.status(201).json({ message: 'Utilisateur enregistré dans MySQL', user: u });
+    res.status(201).json({ message: 'Utilisateur enregistré dans MySQL', user: { ...u, avatar: avatarInitials, photoUrl: photo } });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -668,12 +671,14 @@ app.post(['/api/v1/admin/users', '/api/v1/users'], async (req, res) => {
 app.put('/api/v1/users/:id', async (req, res) => {
   const { id } = req.params;
   const u = req.body;
+  const photo = u.photoUrl || (u.avatar && (u.avatar.startsWith('data:') || u.avatar.startsWith('http')) ? u.avatar : null);
+  const avatarInitials = (u.avatar && !u.avatar.startsWith('data:') && !u.avatar.startsWith('http')) ? u.avatar : (u.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'US');
   try {
     await pool.query(
-      `UPDATE users SET name = ?, email = ?, role = ?, avatar = ? WHERE id = ?`,
-      [u.name, u.email, u.role, u.avatar, id]
+      `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, photo_url = ? WHERE id = ?`,
+      [u.name, u.email, u.role, avatarInitials, photo, id]
     ).catch(() => {});
-    res.json({ message: `Utilisateur ${id} mis à jour dans MySQL`, user: u });
+    res.json({ message: `Utilisateur ${id} mis à jour dans MySQL`, user: { ...u, avatar: avatarInitials, photoUrl: photo } });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

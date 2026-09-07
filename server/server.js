@@ -144,6 +144,17 @@ async function initDatabase() {
       console.log('✅ Colonne default_password ajoutée à la table users.');
     }
 
+    const [photoCols] = await conn.query("SHOW COLUMNS FROM users LIKE 'photo_url'");
+    if (photoCols.length === 0) {
+      await conn.query("ALTER TABLE users ADD COLUMN photo_url LONGTEXT");
+      console.log('✅ Colonne photo_url ajoutée à la table users.');
+    }
+
+    const [avatarCol] = await conn.query("SHOW COLUMNS FROM users LIKE 'avatar'");
+    if (avatarCol.length > 0) {
+      await conn.query("ALTER TABLE users MODIFY COLUMN avatar VARCHAR(255) DEFAULT 'US'");
+    }
+
     // 2. Table audit_logs
     await conn.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -1068,7 +1079,7 @@ app.post(['/api/v1/auth/logout', '/api/auth/logout'], async (req, res) => {
 // GET /api/v1/users — Liste des utilisateurs pour le module Administration
 app.get(['/api/v1/users', '/api/users'], requireAuth, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, name, email, role, avatar, phone, employee_code as employeeCode, company, status, default_password as defaultPassword, must_change_password as mustChangePassword, created_at FROM users ORDER BY created_at DESC');
+    const [rows] = await pool.query('SELECT id, name, email, role, avatar, photo_url as photoUrl, phone, employee_code as employeeCode, company, status, default_password as defaultPassword, must_change_password as mustChangePassword, created_at FROM users ORDER BY created_at DESC');
     const mapped = rows.map(u => ({ ...u, mustChangePassword: Boolean(u.mustChangePassword) }));
     res.status(200).json(mapped);
   } catch (err) {
@@ -1084,7 +1095,7 @@ app.get(['/api/v1/users', '/api/users'], requireAuth, async (req, res) => {
 // POST /api/v1/admin/users — Création d'un utilisateur réel dans MySQL avec hachage de mot de passe
 app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN', 'DIRECTION']), async (req, res) => {
   try {
-    const { name, email, role, phone, employeeCode, password, defaultPassword, mustChangePassword } = req.body;
+    const { name, email, role, phone, employeeCode, password, defaultPassword, mustChangePassword, photoUrl, avatar: bodyAvatar } = req.body;
     if (!name || !email) {
       return sendError(res, 400, 'INVALID_DATA', 'Le nom et l\'adresse e-mail sont obligatoires.');
     }
@@ -1098,13 +1109,14 @@ app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole([
     const userId = 'USR-' + Date.now();
     const rawPassword = defaultPassword || password || 'Gebat@2026!';
     const passwordHash = await bcrypt.hash(rawPassword, 10);
-    const avatar = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'US';
+    const avatar = (bodyAvatar && !bodyAvatar.startsWith('data:') && !bodyAvatar.startsWith('http')) ? bodyAvatar : (name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'US');
+    const photo = photoUrl || (bodyAvatar && (bodyAvatar.startsWith('data:') || bodyAvatar.startsWith('http')) ? bodyAvatar : null);
     const mustChangeVal = mustChangePassword !== undefined ? (mustChangePassword ? 1 : 0) : 1;
 
     await pool.query(
-      `INSERT INTO users (id, name, email, role, avatar, phone, employee_code, company, password_hash, default_password, must_change_password, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'GEBAT SA', ?, ?, ?, 'ACTIF')`,
-      [userId, name, cleanEmail, role || 'SUPER_ADMIN', avatar, phone || '', employeeCode || '', passwordHash, rawPassword, mustChangeVal]
+      `INSERT INTO users (id, name, email, role, avatar, photo_url, phone, employee_code, company, password_hash, default_password, must_change_password, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'GEBAT SA', ?, ?, ?, 'ACTIF')`,
+      [userId, name, cleanEmail, role || 'SUPER_ADMIN', avatar, photo, phone || '', employeeCode || '', passwordHash, rawPassword, mustChangeVal]
     );
 
     // Audit Log
@@ -1122,6 +1134,7 @@ app.post(['/api/v1/admin/users', '/api/admin/users'], requireAuth, requireRole([
         email: cleanEmail,
         role: role || 'SUPER_ADMIN',
         avatar,
+        photoUrl: photo,
         phone,
         employeeCode,
         company: 'GEBAT SA',
@@ -1146,7 +1159,7 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
       return sendError(res, 403, 'FORBIDDEN', 'Vous n\'avez pas les droits de modifier cet utilisateur');
     }
 
-    const { name, email, role, phone, employeeCode, company, status, password, defaultPassword, mustChangePassword } = req.body;
+    const { name, email, role, phone, employeeCode, company, status, password, defaultPassword, mustChangePassword, photoUrl, avatar: bodyAvatar } = req.body;
 
     const [existing] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
     if (existing.length === 0) {
@@ -1163,10 +1176,11 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
     const newStatus = (status && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) ? status : current.status;
     const newDefaultPassword = defaultPassword !== undefined ? defaultPassword : current.default_password;
     const newMustChange = mustChangePassword !== undefined ? (mustChangePassword ? 1 : 0) : (current.must_change_password || 0);
-    const avatar = newName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || current.avatar;
+    const newPhotoUrl = photoUrl !== undefined ? photoUrl : (bodyAvatar && (bodyAvatar.startsWith('data:') || bodyAvatar.startsWith('http')) ? bodyAvatar : (current.photo_url || null));
+    const avatar = (bodyAvatar && !bodyAvatar.startsWith('data:') && !bodyAvatar.startsWith('http')) ? bodyAvatar : (newName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || current.avatar);
 
-    let query = `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, phone = ?, employee_code = ?, company = ?, status = ?, default_password = ?, must_change_password = ?`;
-    let params = [newName, newEmail, newRole, avatar, newPhone, newEmployeeCode, newCompany, newStatus, newDefaultPassword, newMustChange];
+    let query = `UPDATE users SET name = ?, email = ?, role = ?, avatar = ?, photo_url = ?, phone = ?, employee_code = ?, company = ?, status = ?, default_password = ?, must_change_password = ?`;
+    let params = [newName, newEmail, newRole, avatar, newPhotoUrl, newPhone, newEmployeeCode, newCompany, newStatus, newDefaultPassword, newMustChange];
 
     if (password || defaultPassword) {
       const targetPwd = password || defaultPassword;
@@ -1193,6 +1207,7 @@ app.put(['/api/v1/users/:id', '/api/users/:id', '/api/v1/admin/users/:id'], requ
       email: newEmail,
       role: newRole,
       avatar,
+      photoUrl: newPhotoUrl,
       phone: newPhone,
       employeeCode: newEmployeeCode,
       company: newCompany,

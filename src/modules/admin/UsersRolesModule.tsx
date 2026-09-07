@@ -10,6 +10,7 @@ import {
   ArrowLeft, Save, Sliders, Download, FileSpreadsheet
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { compressImage } from '../../utils/imageCompression';
 
 export const UsersRolesModule: React.FC = () => {
   const { users, currentUser, setCurrentUser, projects, addAuditLog, addUser, updateUser, deleteUser } = useAppState();
@@ -94,15 +95,20 @@ export const UsersRolesModule: React.FC = () => {
     setDefaultPassword(pass);
   };
 
-  // Chargement de la photo de profil
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Chargement de la photo de profil avec compression
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setPhotoPreview(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, 320, 320, 0.82);
+        setPhotoPreview(compressed);
+      } catch (err) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setPhotoPreview(event.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -1363,12 +1369,17 @@ export const UsersRolesModule: React.FC = () => {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={e => {
+                    onChange={async e => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => setEditPhotoUrl(reader.result as string);
-                        reader.readAsDataURL(file);
+                        try {
+                          const compressed = await compressImage(file, 320, 320, 0.82);
+                          setEditPhotoUrl(compressed);
+                        } catch (err) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setEditPhotoUrl(reader.result as string);
+                          reader.readAsDataURL(file);
+                        }
                       }
                     }}
                     className="text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-extrabold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"

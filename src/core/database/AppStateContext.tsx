@@ -355,14 +355,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return null as unknown as User;
   });
 
+  // Hydratation IndexedDB asynchrone pour la persistance absolue de currentUser et sa photo de profil
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      indexedDBStorage.getItem<User>('gebat_current_user').then(savedUser => {
+        if (savedUser && savedUser.email) {
+          setCurrentUserRaw(prev => {
+            if (!prev || !prev.photoUrl) {
+              return { ...(prev || {}), ...savedUser };
+            }
+            return prev;
+          });
+        }
+      });
+    }
+  }, []);
+
   const setCurrentUser = (user: User) => {
     setCurrentUserRaw(user);
     if (typeof window !== 'undefined') {
       try {
         if (user) {
-          localStorage.setItem('gebat_current_user', JSON.stringify(user));
+          safeSaveToStorage('gebat_current_user', user);
         } else {
           localStorage.removeItem('gebat_current_user');
+          indexedDBStorage.removeItem('gebat_current_user');
         }
         window.dispatchEvent(new Event('gebat_state_updated'));
       } catch (e) {}
@@ -389,22 +406,35 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           setUsers(prevUsers => {
             const merged = dbUsers.map((dbU: any) => {
-              const existing = prevUsers.find(u => u.id === dbU.id || u.email === dbU.email);
+              const existing = prevUsers.find(u => u.id === dbU.id || (u.email && u.email.toLowerCase() === (dbU.email || '').toLowerCase()));
               return {
                 ...dbU,
                 photoUrl: dbU.photoUrl || existing?.photoUrl || (dbU.email === currentUser?.email ? currentUser?.photoUrl : undefined)
               };
             });
-            localStorage.setItem('gebat_users', JSON.stringify(merged));
+            safeSaveToStorage('gebat_users', merged);
             return merged;
           });
+
+          // Synchroniser currentUser s'il possède une photo en BDD
+          if (currentUser?.email) {
+            const matchInDb = dbUsers.find((u: any) => (u.email && u.email.toLowerCase() === currentUser.email.toLowerCase()) || u.id === currentUser.id);
+            if (matchInDb && matchInDb.photoUrl && matchInDb.photoUrl !== currentUser.photoUrl) {
+              setCurrentUserRaw(prev => {
+                if (!prev) return prev;
+                const updated = { ...prev, ...matchInDb, photoUrl: matchInDb.photoUrl };
+                safeSaveToStorage('gebat_current_user', updated);
+                return updated;
+              });
+            }
+          }
         }
       } catch (err) {
         console.warn('⚠️ Impossible de charger la liste des utilisateurs depuis MySQL:', err);
       }
     }
     loadDbUsers();
-  }, [isBackendConnected, currentUser]);
+  }, [isBackendConnected]);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('gebat_theme') as 'light' | 'dark') || 'light';
@@ -2940,15 +2970,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateUser = (updatedUser: User) => {
     setUsers(prev => {
-      const updated = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
-      localStorage.setItem('gebat_users', JSON.stringify(updated));
+      const updated = prev.map(u => (u.id === updatedUser.id || (u.email && u.email.toLowerCase() === (updatedUser.email || '').toLowerCase())) ? { ...u, ...updatedUser } : u);
       safeSaveToStorage('gebat_users', updated);
       return updated;
     });
-    if (currentUser && (currentUser.id === updatedUser.id || currentUser.email === updatedUser.email)) {
-      setCurrentUser(updatedUser);
-      localStorage.setItem('gebat_current_user', JSON.stringify(updatedUser));
-      safeSaveToStorage('gebat_current_user', updatedUser);
+    if (currentUser && (currentUser.id === updatedUser.id || (currentUser.email && currentUser.email.toLowerCase() === (updatedUser.email || '').toLowerCase()))) {
+      const mergedCurrent = { ...currentUser, ...updatedUser };
+      setCurrentUser(mergedCurrent);
+      safeSaveToStorage('gebat_current_user', mergedCurrent);
     }
     ApiService.updateUser(updatedUser.id, updatedUser).catch(err => console.error('Error updating user in DB:', err));
     addAuditLog('MODIFICATION_UTILISATEUR', 'ADMINISTRATION', updatedUser.email, `Fiche utilisateur ${updatedUser.name} mise à jour (Rôle: ${updatedUser.role}, Statut: ${updatedUser.status || 'ACTIF'}).`);

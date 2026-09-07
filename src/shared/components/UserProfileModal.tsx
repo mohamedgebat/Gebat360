@@ -3,9 +3,10 @@
  * Interface ultra-moderne, haut de gamme et responsive pour la gestion du profil, coordonnées, mot de passe, habilitations et PWA.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { ApiService } from '../../services/api';
+import { compressImage } from '../../utils/imageCompression';
 import {
   User, ShieldCheck, Mail, Phone, Building2, Lock, Camera, Check, X,
   Save, Key, Hash, Shield, UserCheck, AlertCircle, Eye, EyeOff, Sparkles, Clock, CheckCircle2, RefreshCw, Cpu
@@ -22,10 +23,26 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'permissions' | 'pwa'>('info');
 
   // Formulaire Coordonnées Personnelles
-  const [name, setName] = useState(currentUser.name);
-  const [phone, setPhone] = useState(currentUser.phone || '+225 0749706876');
-  const [photoUrl, setPhotoUrl] = useState<string | null>(currentUser.photoUrl || null);
-  const [employeeCode, setEmployeeCode] = useState(currentUser.employeeCode || 'EMP-2026-001');
+  const [name, setName] = useState(currentUser?.name || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '+225 0749706876');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(
+    currentUser?.photoUrl ||
+    (currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/')) ? currentUser.avatar : null)
+  );
+  const [employeeCode, setEmployeeCode] = useState(currentUser?.employeeCode || 'EMP-2026-001');
+
+  // Synchronisation dynamique lors de l'ouverture du modal
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setName(currentUser.name || '');
+      setPhone(currentUser.phone || '+225 0749706876');
+      setPhotoUrl(
+        currentUser.photoUrl ||
+        (currentUser.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/')) ? currentUser.avatar : null)
+      );
+      setEmployeeCode(currentUser.employeeCode || 'EMP-2026-001');
+    }
+  }, [isOpen, currentUser]);
 
   // Formulaire Changement de Mot de Passe
   const [currentPassword, setCurrentPassword] = useState('');
@@ -51,15 +68,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     return nameStr.substring(0, 2).toUpperCase();
   };
 
-  // Upload photo de profil
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload photo de profil avec compression automatique ultra-légère (< 35 Ko)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setPhotoUrl(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImage(file, 320, 320, 0.82);
+        setPhotoUrl(compressedBase64);
+      } catch (err) {
+        console.warn('⚠️ Échec compression photo, utilisation du fallback direct:', err);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setPhotoUrl(event.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -67,11 +90,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    const avatarInitials = getInitials(name || currentUser.name);
     const updated: any = {
       ...currentUser,
       name,
       phone,
       photoUrl,
+      avatar: avatarInitials,
       employeeCode,
     };
     updateUser(updated);
@@ -81,11 +106,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         name,
         phone,
         employeeCode,
-        avatar: photoUrl || undefined
+        photoUrl: photoUrl || undefined,
+        avatar: avatarInitials
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3500);
-      addAuditLog('MISE_A_JOUR_PROFIL', 'PROFIL_UTILISATEUR', currentUser.email, `Profil mis à jour par l'utilisateur ${name}`);
+      addAuditLog('MISE_A_JOUR_PROFIL', 'PROFIL_UTILISATEUR', currentUser.email, `Profil et photo mis à jour par ${name}`);
     } catch (err: any) {
       console.warn('Backend sync profile update warning:', err);
       setSavedSuccess(true);
