@@ -277,6 +277,10 @@ export class ApiService {
       productivityRate: Number(r.productivityRate || r.productivity_rate || 100),
       consummations: Array.isArray(r.consummations) ? r.consummations : (typeof r.consummations === 'string' ? JSON.parse(r.consummations || '[]') : []),
       historyLogs: Array.isArray(r.historyLogs || r.history_logs) ? (r.historyLogs || r.history_logs) : (typeof (r.historyLogs || r.history_logs) === 'string' ? JSON.parse(r.historyLogs || r.history_logs || '[]') : []),
+      totalCost: Number(r.totalCost || r.total_cost || 0),
+      pu: Number(r.pu || r.unit_price || r.unitPrice || 0),
+      unitPrice: Number(r.unitPrice || r.unit_price || r.pu || 0),
+      advancePct: Number(r.advancePct || r.advance_pct || r.productivityRate || r.productivity_rate || 0),
       rejectionHistory: Array.isArray(r.rejectionHistory || r.rejection_history) ? (r.rejectionHistory || r.rejection_history) : (typeof (r.rejectionHistory || r.rejection_history) === 'string' ? JSON.parse(r.rejectionHistory || r.rejection_history || '[]') : [])
     }));
   }

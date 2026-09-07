@@ -97,10 +97,11 @@ export const VueProjet360: React.FC = () => {
   const totalEngaged = summary.engaged || summary.committed || 0;
   const totalActualCost = summary.actualCost || 0;
 
-  // Calculs Financiers (Facturé / Encaissé / Créances)
-  const factured = selected ? Math.round(selected.contractAmount * (selected.progress / 100)) : 0;
-  const encaisse = Math.round(factured * 0.85);
-  const creances = factured - encaisse;
+  // Facturation / Encaissements : pas de table dédiée en BDD → données non disponibles
+  // On ne calcule JAMAIS de valeurs fictives (pas d'estimation à X% du montant contractuel)
+  const factured = 0;   // Montant réellement facturé — indisponible (aucune table billings en BDD)
+  const encaisse = 0;   // Montant réellement encaissé — indisponible (aucune table paiements en BDD)
+  const creances = 0;   // Créances = 0 tant qu'aucune donnée réelle de facturation n'est disponible
 
   const timeProgressPct = useMemo(() => {
     if (!selected) return 0;
@@ -201,7 +202,8 @@ export const VueProjet360: React.FC = () => {
                 </div>
                 <div className="text-sm font-extrabold text-blue-600">{selected.progress}% Physique</div>
                 <div className="text-[11px] text-slate-600 font-medium">Avancement Temps : {timeProgressPct}%</div>
-                <div className="text-[10px] text-emerald-600 font-bold">Planning Conforme</div>
+                <div className={`text-[10px] font-bold ${selected.progress >= timeProgressPct ? 'text-emerald-600' : selected.progress >= timeProgressPct - 10 ? 'text-amber-600' : 'text-rose-600'}`}>
+                  {selected.progress >= timeProgressPct ? 'Planning Conforme' : selected.progress >= timeProgressPct - 10 ? 'Léger Retard' : 'Retard Avancement'}
               </div>
 
               {/* 3. ÉCONOMIQUE */}

@@ -438,7 +438,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       const nat = String(rep.nature || rep.costNature || 'MO').toUpperCase();
       let cost = Number(rep.totalCost);
       const qte = Number(rep.realizedQty) || 0;
-      const pu = Number(rep.pu) || 5000;
+      const pu = Number(rep.pu) || 0;  // 0 si non renseigné — pas de coût fictif
       if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
       if (nat === 'MO' || nat.startsWith('MO')) act.MO += cost;
       else if (nat === 'MTL' || nat.startsWith('MTL')) act.MTL += cost;
@@ -483,7 +483,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return projectReports.reduce((sum, r) => {
       let cost = Number(r.totalCost);
       const qte = Number(r.realizedQty) || 0;
-      const pu = Number(r.pu) || 5000;
+      const pu = Number(r.pu) || 0;  // 0 si non renseigné — pas de coût fictif
       if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
       return sum + (cost || 0);
     }, 0);
@@ -492,11 +492,19 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   const marginEac = Math.max(0, contractAmount - totalEac);
   const marginPct = contractAmount > 0 ? ((marginEac / contractAmount) * 100).toFixed(1) : '0.0';
   
-  // KPI AVANCEMENT = (Somme de la Production / Montant du Marché HT) * 100
+  // KPI AVANCEMENT = valeur réelle enregistrée en BDD (project.progress), prioritaire sur tout calcul estimé
+  // Le recalcul depuis totalProductionVal n'est fiable que si les rapports journaliers ont des totalCost valides
   const progressPct = useMemo(() => {
+    // 1. Si la production valorisée est disponible et supérieure à zéro, on peut l'utiliser
     if (contractAmount > 0 && totalProductionVal > 0) {
-      return ((totalProductionVal / contractAmount) * 100).toFixed(1);
+      const computed = parseFloat(((totalProductionVal / contractAmount) * 100).toFixed(1));
+      // Garde-fou : ne jamais afficher un avancement calculé < 0.5 quand la BDD dit plus de 1%
+      // (évite les valeurs aberrantes liées à un totalCost manquant dans les rapports backend)
+      if (computed > 0.5 || Number(project.progress || 0) <= 0) {
+        return computed.toFixed(1);
+      }
     }
+    // 2. Sinon, utiliser la valeur SSOT enregistrée dans la table projects de la BDD
     return Number(project.progress || 0).toFixed(1);
   }, [contractAmount, totalProductionVal, project]);
 
@@ -541,18 +549,12 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     ];
   }, [realNatureTotals, realDsTotalFromResources]);
 
-  // Calculs financiers réels et cohérents (Facturé à l'avancement, Encaissé net avec 10% retenue, Créances)
-  const facturedAmount = useMemo(() => {
-    return Math.round(contractAmount * (Number(progressPct) / 100));
-  }, [contractAmount, progressPct]);
-
-  const encaisseAmount = useMemo(() => {
-    return Math.round(facturedAmount * 0.90);
-  }, [facturedAmount]);
-
-  const creancesClients = useMemo(() => {
-    return Math.max(0, facturedAmount - encaisseAmount);
-  }, [facturedAmount, encaisseAmount]);
+  // Facturation / Encaissements : absence de table dédiée en BDD MySQL
+  // On ne calcule PAS de valeurs fictives (ni contractAmount*progress, ni 90% du facturé)
+  // Ces indicateurs seront disponibles quand la table "billings" sera créée en BDD
+  const facturedAmount = 0;    // Montant facturé réel — indisponible (pas de table billings)
+  const encaisseAmount = 0;    // Montant encaissé réel — indisponible (pas de table paiements)
+  const creancesClients = 0;   // Créances clients — indisponible tant qu'aucune facturation réelle
 
   const engagementsEnAttente = useMemo(() => {
     return Math.max(0, totalCommitted - totalActualCost);
@@ -1286,15 +1288,15 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-semibold">Facturé (Attachements)</span>
-                  <span className="font-mono font-bold text-purple-700">{fmtMds(facturedAmount)}</span>
+                  <span className="font-mono font-bold text-slate-400 italic">Non disponible</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Encaissé estimé (net 10%)</span>
-                  <span className="font-mono font-bold text-teal-700">{fmtMds(encaisseAmount)}</span>
+                  <span className="text-slate-600 font-semibold">Encaissé Client</span>
+                  <span className="font-mono font-bold text-slate-400 italic">Non disponible</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-semibold">Créances / Retenue de garantie</span>
-                  <span className="font-mono font-bold text-amber-700">{fmtMds(creancesClients)}</span>
+                  <span className="font-mono font-bold text-slate-400 italic">Non disponible</span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-semibold">Engagements non réceptionnés</span>
@@ -2422,18 +2424,18 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
             <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-xs space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Facturé (Attachements)</span>
-              <span className="text-2xl font-black text-purple-900 font-mono block">{fmtMds(facturedAmount)}</span>
-              <span className="text-[11px] text-purple-700 font-semibold block">{progressPct}% du montant contractuel HT</span>
+              <span className="text-lg font-black text-slate-400 italic font-mono block">Non disponible</span>
+              <span className="text-[11px] text-slate-400 font-semibold block">Module facturation non encore déployé</span>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Encaissé Net (90%)</span>
-              <span className="text-2xl font-black text-emerald-700 font-mono block">{fmtMds(encaisseAmount)}</span>
-              <span className="text-[11px] text-emerald-600 font-semibold block">Après déduction retenue de garantie 10%</span>
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Encaissé Client</span>
+              <span className="text-lg font-black text-slate-400 italic font-mono block">Non disponible</span>
+              <span className="text-[11px] text-slate-400 font-semibold block">Module encaissements non encore déployé</span>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Créances / Retenue Garantie</span>
-              <span className="text-2xl font-black text-amber-700 font-mono block">{fmtMds(creancesClients)}</span>
-              <span className="text-[11px] text-amber-600 font-semibold block">Cautionnement bancaire & décomptes en cours</span>
+              <span className="text-lg font-black text-slate-400 italic font-mono block">Non disponible</span>
+              <span className="text-[11px] text-slate-400 font-semibold block">Dépend des attachements réels</span>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-xs space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Besoin Trésorerie 30j</span>
@@ -2496,8 +2498,8 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                       if (mKey) {
                         let c = Number(r.totalCost);
                         const q = Number(r.realizedQty) || 0;
-                        const pu = Number(r.pu) || 5000;
-                        if (isNaN(c) || c <= 0) c = q * pu;
+                        const pu = Number(r.pu) || 0;   // Ne pas utiliser 5000 comme fallback fictif
+                        if (isNaN(c) || c <= 0) c = q * pu;   // 0 si pu non renseigné (pas de faux coût)
                         monthlyCosts[mKey] = (monthlyCosts[mKey] || 0) + (c || 0);
                       }
                     });
@@ -2584,8 +2586,8 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                     <td className="py-3 px-3 text-right font-mono font-black text-slate-900">{fmtMds(contractAmount)}</td>
                     <td className="py-3 px-3 text-right font-mono font-black text-amber-700">{fmtMds(contractAmount * 0.10)}</td>
                     <td className="py-3 px-3 text-right font-mono font-black text-purple-900">{fmtMds(contractAmount * 0.90)}</td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-emerald-700">{fmtMds(encaisseAmount)}</td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-slate-900">{fmtMds(contractAmount * 0.90 - encaisseAmount)}</td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-slate-400 italic">—</td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-slate-400 italic">—</td>
                     <td></td>
                   </tr>
                 </tfoot>
