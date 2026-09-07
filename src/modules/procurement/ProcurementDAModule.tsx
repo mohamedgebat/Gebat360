@@ -9,7 +9,7 @@ import {
   ShoppingBag, Plus, Trash2, CheckCircle2, AlertTriangle, ShieldCheck,
   ArrowLeft, Calendar, FileText, Download, ChevronRight, ChevronDown, Paperclip,
   Clock, User, Info, Edit3, X, Search, Filter, Lock, Check, Send,
-  FileSpreadsheet, Eye, Printer, Layers, Building2
+  FileSpreadsheet, Eye, Printer, Layers, Building2, Calculator
 } from 'lucide-react';
 
 const formatFCFA = (val: number): string => {
