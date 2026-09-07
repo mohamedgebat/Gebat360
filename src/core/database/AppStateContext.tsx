@@ -26,7 +26,7 @@ import { INITIAL_USERS, PERMISSIONS_MATRIX } from '../permissions';
 import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from './realBingervilleDsData';
 import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
-import { safeSaveToStorage } from './indexedDBStorage';
+import { indexedDBStorage, safeSaveToStorage } from './indexedDBStorage';
 import {
   INITIAL_PROJECTS,
   INITIAL_WBS,
