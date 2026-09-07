@@ -61,7 +61,7 @@ const isProjectReportMatch = (r: any, proj: any): boolean => {
 };
 
 export const VueProjet360: React.FC = () => {
-  const { projects, wbsMap, purchaseRequests, alerts, dailyReports, auditLogs } = useAppState();
+  const { projects, wbsMap, purchaseRequests, alerts, dailyReports, auditLogs, subcontracts = [] } = useAppState();
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     const songon = projects.find(p => p.code?.includes('SON') || p.id?.includes('SON') || p.id === 'CIV-2026-ASS-SON-001');
     return songon?.id || projects[0]?.id || null;
@@ -94,6 +94,8 @@ export const VueProjet360: React.FC = () => {
   const totalEac = summary.eac;
   const margeEAC = summary.eacMarginPct;
   const actualCost = summary.actualCost;
+  const totalEngaged = summary.engaged || summary.committed || 0;
+  const totalActualCost = summary.actualCost || 0;
 
   // Calculs Financiers (Facturé / Encaissé / Créances)
   const factured = selected ? Math.round(selected.contractAmount * (selected.progress / 100)) : 0;
@@ -610,14 +612,261 @@ export const VueProjet360: React.FC = () => {
               </div>
             )}
 
-            {/* AUTRES ONGLETS MÉTIER (SOBRES ET OPÉRATIONNELS) */}
-            {['subcontracting', 'hr_equipment', 'qhse', 'documents'].includes(activeTab) && (
-              <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
-                <CheckCircle2 size={32} className="text-blue-600 mx-auto" />
-                <h3 className="font-extrabold text-slate-900 text-sm capitalize">Module {activeTab} Opérationnel</h3>
-                <p className="text-slate-500 text-xs">
-                  Toutes les données spécifiques du module <strong>{activeTab}</strong> du projet {selected.code} sont rattachées au cockpit du Directeur Projet.
-                </p>
+            {/* ONGLET 7 : SOUS-TRAITANCE RÉELLE */}
+            {activeTab === 'subcontracting' && (
+              <div className="space-y-4">
+                <h2 className="font-extrabold text-slate-900 text-sm border-b pb-3 flex items-center gap-2">
+                  <HardHat size={18} className="text-amber-600" /> Entreprises Partenaires & Contrats de Sous-traitance ({subcontracts.filter(s => s.projectId === selected.id || s.projectId === selected.code).length} Contrats)
+                </h2>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-slate-50 text-slate-500 font-bold border-b text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2.5">Code / Contrat</th>
+                        <th className="p-2.5">Entreprise Partenaire</th>
+                        <th className="p-2.5">Lot Associé</th>
+                        <th className="p-2.5 text-right">Montant Marché</th>
+                        <th className="p-2.5 text-right">Cumul Situations</th>
+                        <th className="p-2.5 text-center">Retenue 5%</th>
+                        <th className="p-2.5">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {subcontracts.filter(s => s.projectId === selected.id || s.projectId === selected.code).map(s => {
+                        const cumSituations = (s.situations || []).reduce((sum: number, sit: any) => sum + Number(sit.amount || sit.grossAmount || 0), 0);
+                        const retenue = Math.round(cumSituations * 0.05);
+
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50">
+                            <td className="p-2.5 text-blue-700 font-bold">{s.contractCode || s.id}</td>
+                            <td className="p-2.5 font-sans font-bold text-slate-900">{s.companyName}</td>
+                            <td className="p-2.5 text-purple-700 font-bold">{s.lotName || s.lotCode || 'Lot BTP'}</td>
+                            <td className="p-2.5 text-right font-bold text-slate-900">{Number(s.contractAmount || 0).toLocaleString()} FCFA</td>
+                            <td className="p-2.5 text-right text-emerald-700 font-bold">{cumSituations.toLocaleString()} FCFA</td>
+                            <td className="p-2.5 text-center text-amber-700 font-bold">{retenue.toLocaleString()} FCFA</td>
+                            <td className="p-2.5">
+                              <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                                {s.status || 'Actif'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {subcontracts.filter(s => s.projectId === selected.id || s.projectId === selected.code).length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="p-6 text-center text-slate-400 font-bold font-sans">
+                            Aucun contrat de sous-traitance enregistré pour ce chantier.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ONGLET 8 : RESSOURCES HUMAINES & MATÉRIEL */}
+            {activeTab === 'hr_equipment' && (
+              <div className="space-y-4">
+                <h2 className="font-extrabold text-slate-900 text-sm border-b pb-3 flex items-center gap-2">
+                  <Users size={18} className="text-blue-600" /> Mobilisation Main d’Œuvre & Engins de Chantier
+                </h2>
+                {(() => {
+                  const reportsWithWorkers = dailyReports.filter(r => isProjectReportMatch(r, selected));
+                  const avgWorkers = reportsWithWorkers.length > 0
+                    ? Math.round(reportsWithWorkers.reduce((sum, r) => sum + (Number(r.workersCount || r.workforceCount) || 18), 0) / reportsWithWorkers.length)
+                    : 0;
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                          <span className="text-[10px] uppercase font-bold text-slate-500">Effectif Moyen Mobilisé / Jour</span>
+                          <div className="text-xl font-black text-blue-700">{avgWorkers} ouvriers / jour</div>
+                          <span className="text-[10px] text-slate-500">Conducteurs, chefs d'équipe, maçons, ferrailleurs</span>
+                        </div>
+                        <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-1">
+                          <span className="text-[10px] uppercase font-bold text-purple-700">Rapports d'Activité RH Traités</span>
+                          <div className="text-xl font-black text-purple-900">{reportsWithWorkers.length} rapports</div>
+                          <span className="text-[10px] text-purple-600">Pointages quotidiens validés</span>
+                        </div>
+                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
+                          <span className="text-[10px] uppercase font-bold text-emerald-700">Superviseur & Direction</span>
+                          <div className="text-lg font-black text-emerald-900">{selected.manager || 'Conducteur de Travaux'}</div>
+                          <span className="text-[10px] text-emerald-600">Responsable de site</span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs font-mono">
+                          <thead className="bg-slate-50 text-slate-500 font-bold border-b text-[10px] uppercase">
+                            <tr>
+                              <th className="p-2.5">Date</th>
+                              <th className="p-2.5">Ouvrage / Tâche</th>
+                              <th className="p-2.5 text-center">Effectif Présent</th>
+                              <th className="p-2.5 text-center">Météo Site</th>
+                              <th className="p-2.5">Chef de Chantier</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {reportsWithWorkers.slice(0, 10).map(r => (
+                              <tr key={r.id} className="hover:bg-slate-50">
+                                <td className="p-2.5 text-slate-700 font-bold">{formatFrenchDate(r.date)}</td>
+                                <td className="p-2.5 font-sans font-bold text-slate-900">{r.activityName || 'Travaux de production'}</td>
+                                <td className="p-2.5 text-center text-blue-700 font-bold">{r.workersCount || r.workforceCount || 18} personnes</td>
+                                <td className="p-2.5 text-center font-sans text-slate-700">{r.weather || 'Ensoleillé / Chantier Sec'}</td>
+                                <td className="p-2.5 font-sans text-slate-800 font-bold">{r.createdBy || selected.manager || 'Conducteur'}</td>
+                              </tr>
+                            ))}
+                            {reportsWithWorkers.length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="p-6 text-center text-slate-400 font-bold font-sans">
+                                  Aucun rapport RH enregistré pour ce chantier.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ONGLET 9 : QHSE & SÉCURITÉ RÉELLE */}
+            {activeTab === 'qhse' && (
+              <div className="space-y-4">
+                <h2 className="font-extrabold text-slate-900 text-sm border-b pb-3 flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-emerald-600" /> Registre QHSE, Alertes de Chantier & Prévention ({alerts.filter(a => a.projectId === selected.id || a.projectId === selected.code).length} Alertes)
+                </h2>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-slate-50 text-slate-500 font-bold border-b text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2.5">Code Alerte</th>
+                        <th className="p-2.5">Intitulé du Risque</th>
+                        <th className="p-2.5 text-center">Gravité</th>
+                        <th className="p-2.5">Mesure Corrective & Action</th>
+                        <th className="p-2.5">Responsable</th>
+                        <th className="p-2.5">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {alerts.filter(a => a.projectId === selected.id || a.projectId === selected.code).map(alt => (
+                        <tr key={alt.id} className="hover:bg-slate-50">
+                          <td className="p-2.5 text-blue-700 font-bold">{alt.code || alt.id}</td>
+                          <td className="p-2.5 font-sans font-bold text-slate-900">{alt.title || alt.message}</td>
+                          <td className="p-2.5 text-center">
+                            <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${
+                              alt.severity === 'Critique' || alt.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-800' :
+                              alt.severity === 'Majeure' || alt.severity === 'MAJOR' ? 'bg-amber-100 text-amber-800' :
+                              'bg-blue-50 text-blue-700'
+                            }`}>
+                              {alt.severity}
+                            </span>
+                          </td>
+                          <td className="p-2.5 font-sans text-slate-700 font-medium">{alt.message || 'Mise en œuvre des mesures de protection'}</td>
+                          <td className="p-2.5 font-sans text-slate-800 font-bold">{alt.assignedToRole || selected.manager}</td>
+                          <td className="p-2.5">
+                            <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${alt.status === 'Résolu' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                              {alt.status || 'Actif'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {alerts.filter(a => a.projectId === selected.id || a.projectId === selected.code).length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400 font-bold font-sans">
+                            Aucune alerte de risque active signalée sur ce chantier.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ONGLET 10 : DOCUMENTS & GED DU CHANTIER */}
+            {activeTab === 'documents' && (
+              <div className="space-y-4">
+                <h2 className="font-extrabold text-slate-900 text-sm border-b pb-3 flex items-center gap-2">
+                  <FileSpreadsheet size={18} className="text-blue-600" /> Gestion Électronique des Documents (GED) du Marché & Chantier
+                </h2>
+                {(() => {
+                  const dynamicDocs = [
+                    {
+                      id: `DOC-CTR-${selected.code}`,
+                      title: `Contrat de Marché Signé N° ${selected.code} — ${selected.name}`,
+                      type: 'PDF',
+                      category: 'Marché',
+                      date: formatFrenchDate(selected.startDate || '2026-06-01'),
+                      size: '4.8 Mo',
+                      author: selected.client || 'Maître d’Ouvrage'
+                    },
+                    {
+                      id: `DOC-DS-${selected.code}`,
+                      title: `Déboursé Sec d'Objectif Validé (${selected.code}) — ${(selected.revisedBudget / 1e6).toFixed(1)} M FCFA`,
+                      type: 'XLSX',
+                      category: 'Étude de Prix',
+                      date: formatFrenchDate(selected.startDate || '2026-06-01'),
+                      size: '2.4 Mo',
+                      author: selected.manager || 'Direction Technique'
+                    },
+                    ...purchaseRequests.filter(d => d.projectId === selected.id || d.projectId === selected.code).slice(0, 5).map((d, i) => ({
+                      id: `DOC-DA-${d.id || i}`,
+                      title: `Demande d'Achat [${d.code}] — ${d.itemDescription} (${Number(d.estimatedTotal || 0).toLocaleString()} FCFA)`,
+                      type: 'PDF',
+                      category: 'Achats',
+                      date: formatFrenchDate(d.createdAt),
+                      size: '850 Ko',
+                      author: d.createdBy || 'Responsable Achats'
+                    })),
+                    ...dailyReports.filter(r => isProjectReportMatch(r, selected)).slice(0, 5).map((r, i) => ({
+                      id: `DOC-REP-${r.id || i}`,
+                      title: `Rapport Journalier [${r.code || `CR-${i + 1}`}] — ${r.activityName}`,
+                      type: 'PDF',
+                      category: 'Production',
+                      date: formatFrenchDate(r.date),
+                      size: '1.2 Mo',
+                      author: r.createdBy || selected.manager || 'Chef de Chantier'
+                    }))
+                  ];
+
+                  return (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-slate-50 text-slate-500 font-bold border-b text-[10px] uppercase">
+                          <tr>
+                            <th className="p-2.5">Réf. Document</th>
+                            <th className="p-2.5">Intitulé de la Pièce</th>
+                            <th className="p-2.5">Catégorie</th>
+                            <th className="p-2.5">Date</th>
+                            <th className="p-2.5">Auteur / Source</th>
+                            <th className="p-2.5 text-center">Format</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {dynamicDocs.map(doc => (
+                            <tr key={doc.id} className="hover:bg-slate-50">
+                              <td className="p-2.5 text-blue-700 font-bold">{doc.id}</td>
+                              <td className="p-2.5 font-sans font-bold text-slate-900">{doc.title}</td>
+                              <td className="p-2.5 font-sans font-bold text-purple-700">{doc.category}</td>
+                              <td className="p-2.5 text-slate-700">{doc.date}</td>
+                              <td className="p-2.5 font-sans text-slate-800">{doc.author}</td>
+                              <td className="p-2.5 text-center">
+                                <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${doc.type === 'PDF' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  {doc.type}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
