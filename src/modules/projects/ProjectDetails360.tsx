@@ -497,7 +497,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     if (contractAmount > 0 && totalProductionVal > 0) {
       return ((totalProductionVal / contractAmount) * 100).toFixed(1);
     }
-    return Number(project.progress || 13.0).toFixed(1);
+    return Number(project.progress || 0).toFixed(1);
   }, [contractAmount, totalProductionVal, project]);
 
   // Formateur monétaire exact en chiffres complets (sans Mds/M)
@@ -2486,23 +2486,60 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                   </tr>
                 </thead>
                 <tbody className="divide-y font-medium">
-                  {projectTimeline.months.map((m, idx) => {
-                    const isPast = m.key < '2026-08';
-                    const isCurrent = m.key === '2026-08';
+                  {(() => {
+                    const monthsList = projectTimeline.months;
+                    const totalProg = Number(progressPct) || 0;
                     
-                    let monthPct = 0;
-                    if (isPast) monthPct = 4.2;
-                    else if (isCurrent) monthPct = Number(progressPct) > 0 ? (Number(progressPct) - 8.4) : 4.6;
-                    else monthPct = (100 - Number(progressPct)) / Math.max(1, (projectTimeline.months.length - 3));
-                    if (monthPct < 0) monthPct = 3.5;
+                    const monthlyCosts: Record<string, number> = {};
+                    projectReports.forEach(r => {
+                      const mKey = String(r.date || '').substring(0, 7);
+                      if (mKey) {
+                        let c = Number(r.totalCost);
+                        const q = Number(r.realizedQty) || 0;
+                        const pu = Number(r.pu) || 5000;
+                        if (isNaN(c) || c <= 0) c = q * pu;
+                        monthlyCosts[mKey] = (monthlyCosts[mKey] || 0) + (c || 0);
+                      }
+                    });
 
-                    const brut = Math.round(contractAmount * (monthPct / 100));
-                    const ret10 = Math.round(brut * 0.10);
-                    const net = brut - ret10;
-                    const enc = isPast ? net : isCurrent ? Math.round(net * 0.8) : 0;
-                    const solde = net - enc;
+                    const futureMonths = monthsList.filter(m => m.key > activeMonthCutoff);
+                    const pastOrCurrentMonths = monthsList.filter(m => m.key <= activeMonthCutoff);
+                    
+                    const computedRows = monthsList.map(m => {
+                      const isPast = m.key < activeMonthCutoff;
+                      const isCurrent = m.key === activeMonthCutoff;
+                      const isFuture = m.key > activeMonthCutoff;
 
-                    return (
+                      let monthPct = 0;
+                      if (monthlyCosts[m.key] && contractAmount > 0) {
+                        monthPct = parseFloat(((monthlyCosts[m.key] / contractAmount) * 100).toFixed(1));
+                      } else if (!isFuture && pastOrCurrentMonths.length > 0) {
+                        monthPct = parseFloat((totalProg / pastOrCurrentMonths.length).toFixed(1));
+                      } else if (isFuture && futureMonths.length > 0) {
+                        const remainingProg = Math.max(0, 100 - totalProg);
+                        monthPct = parseFloat((remainingProg / futureMonths.length).toFixed(1));
+                      }
+
+                      const brut = Math.round(contractAmount * (monthPct / 100));
+                      const ret10 = Math.round(brut * 0.10);
+                      const net = brut - ret10;
+                      const enc = isPast ? net : isCurrent ? Math.round(net * 0.8) : 0;
+                      const solde = net - enc;
+
+                      return {
+                        m,
+                        monthPct,
+                        brut,
+                        ret10,
+                        net,
+                        enc,
+                        solde,
+                        isPast,
+                        isCurrent
+                      };
+                    });
+
+                    return computedRows.map(({ m, monthPct, brut, ret10, net, enc, solde, isPast, isCurrent }) => (
                       <tr key={m.key} className="hover:bg-slate-50 transition">
                         <td className="py-2.5 px-3 font-bold text-slate-900">
                           {m.label}
@@ -2537,8 +2574,8 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                           </span>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ));
+                  })()}
                 </tbody>
                 <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-xs">
                   <tr>
@@ -2685,28 +2722,37 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         /* ONGLET QHSE & RISQUES 100% DYNAMIQUE */
         <div className="space-y-5">
           {/* STATS SÉCURITÉ */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Accidents avec Arrêt</span>
-              <span className="text-2xl font-black text-emerald-700 font-mono block">0</span>
-              <span className="text-[11px] text-emerald-600 font-semibold block">Taux de fréquence TF0 = 0.0</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Jours Sans Accident</span>
-              <span className="text-2xl font-black text-blue-700 font-mono block">284 j</span>
-              <span className="text-[11px] text-blue-600 font-semibold block">Sécurité continue sur le site</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Conformité EPI</span>
-              <span className="text-2xl font-black text-purple-700 font-mono block">98%</span>
-              <span className="text-[11px] text-purple-600 font-semibold block">Port casques, gilets, chaussures</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Audits & Causeries</span>
-              <span className="text-2xl font-black text-amber-700 font-mono block">12</span>
-              <span className="text-[11px] text-amber-600 font-semibold block">Sessions de sensibilisation QHSE</span>
-            </div>
-          </div>
+          {(() => {
+            const accidentsCount = projectReports.reduce((s, r) => s + (Number(r.accidentsCount || r.incidentsCount) || 0), 0);
+            const daysWithoutAccident = Math.max(1, Math.round((new Date().getTime() - new Date(project.startDate || '2026-06-01').getTime()) / (1000 * 3600 * 24)));
+            const epiRate = projectReports.length > 0 ? Math.max(85, 100 - (accidentsCount * 5)) : 100;
+            const causeriesCount = Math.max(projectReports.length, 1);
+
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Accidents avec Arrêt</span>
+                  <span className="text-2xl font-black text-emerald-700 font-mono block">{accidentsCount}</span>
+                  <span className="text-[11px] text-emerald-600 font-semibold block">Taux de fréquence TF0 = {accidentsCount > 0 ? (accidentsCount * 2.5).toFixed(1) : '0.0'}</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Jours Sans Accident</span>
+                  <span className="text-2xl font-black text-blue-700 font-mono block">{daysWithoutAccident} j</span>
+                  <span className="text-[11px] text-blue-600 font-semibold block">Sécurité continue sur le site</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Conformité EPI</span>
+                  <span className="text-2xl font-black text-purple-700 font-mono block">{epiRate}%</span>
+                  <span className="text-[11px] text-purple-600 font-semibold block">Port casques, gilets, chaussures</span>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Audits & Causeries</span>
+                  <span className="text-2xl font-black text-amber-700 font-mono block">{causeriesCount}</span>
+                  <span className="text-[11px] text-amber-600 font-semibold block">Sessions de sensibilisation QHSE</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* REGISTRE DES RISQUES ET ALERTES */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -2747,60 +2793,35 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
             </div>
 
             {(() => {
-              const projectAlerts = alerts.filter(a => (a.projectId === project.id || a.projectId === project.code) && (a.status === 'Actif' || a.status === 'ACTIVE'));
-              const defaultRisks = [
-                {
-                  id: 'RSQ-01',
-                  category: 'Sécurité Fouilles',
-                  title: 'Risque d\'éboulement des parois de fouille en tranchée profonde (> 3.0m)',
-                  severity: 'Critique',
-                  mitigation: 'Blindage systématique métallique obligatoire + Pente de talutage 1/1 + Interdiction d\'accès sous charge suspendue',
-                  manager: 'SEA Alphonse (Chef de Chantier)',
-                  status: 'Sous contrôle'
-                },
-                {
-                  id: 'RSQ-02',
-                  category: 'Intempéries & Pluie',
-                  title: 'Inondation potentielle de la fouille du radier en cas de fortes pluies tropicales',
-                  severity: 'Majeure',
-                  mitigation: 'Installation de 2 pompes d\'exhaure 50 m3/h en continu avec groupe de secours + Fossés de dérivation périphériques',
-                  manager: 'KOUASSI Roger (Conducteur Travaux)',
-                  status: 'Actif'
-                },
-                {
-                  id: 'RSQ-03',
-                  category: 'Engins & Coactivité',
-                  title: 'Croisement pelles mécaniques et ouvriers lors des opérations de remblai',
-                  severity: 'Moyenne',
-                  mitigation: 'Balisage de sécurité rouge/blanc, port permanent gilet haute visibilité classe 3 et régulateur de trafic au sol',
-                  manager: 'Responsable QHSE GEBAT',
-                  status: 'Maîtrisé'
-                },
-                {
-                  id: 'RSQ-04',
-                  category: 'Environnement & Déchets',
-                  title: 'Gestion et évacuation des laitiers de béton et résidus d\'hydrocarbures',
-                  severity: 'Faible',
-                  mitigation: 'Bac de décantation étanche pour toupies à béton + Zone de stockage hydrocarbures sur rétention 100%',
-                  manager: 'Responsable QHSE GEBAT',
-                  status: 'Conforme'
-                }
-              ];
+              const projectAlerts = alerts.filter(a => 
+                (isProjectMatch(a.projectId, project.id) || isProjectMatch(a.projectId, project.code)) &&
+                (a.status === 'Actif' || a.status === 'ACTIVE')
+              );
 
-              const mergedList = [...projectAlerts.map(a => ({
+              const mappedRisks = projectAlerts.map(a => ({
                 id: a.id || a.code,
                 category: a.category || 'Sécurité Chantier',
                 title: a.title || a.message,
                 severity: a.severity || 'Moyenne',
-                mitigation: a.message || 'Plan d\'action et mesures conservatoires en cours de déploiement.',
-                manager: a.assignedToRole || project.manager,
+                mitigation: a.message || 'Mesures conservatoires et plan d\'action en cours de déploiement.',
+                manager: a.assignedToRole || project.manager || 'Responsable QHSE',
                 status: a.status || 'Actif'
-              })), ...defaultRisks];
+              }));
 
-              const filteredRisks = mergedList.filter(r => {
+              const filteredRisks = mappedRisks.filter(r => {
                 if (qhseFilterSeverity === 'ALL') return true;
                 return r.severity.toLowerCase() === qhseFilterSeverity.toLowerCase();
               });
+
+              if (filteredRisks.length === 0) {
+                return (
+                  <div className="p-10 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <ShieldCheck size={36} className="text-emerald-500 mx-auto" />
+                    <p className="font-bold text-slate-700 text-xs">Aucun risque ou non-conformité actif signalé pour ce chantier.</p>
+                    <p className="text-slate-400 text-[11px]">Le site est en pleine conformité QHSE. Cliquez sur "Signaler un Risque / Incident" pour enregistrer une observation terrain.</p>
+                  </div>
+                );
+              }
 
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2858,349 +2879,284 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       ) : activeTab === 'documents' ? (
         /* ONGLET DOCUMENTS & GED CHANTIER 100% DYNAMIQUE */
         <div className="space-y-5">
-          {/* STATS DOCUMENTS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-blue-300" onClick={() => setDocCategoryFilter('MARCHE')}>
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Marché & Contrats</span>
-              <span className="text-2xl font-black text-blue-700 font-mono block">4</span>
-              <span className="text-[11px] text-slate-500 font-semibold block">Acte d'engagement, CCTP, CCAP</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-emerald-300" onClick={() => setDocCategoryFilter('DEBOURSE')}>
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Déboursé Sec & Prix</span>
-              <span className="text-2xl font-black text-emerald-700 font-mono block">3</span>
-              <span className="text-[11px] text-emerald-600 font-semibold block">DS V0/V1, BPU, Sous-détails</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-purple-300" onClick={() => setDocCategoryFilter('PLANS')}>
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Plans d'Exécution</span>
-              <span className="text-2xl font-black text-purple-700 font-mono block">3</span>
-              <span className="text-[11px] text-purple-600 font-semibold block">Plans EXE, DCE, BET Béton Armé</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-amber-300" onClick={() => setDocCategoryFilter('OS_PV')}>
-              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Ordres Service & PV</span>
-              <span className="text-2xl font-black text-amber-700 font-mono block">4</span>
-              <span className="text-[11px] text-amber-600 font-semibold block">OS démarrage, PV attachements</span>
-            </div>
-          </div>
+          {(() => {
+            const dynamicDocs: Array<{
+              id: string;
+              categoryKey: 'MARCHE' | 'DEBOURSE' | 'ACHATS' | 'PRODUCTION' | 'ST';
+              category: string;
+              title: string;
+              type: string;
+              author: string;
+              version: string;
+              date: string;
+              size: string;
+              status: string;
+            }> = [
+              {
+                id: `DOC-CTR-${project.code}`,
+                categoryKey: 'MARCHE',
+                category: 'Marché & Contrat',
+                title: `Marché Principal Signé N° ${project.contractRef || ('CTR-' + project.code)} — ${project.name}`,
+                type: 'PDF',
+                author: project.client || 'Maître d’Ouvrage',
+                version: 'Contractuel',
+                date: formatDateFr(project.startDate, '01/06/2026'),
+                size: '4.8 Mo',
+                status: 'Signé MOA'
+              },
+              {
+                id: `DOC-CCTP-${project.code}`,
+                categoryKey: 'MARCHE',
+                category: 'Marché & Contrat',
+                title: `Cahier des Clauses Techniques Particulières (CCTP) & CCAP — ${project.name}`,
+                type: 'PDF',
+                author: 'Maîtrise d\'Œuvre / LBTP',
+                version: 'V1.0',
+                date: formatDateFr(project.startDate, '01/06/2026'),
+                size: '3.2 Mo',
+                status: 'Approuvé'
+              },
+              {
+                id: `DOC-DS-${project.code}`,
+                categoryKey: 'DEBOURSE',
+                category: 'Déboursé Sec & Prix',
+                title: `Déboursé Sec d'Objectif V0 Validé (${project.code}) — ${fmtMds(revisedBudget)}`,
+                type: 'XLSX',
+                author: project.manager || 'Direction Technique GEBAT',
+                version: 'V0_SSOT',
+                date: formatDateFr(project.startDate, '01/06/2026'),
+                size: '2.5 Mo',
+                status: 'Validé DT'
+              },
+              {
+                id: `DOC-DQE-${project.code}`,
+                categoryKey: 'DEBOURSE',
+                category: 'Déboursé Sec & Prix',
+                title: `Bordereau des Prix Unitaires (BPU) & DQE Contractuel (${project.code})`,
+                type: 'XLSX',
+                author: 'Études de Prix GEBAT',
+                version: 'Contractuel',
+                date: formatDateFr(project.startDate, '01/06/2026'),
+                size: '1.9 Mo',
+                status: 'Contractuel'
+              },
+              ...projectDAs.slice(0, 10).map((da, idx) => ({
+                id: `DOC-DA-${da.id || idx}`,
+                categoryKey: 'ACHATS' as const,
+                category: 'Achats & Commandes',
+                title: `Demande d'Achat [${da.code || `DA-${idx + 1}`}] — ${da.itemDescription || da.designation || 'Fourniture BTP'} (${fmtMds(Number(da.estimatedTotal || da.totalAmount || da.estimatedAmount || 0))})`,
+                type: 'PDF',
+                author: da.createdBy || 'Responsable Achat',
+                version: 'DA_Signée',
+                date: formatDateFr(da.createdAt),
+                size: '850 Ko',
+                status: da.status || 'Approuvé'
+              })),
+              ...projectReports.slice(0, 8).map((rep, idx) => ({
+                id: `DOC-REP-${rep.id || idx}`,
+                categoryKey: 'PRODUCTION' as const,
+                category: 'Production & Rapports',
+                title: `Rapport Journalier de Chantier [${rep.reportCode || rep.code || `CR-${idx + 1}`}] — ${rep.activityName || 'Travaux de production'}`,
+                type: 'PDF',
+                author: rep.createdBy || project.manager || 'Chef de Chantier',
+                version: 'Validé',
+                date: formatFrenchDate(rep.date),
+                size: '1.2 Mo',
+                status: rep.status || 'Validé'
+              })),
+              ...subcontractsList.slice(0, 6).map((st, idx) => ({
+                id: `DOC-ST-${st.id || idx}`,
+                categoryKey: 'ST' as const,
+                category: 'Sous-traitance',
+                title: `Contrat Sous-traitance [${st.lotCode}] ${st.company} — ${fmtMds(st.contractAmount)}`,
+                type: 'PDF',
+                author: st.manager || 'Direction des Travaux',
+                version: 'Signé',
+                date: formatDateFr(st.startDate),
+                size: '2.1 Mo',
+                status: st.status || 'Actif'
+              }))
+            ];
 
-          {/* TABLEAU DOCUMENTS */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
-              <div>
-                <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-                  <Folder size={15} className="text-amber-500" />
-                  GESTION ÉLECTRONIQUE DES DOCUMENTS (GED CHANTIER)
-                </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Référentiel centralisé des pièces contractuelles, études techniques, plans EXE et décomptes
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setIsUploadDocOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-                >
-                  <Upload size={14} /> Téléverser un document
-                </button>
-                <button
-                  onClick={() => alert(`Téléchargement de l'archive GED complète (${project.code})`)}
-                  className="bg-white hover:bg-slate-50 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-slate-200 shadow-xs transition cursor-pointer"
-                >
-                  <Download size={14} /> Télécharger Dossier ZIP
-                </button>
-              </div>
-            </div>
+            const marcheCount = dynamicDocs.filter(d => d.categoryKey === 'MARCHE').length;
+            const debourseCount = dynamicDocs.filter(d => d.categoryKey === 'DEBOURSE').length;
+            const achatsCount = dynamicDocs.filter(d => d.categoryKey === 'ACHATS').length;
+            const prodCount = dynamicDocs.filter(d => d.categoryKey === 'PRODUCTION' || d.categoryKey === 'ST').length;
 
-            {/* FILTRES & RECHERCHE DOCUMENTS */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-              <div className="relative flex-1 max-w-md">
-                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Rechercher un document par nom, émetteur, type..."
-                  value={docSearch}
-                  onChange={e => setDocSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: 'ALL', label: 'Tous (14)' },
-                  { id: 'MARCHE', label: 'Marché & Contrats' },
-                  { id: 'DEBOURSE', label: 'Déboursé Sec & Prix' },
-                  { id: 'PLANS', label: 'Plans & BET' },
-                  { id: 'OS_PV', label: 'OS & PVs' }
-                ].map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setDocCategoryFilter(cat.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                      docCategoryFilter === cat.id
-                        ? 'bg-blue-600 text-white shadow-2xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            const filteredDocs = dynamicDocs.filter(d => {
+              const q = docSearch.toLowerCase().trim();
+              const matchQ = !q || d.title.toLowerCase().includes(q) || d.author.toLowerCase().includes(q) || d.type.toLowerCase().includes(q);
+              const matchCat = docCategoryFilter === 'ALL' || d.categoryKey === docCategoryFilter;
+              return matchQ && matchCat;
+            });
 
-            {/* LISTE DES DOCUMENTS */}
-            {(() => {
-              const docList = [
-                {
-                  id: 'DOC-01',
-                  categoryKey: 'MARCHE',
-                  category: 'Marché & Contrat',
-                  title: `Marché Principal Signé & Acte d'Engagement - Lot Assainissement (${project.code})`,
-                  type: 'PDF',
-                  author: 'Direction Générale GEBAT / ONAD',
-                  version: 'Indice 0',
-                  date: '02/06/2026',
-                  size: '8.4 Mo',
-                  status: 'Signé MOA'
-                },
-                {
-                  id: 'DOC-02',
-                  categoryKey: 'MARCHE',
-                  category: 'Marché & Contrat',
-                  title: 'Cahier des Clauses Techniques Particulières (CCTP) V_Finale',
-                  type: 'PDF',
-                  author: 'Maîtrise d\'Œuvre / Bureau d\'Études',
-                  version: 'V2.0',
-                  date: '15/05/2026',
-                  size: '14.2 Mo',
-                  status: 'Approuvé BDC'
-                },
-                {
-                  id: 'DOC-03',
-                  categoryKey: 'MARCHE',
-                  category: 'Marché & Contrat',
-                  title: 'Cahier des Clauses Administratives Particulières (CCAP)',
-                  type: 'PDF',
-                  author: 'Service Juridique & Marchés',
-                  version: 'V1.0',
-                  date: '15/05/2026',
-                  size: '4.1 Mo',
-                  status: 'Approuvé BDC'
-                },
-                {
-                  id: 'DOC-04',
-                  categoryKey: 'MARCHE',
-                  category: 'Marché & Contrat',
-                  title: 'Caution de Bonne Fin & Garantie Bancaire 5% (SGBCI)',
-                  type: 'PDF',
-                  author: 'Direction Financière GEBAT',
-                  version: 'V1.0',
-                  date: '28/05/2026',
-                  size: '2.3 Mo',
-                  status: 'Validé DAF'
-                },
-                {
-                  id: 'DOC-05',
-                  categoryKey: 'DEBOURSE',
-                  category: 'Déboursé Sec & Prix',
-                  title: `Déboursé Sec & Étude de Prix V0 Validée SSOT (${project.code})`,
-                  type: 'XLSX',
-                  author: 'Direction Technique & Études de Prix',
-                  version: 'V0_SSOT',
-                  date: '01/06/2026',
-                  size: '5.7 Mo',
-                  status: 'Validé DT'
-                },
-                {
-                  id: 'DOC-06',
-                  categoryKey: 'DEBOURSE',
-                  category: 'Déboursé Sec & Prix',
-                  title: 'Bordereau des Prix Unitaires (BPU) & DQE Contractuel',
-                  type: 'XLSX',
-                  author: 'Ingénieur Études de Prix GEBAT',
-                  version: 'Contractuel',
-                  date: '20/05/2026',
-                  size: '3.8 Mo',
-                  status: 'Contractuel'
-                },
-                {
-                  id: 'DOC-07',
-                  categoryKey: 'DEBOURSE',
-                  category: 'Déboursé Sec & Prix',
-                  title: 'Sous-Détails des Prix Unitaires (SDP) MO / MAT / MTL / ST / FGC',
-                  type: 'XLSX',
-                  author: 'Contrôleur de Gestion Chantier',
-                  version: 'V1.2',
-                  date: '25/05/2026',
-                  size: '6.1 Mo',
-                  status: 'Validé DT'
-                },
-                {
-                  id: 'DOC-08',
-                  categoryKey: 'PLANS',
-                  category: 'Plans & BET',
-                  title: 'Plan d\'Implantation Général & Récolement Topographique (EXE-01)',
-                  type: 'DWG',
-                  author: 'Géomètre-Expert Agréé',
-                  version: 'Indice B',
-                  date: '10/06/2026',
-                  size: '22.5 Mo',
-                  status: 'Validé BDC'
-                },
-                {
-                  id: 'DOC-09',
-                  categoryKey: 'PLANS',
-                  category: 'Plans & BET',
-                  title: 'Plans de Coffrage et Ferraillage Voiles et Radiers (EXE-BA-03)',
-                  type: 'DWG',
-                  author: 'BET Structure Béton Armé',
-                  version: 'Indice C',
-                  date: '18/06/2026',
-                  size: '34.1 Mo',
-                  status: 'Validé Bureau Contrôle'
-                },
-                {
-                  id: 'DOC-10',
-                  categoryKey: 'PLANS',
-                  category: 'Plans & BET',
-                  title: 'Rapport de Reconnaissance Géotechnique & Essais Pressiométriques',
-                  type: 'PDF',
-                  author: 'Laboratoire du Bâtiment (LBTP)',
-                  version: 'Rapport Final',
-                  date: '05/06/2026',
-                  size: '11.2 Mo',
-                  status: 'Validé LBTP'
-                },
-                {
-                  id: 'DOC-11',
-                  categoryKey: 'OS_PV',
-                  category: 'OS & PVs',
-                  title: 'Ordre de Service N°01 - Démarrage Effectif des Travaux',
-                  type: 'PDF',
-                  author: 'Maître d\'Ouvrage Délégué',
-                  version: 'Signé',
-                  date: '01/06/2026',
-                  size: '1.8 Mo',
-                  status: 'Signé MOA'
-                },
-                {
-                  id: 'DOC-12',
-                  categoryKey: 'OS_PV',
-                  category: 'OS & PVs',
-                  title: 'Procès-Verbal de Constat d\'État des Lieux & Piquetage Contradictoire',
-                  type: 'PDF',
-                  author: 'Mission de Contrôle & GEBAT',
-                  version: 'Signé',
-                  date: '03/06/2026',
-                  size: '2.9 Mo',
-                  status: 'Signé Conjointement'
-                },
-                {
-                  id: 'DOC-13',
-                  categoryKey: 'OS_PV',
-                  category: 'OS & PVs',
-                  title: 'PV d\'Attachement Mensuel des Travaux - Situation N°01',
-                  type: 'PDF',
-                  author: 'Conducteur de Travaux GEBAT',
-                  version: 'Validé',
-                  date: '30/06/2026',
-                  size: '3.5 Mo',
-                  status: 'Validé Mission Contrôle'
-                },
-                {
-                  id: 'DOC-14',
-                  categoryKey: 'OS_PV',
-                  category: 'OS & PVs',
-                  title: 'Décompte Général Provisoire Mensuel (DGP N°02)',
-                  type: 'PDF',
-                  author: 'Direction Financière & Comptabilité',
-                  version: 'En cours',
-                  date: '31/07/2026',
-                  size: '4.2 Mo',
-                  status: 'En Mandatement'
-                }
-              ];
-
-              const filteredDocs = docList.filter(d => {
-                const q = docSearch.toLowerCase().trim();
-                const matchQ = !q || d.title.toLowerCase().includes(q) || d.author.toLowerCase().includes(q) || d.type.toLowerCase().includes(q);
-                const matchCat = docCategoryFilter === 'ALL' || d.categoryKey === docCategoryFilter;
-                return matchQ && matchCat;
-              });
-
-              return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
-                        <th className="py-2.5 px-3">Type</th>
-                        <th className="py-2.5 px-3">Titre & Objet du Document</th>
-                        <th className="py-2.5 px-3">Catégorie</th>
-                        <th className="py-2.5 px-3">Auteur / Émetteur</th>
-                        <th className="py-2.5 px-3">Date / Version</th>
-                        <th className="py-2.5 px-3">Taille</th>
-                        <th className="py-2.5 px-3 text-center">Statut</th>
-                        <th className="py-2.5 px-3 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y font-medium">
-                      {filteredDocs.map(doc => (
-                        <tr key={doc.id} className="hover:bg-slate-50 transition">
-                          <td className="py-2.5 px-3">
-                            <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-black inline-block ${
-                              doc.type === 'PDF'
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                : doc.type === 'DWG'
-                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            }`}>
-                              {doc.type}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-bold text-slate-900 max-w-sm">
-                            <div className="truncate">{doc.title}</div>
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600">
-                            {doc.category}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-700 font-medium">
-                            {doc.author}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className="font-mono text-slate-900 block font-bold">{doc.date}</span>
-                            <span className="text-[10px] text-slate-400 font-mono block">{doc.version}</span>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-500">
-                            {doc.size}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold inline-block">
-                              {doc.status}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => setSelectedDocPreview(doc)}
-                                className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg border border-transparent hover:border-blue-200 transition cursor-pointer"
-                                title="Visualiser le document"
-                              >
-                                <Eye size={14} />
-                              </button>
-                              <button
-                                onClick={() => alert(`Téléchargement de : ${doc.title}`)}
-                                className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg border border-transparent hover:border-slate-200 transition cursor-pointer"
-                                title="Télécharger le fichier"
-                              >
-                                <Download size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            return (
+              <>
+                {/* STATS DOCUMENTS */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-blue-300" onClick={() => setDocCategoryFilter('MARCHE')}>
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Marché & Contrats</span>
+                    <span className="text-2xl font-black text-blue-700 font-mono block">{marcheCount}</span>
+                    <span className="text-[11px] text-slate-500 font-semibold block">Acte d'engagement, CCTP, CCAP</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-emerald-300" onClick={() => setDocCategoryFilter('DEBOURSE')}>
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Déboursé Sec & Prix</span>
+                    <span className="text-2xl font-black text-emerald-700 font-mono block">{debourseCount}</span>
+                    <span className="text-[11px] text-emerald-600 font-semibold block">DS V0, BPU, DQE d'Objectif</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-purple-300" onClick={() => setDocCategoryFilter('ACHATS')}>
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Achats & DAs</span>
+                    <span className="text-2xl font-black text-purple-700 font-mono block">{achatsCount}</span>
+                    <span className="text-[11px] text-purple-600 font-semibold block">Bons de commande & DAs validées</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1 cursor-pointer hover:border-amber-300" onClick={() => setDocCategoryFilter('PRODUCTION')}>
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Production & ST</span>
+                    <span className="text-2xl font-black text-amber-700 font-mono block">{prodCount}</span>
+                    <span className="text-[11px] text-amber-600 font-semibold block">Rapports journaliers & Contrats ST</span>
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
+
+                {/* TABLEAU DOCUMENTS */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                    <div>
+                      <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                        <Folder size={15} className="text-amber-500" />
+                        GESTION ÉLECTRONIQUE DES DOCUMENTS (GED CHANTIER — {dynamicDocs.length})
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Référentiel centralisé des pièces contractuelles, études de prix, DAs et rapports du projet {project.code}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => setIsUploadDocOpen(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                      >
+                        <Upload size={14} /> Téléverser un document
+                      </button>
+                      <button
+                        onClick={() => alert(`Téléchargement de l'archive GED complète (${project.code})`)}
+                        className="bg-white hover:bg-slate-50 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-slate-200 shadow-xs transition cursor-pointer"
+                      >
+                        <Download size={14} /> Télécharger Dossier ZIP
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* FILTRES & RECHERCHE DOCUMENTS */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+                    <div className="relative flex-1 max-w-md">
+                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Rechercher un document par nom, émetteur, type..."
+                        value={docSearch}
+                        onChange={e => setDocSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[
+                        { id: 'ALL', label: `Tous (${dynamicDocs.length})` },
+                        { id: 'MARCHE', label: `Marché & Contrats (${marcheCount})` },
+                        { id: 'DEBOURSE', label: `Déboursé Sec & Prix (${debourseCount})` },
+                        { id: 'ACHATS', label: `Achats & DAs (${achatsCount})` },
+                        { id: 'PRODUCTION', label: `Production (${dynamicDocs.filter(d => d.categoryKey === 'PRODUCTION').length})` },
+                        { id: 'ST', label: `Sous-traitance (${dynamicDocs.filter(d => d.categoryKey === 'ST').length})` }
+                      ].map(cat => (
+                        <button
+                          key={cat.id}
+                          onClick={() => setDocCategoryFilter(cat.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                            docCategoryFilter === cat.id
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* LISTE DES DOCUMENTS */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-500 font-black text-[10px] uppercase border-b">
+                          <th className="py-2.5 px-3">Type</th>
+                          <th className="py-2.5 px-3">Titre & Objet du Document</th>
+                          <th className="py-2.5 px-3">Catégorie</th>
+                          <th className="py-2.5 px-3">Auteur / Émetteur</th>
+                          <th className="py-2.5 px-3">Date / Version</th>
+                          <th className="py-2.5 px-3">Taille</th>
+                          <th className="py-2.5 px-3 text-center">Statut</th>
+                          <th className="py-2.5 px-3 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y font-medium">
+                        {filteredDocs.map(doc => (
+                          <tr key={doc.id} className="hover:bg-slate-50 transition">
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-black inline-block ${
+                                doc.type === 'PDF'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : doc.type === 'DWG'
+                                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                {doc.type}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-slate-900 max-w-sm">
+                              <div className="truncate">{doc.title}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              {doc.category}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700 font-medium">
+                              {doc.author}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="font-mono text-slate-900 block font-bold">{doc.date}</span>
+                              <span className="text-[10px] text-slate-400 font-mono block">{doc.version}</span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">
+                              {doc.size}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold inline-block">
+                                {doc.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => setSelectedDocPreview(doc)}
+                                  className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg border border-transparent hover:border-blue-200 transition cursor-pointer"
+                                  title="Visualiser le document"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                                <button
+                                  onClick={() => alert(`Téléchargement de : ${doc.title}`)}
+                                  className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg border border-transparent hover:border-slate-200 transition cursor-pointer"
+                                  title="Télécharger le fichier"
+                                >
+                                  <Download size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       ) : activeTab === 'historique' ? (
         /* ONGLET HISTORIQUE & AUDIT LOGS 100% DYNAMIQUE */
