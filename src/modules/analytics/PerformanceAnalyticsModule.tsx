@@ -65,13 +65,13 @@ export const PerformanceAnalyticsModule: React.FC<PerformanceAnalyticsModuleProp
       const eqHours = pReports.reduce((sum, r) => sum + Number(r.equipmentHours || 0), 0);
 
       const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
-      const actualCost = pNodes.reduce((sum, n) => sum + Number(n.actualCost || 0), 0) || (p.initialBudget ? p.initialBudget * ((p.progress || 0) / 100) * 0.95 : 50000000);
-      const bac = Number(p.revisedBudget || p.initialBudget || 100000000);
+      const actualCost = pNodes.reduce((sum, n) => sum + Number(n.actualCost || 0), 0) || (p.initialBudget ? p.initialBudget * ((p.progress || 0) / 100) : 0);
+      const bac = Number(p.revisedBudget || p.initialBudget || p.contractAmount || 0);
       const ev = bac * ((p.progress || 0) / 100);
       const pv = bac * Math.min(1, ((p.progress || 0) + 4) / 100);
 
-      const cpi = actualCost > 0 ? Number((ev / actualCost).toFixed(2)) : 1.05;
-      const spi = pv > 0 ? Number((ev / pv).toFixed(2)) : 0.98;
+      const cpi = actualCost > 0 ? Number((ev / actualCost).toFixed(2)) : (ev > 0 ? 1.0 : 0);
+      const spi = pv > 0 ? Number((ev / pv).toFixed(2)) : 0;
 
       return {
         id: p.id,
@@ -86,8 +86,8 @@ export const PerformanceAnalyticsModule: React.FC<PerformanceAnalyticsModuleProp
         actualCost,
         cpi,
         spi,
-        laborHours: laborHours > 0 ? laborHours : 420,
-        eqHours: eqHours > 0 ? eqHours : 85,
+        laborHours,
+        eqHours,
         health: cpi >= 1.0 && spi >= 0.95 ? 'Excellent' : cpi >= 0.9 ? 'Vigilance' : 'Critique'
       };
     });
