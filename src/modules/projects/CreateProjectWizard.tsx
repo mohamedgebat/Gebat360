@@ -40,55 +40,54 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
   // Logo du client (aperçu)
   const [clientLogoUrl, setClientLogoUrl] = useState<string | null>(null);
 
-  // Étape 1 — Informations générales (Données Réelles Côte d'Ivoire)
-  const [projectCodeNum, setProjectCodeNum] = useState('CIV-2026-ASS-003');
-  const [name, setName] = useState('Station de traitement des boues de vidange d’Abidjan Nord (Anyama / Abobo)');
+  // Étape 1 — Informations générales (Formulaire dynamique de création)
+  const defaultNextCode = `CIV-${new Date().getFullYear()}-ASS-${String(projects.length + 1).padStart(3, '0')}`;
+  const [projectCodeNum, setProjectCodeNum] = useState(defaultNextCode);
+  const [name, setName] = useState('');
   const [client, setClient] = useState('Ministère de l’Hydraulique & Assainissement / ONEP');
   const [company, setCompany] = useState('GEBAT SA');
 
   const [country, setCountry] = useState("Côte d'Ivoire");
-  const [city, setCity] = useState('Anyama');
+  const [city, setCity] = useState('Abidjan');
   const [region, setRegion] = useState("District Autonome d'Abidjan");
 
   const [projectType, setProjectType] = useState('Génie Civil');
   const [natureOuvrage, setNatureOuvrage] = useState('Station de Traitement des Boues');
   const [contractCategory, setContractCategory] = useState('Marché de travaux');
 
-  const [contractAmountHT, setContractAmountHT] = useState<number | string>('2850000000');
+  const [contractAmountHT, setContractAmountHT] = useState<number | string>('');
   const [currency, setCurrency] = useState('FCFA');
   const [exchangeRate, setExchangeRate] = useState<number | string>('1');
 
-  const [startDate, setStartDate] = useState('2026-03-01');
-  const [durationMonths, setDurationMonths] = useState<number | string>('18');
-  const [endDateContractual, setEndDateContractual] = useState('2027-08-31');
-  const [endDateRevised, setEndDateRevised] = useState('2027-09-30');
+  const [startDate, setStartDate] = useState(new Date().toISOString().substring(0, 10));
+  const [durationMonths, setDurationMonths] = useState<number | string>('12');
+  const [endDateContractual, setEndDateContractual] = useState('');
+  const [endDateRevised, setEndDateRevised] = useState('');
 
-  const [description, setDescription] = useState(
-    "Construction et aménagement des infrastructures de génie civil, réacteurs biologiques, bassins de dépotage et voiries pour la station de traitement des boues de vidange de la zone d'Anyama / Abobo."
-  );
+  const [description, setDescription] = useState('');
 
   const [manager, setManager] = useState('SEA Alphonse');
-  const [costCenterCode, setCostCenterCode] = useState('PRJ-CIV-2026-003');
+  const [costCenterCode, setCostCenterCode] = useState(`PRJ-${defaultNextCode}`);
   const [priority, setPriority] = useState('Élevée');
   const [initialStatus, setInitialStatus] = useState('En préparation');
 
   // Code projet généré sans préfixe redondant
   const generatedCode = useMemo(() => {
     const trimmed = projectCodeNum.trim();
-    if (!trimmed) return 'CIV-2026-ASS-003';
+    if (!trimmed) return defaultNextCode;
     return trimmed;
-  }, [projectCodeNum]);
+  }, [projectCodeNum, defaultNextCode]);
 
   // Étape 2 — Contrat
-  const [contractRef, setContractRef] = useState('CTR-GEBAT-2026-ASS-003');
+  const [contractRef, setContractRef] = useState(`CTR-GEBAT-${new Date().getFullYear()}-ASS-${String(projects.length + 1).padStart(3, '0')}`);
   const [advancePct, setAdvancePct] = useState('20');
   const [retentionPct, setRetentionPct] = useState('5');
-  const [guaranteeType, setGuaranteeType] = useState('Caution bancaire à première demande (NSIA Banque / BOA)');
+  const [guaranteeType, setGuaranteeType] = useState('Caution bancaire à première demande');
 
   // Étape 3 — Équipe Projet
   const [siteManager, setSiteManager] = useState('KOUASSI Jean');
   const [qseManager, setQseManager] = useState('KOUADIO Marc');
-  const [controlOffice, setControlOffice] = useState('SOCOTEC / LBTP');
+  const [controlOffice, setControlOffice] = useState('LBTP / SOCOTEC');
 
   // Gestion de l'upload du logo
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -365,7 +364,7 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-extrabold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
                       value={name}
                       onChange={e => setName(e.target.value)}
-                      placeholder="Construction du Lycée Technique de Kolda"
+                      placeholder="Ex: Station de traitement des boues de vidange / Travaux BTP"
                     />
                   </div>
 
@@ -377,7 +376,7 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
                       value={client}
                       onChange={e => setClient(e.target.value)}
-                      placeholder="Ministère de l'Éducation Nationale"
+                      placeholder="Ex: Ministère de l’Hydraulique & Assainissement / ONEP"
                     />
                   </div>
                 </div>
@@ -406,7 +405,7 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
                       value={city}
                       onChange={e => setCity(e.target.value)}
-                      placeholder="Kolda"
+                      placeholder="Ex: Abidjan"
                     />
                   </div>
 
@@ -417,7 +416,7 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
                       value={region}
                       onChange={e => setRegion(e.target.value)}
-                      placeholder="Kolda"
+                      placeholder="Ex: District Autonome d'Abidjan"
                     />
                   </div>
                 </div>
