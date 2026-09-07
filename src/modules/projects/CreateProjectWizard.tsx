@@ -352,7 +352,7 @@ export const CreateProjectWizard: React.FC<CreateProjectWizardProps> = ({ onCanc
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-900 focus:bg-white focus:border-blue-500 transition"
                       value={projectCodeNum}
                       onChange={e => setProjectCodeNum(e.target.value)}
-                      placeholder="CIV-2026-ASS-003"
+                      placeholder="Ex: PRJ-2026-001"
                     />
                   </div>
 

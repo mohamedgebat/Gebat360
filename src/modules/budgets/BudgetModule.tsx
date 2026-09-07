@@ -117,7 +117,7 @@ export const BudgetModule: React.FC<BudgetModuleProps> = ({
   const [showNewVersionModal, setShowNewVersionModal] = useState(false);
   const [newVersionJustification, setNewVersionJustification] = useState('');
   const [newVersionAmount, setNewVersionAmount] = useState(() => {
-    return selectedProject ? Math.round(Number(selectedProject.revisedBudget || selectedProject.initialBudget || 490000000) * 1.05) : 490000000;
+    return selectedProject ? Math.round(Number(selectedProject.revisedBudget || selectedProject.initialBudget || selectedProject.contractAmount || 0) * 1.05) : 0;
   });
   const [newVersionAuthor, setNewVersionAuthor] = useState(() => currentUser?.name || 'N’Guessan Amenan');
   const [newVersionApprover, setNewVersionApprover] = useState('Direction Technique & DG');

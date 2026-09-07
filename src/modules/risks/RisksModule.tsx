@@ -155,68 +155,10 @@ export const RisksModule: React.FC<RisksModuleProps> = ({ onBackToProject }) => 
       }
     });
 
-    // 3. Risques spécifiques métier BTP réels pour ce projet
-    const standardProjectRisks: ProjectRiskItem[] = [
-      {
-        id: 'RSQ-' + projCode + '-01',
-        name: 'Risque d\'éboulement des parois de fouilles profondes (> 3m)',
-        category: 'Sécurité & QHSE',
-        categoryBg: 'bg-red-50 text-red-700',
-        prob: 'Moyenne',
-        impact: 'Majeur',
-        level: 'Critique',
-        levelBg: 'bg-rose-100 text-rose-800 font-extrabold',
-        status: 'Maîtrisé',
-        statusBg: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-        owner: projManager,
-        role: 'Conducteur Travaux',
-        date: selectedProject.startDate || '2026-06-01',
-        dateColor: 'text-slate-600',
-        mitigation: 'Blindage métallique systématique + talutage 1/1 + interdiction circulation charges lourdes en bord de fouille',
-        projectId: selectedProject.id
-      },
-      {
-        id: 'RSQ-' + projCode + '-02',
-        name: 'Inondation et remontée de nappe phréatique lors des terrassements',
-        category: 'Climat & Sol',
-        categoryBg: 'bg-purple-50 text-purple-700',
-        prob: 'Élevée',
-        impact: 'Important',
-        level: 'Élevé',
-        levelBg: 'bg-amber-100 text-amber-800 font-bold',
-        status: 'En cours',
-        statusBg: 'bg-blue-50 text-blue-700 border border-blue-200',
-        owner: 'SEA Alphonse',
-        role: 'Chef de Chantier',
-        date: selectedProject.startDate || '2026-06-01',
-        dateColor: 'text-amber-600 font-bold',
-        mitigation: 'Installation permanente de pompes d\'exhaure 50m3/h + fossés de décharge périphériques étanches',
-        projectId: selectedProject.id
-      },
-      {
-        id: 'RSQ-' + projCode + '-03',
-        name: 'Dépassement du Déboursé Sec sur le lot Ouvrages en Béton Armé',
-        category: 'Financier',
-        categoryBg: 'bg-emerald-50 text-emerald-700',
-        prob: 'Faible',
-        impact: 'Majeur',
-        level: 'Moyen',
-        levelBg: 'bg-slate-100 text-slate-800 font-bold',
-        status: 'Maîtrisé',
-        statusBg: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-        owner: 'Contrôleur de Gestion GEBAT',
-        role: 'Contrôle Gestion',
-        date: selectedProject.startDate || '2026-06-01',
-        dateColor: 'text-slate-600',
-        mitigation: 'Pointage journalier strict des rendements béton et surveillance de la surconsommation d\'acier',
-        projectId: selectedProject.id
-      }
-    ];
-
-    // 4. Risques personnalisés créés par l'utilisateur
+    // 3. Risques personnalisés créés par l'utilisateur
     const customUserRisks = userRisks.filter(r => !r.projectId || r.projectId === selectedProject.id || r.projectId === selectedProject.code);
 
-    return [...list, ...standardProjectRisks, ...customUserRisks];
+    return [...list, ...customUserRisks];
   }, [selectedProject, alerts, stockItems, userRisks]);
 
   // Filtrage

@@ -1002,7 +1002,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   p.initialBudget = sumWbsBudget;
                 }
               } else {
-                const projectBudget = Number(p.revisedBudget || p.initialBudget || p.contractAmount || 1980000000);
+                const projectBudget = Number(p.revisedBudget || p.initialBudget || p.contractAmount || 0);
                 const defaultNodes = [
                   {
                     id: `WBS-${p.id}-01`,
@@ -1017,7 +1017,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     eac: Math.round(projectBudget * 0.2),
                     progress: Number(p.progress || 0),
                     nature: 'FGC',
-                    manager: p.manager || 'SEA Alphonse',
+                    manager: p.manager || 'Conducteur de Travaux',
                   },
                   {
                     id: `WBS-${p.id}-02`,
@@ -1032,7 +1032,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     eac: Math.round(projectBudget * 0.8),
                     progress: Number(p.progress || 0),
                     nature: 'MAT',
-                    manager: p.manager || 'SEA Alphonse',
+                    manager: p.manager || 'Conducteur de Travaux',
                   },
                 ];
                 newWbsMap[p.id] = defaultNodes;

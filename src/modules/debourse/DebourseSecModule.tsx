@@ -337,7 +337,7 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
       }
     } else {
       // Fallback build from real activities source
-      const demoChildren: WbsHierarchyNode[] = realActivitiesSource.map((act, i) => {
+      const dsChildren: WbsHierarchyNode[] = realActivitiesSource.map((act, i) => {
         const dsAmt = Number(act.calculatedDsAmount || act.importedDsAmount || 0);
         return {
           id: act.id,
@@ -348,9 +348,9 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
           contractUnitPrice: act.marketUnitPrice || 0,
           contractAmount: (act.quantity || 1) * (act.marketUnitPrice || 0),
           budgetDs: dsAmt,
-          startDate: '2026-06-01',
-          endDate: '2027-12-23',
-          manager: 'SEA Alphonse',
+          startDate: selectedProject?.startDate || '2026-06-01',
+          endDate: selectedProject?.endDate || '2027-12-23',
+          manager: selectedProject?.manager || 'Conducteur de Travaux',
           progress: 0,
           committed: 0,
           actualCost: 0,
@@ -369,20 +369,20 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
           description: 'TRAVAUX PREPARATOIRES & INFRASTRUCTURES',
           unit: '-',
           contractQty: 1,
-          contractUnitPrice: demoChildren.reduce((s, c) => s + c.contractAmount, 0),
-          contractAmount: demoChildren.reduce((s, c) => s + c.contractAmount, 0),
-          budgetDs: demoChildren.reduce((s, c) => s + c.budgetDs, 0),
-          startDate: '2026-06-01',
-          endDate: '2027-12-23',
-          manager: 'SEA Alphonse',
+          contractUnitPrice: dsChildren.reduce((s, c) => s + c.contractAmount, 0),
+          contractAmount: dsChildren.reduce((s, c) => s + c.contractAmount, 0),
+          budgetDs: dsChildren.reduce((s, c) => s + c.budgetDs, 0),
+          startDate: selectedProject?.startDate || '2026-06-01',
+          endDate: selectedProject?.endDate || '2027-12-23',
+          manager: selectedProject?.manager || 'Conducteur de Travaux',
           progress: 0,
           committed: 0,
           actualCost: 0,
-          forecast: demoChildren.reduce((s, c) => s + c.budgetDs, 0),
-          eac: demoChildren.reduce((s, c) => s + c.budgetDs, 0),
+          forecast: dsChildren.reduce((s, c) => s + c.budgetDs, 0),
+          eac: dsChildren.reduce((s, c) => s + c.budgetDs, 0),
           nature: 'MAT',
           level: 'lot',
-          children: demoChildren
+          children: dsChildren
         }
       ];
     }

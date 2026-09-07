@@ -100,6 +100,17 @@ export const VueProjet360: React.FC = () => {
   const encaisse = Math.round(factured * 0.85);
   const creances = factured - encaisse;
 
+  const timeProgressPct = useMemo(() => {
+    if (!selected) return 0;
+    const start = new Date(selected.startDate || '2026-06-01').getTime();
+    const end = new Date(selected.endDate || '2027-09-01').getTime();
+    const now = Date.now();
+    if (now <= start) return 0;
+    if (now >= end) return 100;
+    const total = end - start;
+    return total > 0 ? Math.min(100, Math.max(0, Math.round(((now - start) / total) * 100))) : 0;
+  }, [selected]);
+
   const tabs = [
     { id: 'overview', label: 'Vue d’ensemble', icon: Building2 },
     { id: 'performance', label: 'Performance', icon: TrendingUp },
@@ -187,7 +198,7 @@ export const VueProjet360: React.FC = () => {
                   <DataInsight metricId="avancement_moyen" context={{ progressRate: selected.progress, projectName: selected.name, projectId: selected.id }} />
                 </div>
                 <div className="text-sm font-extrabold text-blue-600">{selected.progress}% Physique</div>
-                <div className="text-[11px] text-slate-600 font-medium">Avancement Temps : 48%</div>
+                <div className="text-[11px] text-slate-600 font-medium">Avancement Temps : {timeProgressPct}%</div>
                 <div className="text-[10px] text-emerald-600 font-bold">Planning Conforme</div>
               </div>
 
@@ -430,7 +441,7 @@ export const VueProjet360: React.FC = () => {
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                     <h3 className="font-extrabold text-slate-900 text-xs">Jalons & Avancement Chronologique WBS ({projectWbs.length} Lots)</h3>
-                    <span className="text-[11px] font-bold text-blue-600">Avancement Temps : 48% | Avancement Physique : {selected.progress}%</span>
+                    <span className="text-[11px] font-bold text-blue-600">Avancement Temps : {timeProgressPct}% | Avancement Physique : {selected.progress}%</span>
                   </div>
 
                   <div className="space-y-3">
