@@ -32,16 +32,16 @@ export const WorkflowsEngineModule: React.FC = () => {
         list.push({
           id: `VAL-DA-${da.id}`,
           category: 'DA',
-          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Approvisionnement ciment et fer à béton'}`,
+          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Demande d\'achat'}`,
           amount: da.estimatedTotal || da.estimatedAmount || 0,
           projectId: da.projectId,
-          projectName: da.projectName || (da.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
-          wbsCode: da.wbsCode || '02.02.001',
-          initiator: da.createdBy || 'Kouassi Jean (Direction des Travaux)',
+          projectName: da.projectName || projects.find(p => p.id === da.projectId)?.name || da.projectId || '',
+          wbsCode: da.wbsCode || '',
+          initiator: da.createdBy || (da as any).requesterName || '',
           date: da.createdAt || new Date().toISOString().substring(0, 10),
           urgency: da.urgency === 'Très urgent' || da.urgency === 'Critique' ? 'Très urgent' : da.urgency === 'Urgent' ? 'Urgent' : 'Normale',
           budgetImpact: da.budgetCheck?.isOverBudget ? 'Dépassement Majeur (>=5%)' : 'Dans le budget',
-          attachments: da.attachments || ['Devis_Fournisseur_Conforme.pdf'],
+          attachments: da.attachments || [],
           status: da.status === 'VALIDEE' || da.status === 'Approuvé' || da.status === 'Approuvée DAF' ? 'Validé' : da.status === 'REFUSEE' || da.status === 'Refusé' ? 'Refusé' : 'En attente'
         });
       });
@@ -55,14 +55,14 @@ export const WorkflowsEngineModule: React.FC = () => {
           category: 'Dépassement',
           object: `${alt.title || 'Alerte Dépassement Budgétaire'} (${alt.code || alt.id})`,
           amount: Number(alt.observedValue || 0),
-          projectId: alt.projectId || 'CIV-2026-ASS-BEN-002',
-          projectName: alt.projectName || (alt.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
-          wbsCode: alt.wbsCode || 'WBS',
+          projectId: alt.projectId || '',
+          projectName: alt.projectName || projects.find(p => p.id === alt.projectId)?.name || alt.projectId || '',
+          wbsCode: alt.wbsCode || '',
           initiator: 'Moteur de Contrôle Budgétaire',
           date: alt.createdAt || new Date().toISOString().substring(0, 10),
           urgency: alt.severity === 'Critique' ? 'Très urgent' : 'Urgent',
           budgetImpact: 'Dépassement Budgétaire',
-          attachments: ['Rapport_Alerte.pdf'],
+          attachments: (alt as any).attachments || [],
           status: 'En attente'
         });
       });
@@ -150,8 +150,8 @@ export const WorkflowsEngineModule: React.FC = () => {
     if (purchaseOrders && purchaseOrders.length > 0) {
       return purchaseOrders.map((po, idx) => {
         const matchingReceipt = (receipts || []).find(r => r.poId === po.id || r.poCode === po.code);
-        const poQty = Number(po.totalQuantity || po.items?.reduce((s, it) => s + (it.quantity || 0), 0) || 100);
-        const poUnitPrice = Number(po.unitPrice || (po.totalAmount ? Math.round(po.totalAmount / poQty) : 5000));
+        const poQty = Number(po.totalQuantity || po.items?.reduce((s, it) => s + (it.quantity || 0), 0) || 0);
+        const poUnitPrice = Number(po.unitPrice || (poQty > 0 && po.totalAmount ? Math.round(po.totalAmount / poQty) : 0));
         const poTotal = Number(po.totalAmount || (poQty * poUnitPrice));
         
         const receiptQty = matchingReceipt ? Number(matchingReceipt.receivedQuantity || poQty) : poQty;
@@ -176,10 +176,10 @@ export const WorkflowsEngineModule: React.FC = () => {
         return {
           id: `TWM-${po.id || idx + 1}`,
           invoiceCode: `FACT-${po.code?.replace('BC-', '') || idx + 1}`,
-          poCode: po.code || `BC-GEBAT-2026-${String(idx + 1).padStart(3, '0')}`,
-          receiptCode: matchingReceipt?.code || `REC-2026-${String(idx + 1).padStart(3, '0')}`,
-          supplier: po.supplierName || po.supplier || 'Fournisseur BTP Agréé',
-          article: po.items?.[0]?.description || po.description || 'Matériaux Chantier',
+          poCode: po.code || `BC-${String(idx + 1).padStart(3, '0')}`,
+          receiptCode: matchingReceipt?.code || `REC-${String(idx + 1).padStart(3, '0')}`,
+          supplier: po.supplierName || po.supplier || 'Fournisseur non spécifié',
+          article: po.items?.[0]?.description || po.description || 'Fournitures de chantier',
           poQty,
           poUnitPrice,
           poTaxes: 18,

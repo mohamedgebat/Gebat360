@@ -57,16 +57,16 @@ export const ProcurementValidationModule: React.FC = () => {
         list.push({
           id: `VAL-DA-${da.id}`,
           category: 'DA',
-          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Approvisionnement fournitures chantier'}`,
+          object: `Demande d’Achat ${da.code} — ${da.itemDescription || da.objectTitle || 'Demande d\'achat'}`,
           amount: Number(da.estimatedTotal || 0),
           projectId: da.projectId,
-          projectName: da.projectName || (da.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
-          wbsCode: da.wbsCode || '02.02.001',
-          initiator: da.createdBy || 'Demandeur Chantier',
+          projectName: da.projectName || projects.find(p => p.id === da.projectId)?.name || da.projectId || '',
+          wbsCode: da.wbsCode || '',
+          initiator: da.createdBy || (da as any).requesterName || '',
           date: da.createdAt || new Date().toISOString().substring(0, 10),
           urgency: da.urgency === 'Très urgent' || da.urgency === 'Critique' || da.urgency === 'Haute' ? 'Très urgent' : da.urgency === 'Urgent' || da.urgency === 'Moyenne' ? 'Urgent' : 'Normale',
           budgetImpact: isOverBudget ? `Dépassement (+${overAmt > 0 ? overAmt.toLocaleString('fr-FR') : ''} FCFA)` : 'Dans le budget',
-          attachments: da.attachments && da.attachments.length > 0 ? da.attachments : ['DA_Scan_Signe.pdf'],
+          attachments: da.attachments || [],
           status: da.status === 'VALIDEE' || da.status === 'APPROUVEE' ? 'Validé' : da.status === 'REFUSEE' || da.status === 'REJETEE' ? 'Refusé' : da.status === 'RETOUR_CORRECTION' ? 'Retour correction' : 'En attente'
         });
       });
@@ -83,16 +83,16 @@ export const ProcurementValidationModule: React.FC = () => {
         list.push({
           id: `VAL-RPT-${rep.id || rep.code}`,
           category: 'Rapport Journalier',
-          object: `Rapport Journalier ${rep.code || rep.reportCode} — ${rep.activityName || 'Avancement travaux'} (${rep.realizedQty || 0} ${rep.unit})`,
+          object: `Rapport Journalier ${rep.code || rep.reportCode || ''} — ${rep.activityName || 'Rapport terrain'} (${rep.realizedQty || 0} ${rep.unit || ''})`,
           amount: 0,
           projectId: rep.projectId,
-          projectName: rep.projectName || (rep.projectId?.includes('BEN') ? 'Station de traitement des boues (Bingerville)' : 'Projet Songon'),
-          wbsCode: rep.wbsCode || '01.01.001',
-          initiator: rep.createdBy || 'Chef de Chantier',
+          projectName: rep.projectName || projects.find(p => p.id === rep.projectId)?.name || rep.projectId || '',
+          wbsCode: rep.wbsCode || '',
+          initiator: rep.createdBy || '',
           date: rep.date || new Date().toISOString().substring(0, 10),
           urgency: 'Normale',
           budgetImpact: 'Dans le budget',
-          attachments: ['Rapport_Terrain.pdf'],
+          attachments: (rep as any).attachments || [],
           status: isApproved ? 'Validé' : isRejected ? 'Refusé' : isReturned ? 'Retour correction' : isPending ? 'En attente' : 'En attente'
         });
       });
@@ -213,8 +213,8 @@ export const ProcurementValidationModule: React.FC = () => {
     if (purchaseOrders && purchaseOrders.length > 0) {
       purchaseOrders.slice(0, 5).forEach((po, idx) => {
         const matchingReceipt = receipts.find(r => r.poId === po.id || r.poCode === po.code);
-        const poQty = po.items && po.items[0] ? po.items[0].quantity : 100;
-        const poUnitPrice = po.items && po.items[0] ? po.items[0].unitPrice : (po.totalAmount / (poQty || 1));
+        const poQty = po.items && po.items[0] ? po.items[0].quantity : 0;
+        const poUnitPrice = po.items && po.items[0] ? po.items[0].unitPrice : (poQty > 0 ? po.totalAmount / poQty : 0);
         const poTotal = po.totalAmount || (poQty * poUnitPrice);
         const recQty = matchingReceipt && matchingReceipt.items && matchingReceipt.items[0] ? matchingReceipt.items[0].qtyReceived : (po.status.includes('Livré') ? poQty : 0);
         const recUnitPrice = matchingReceipt && matchingReceipt.items && matchingReceipt.items[0] ? matchingReceipt.items[0].unitPrice : poUnitPrice;
@@ -227,7 +227,7 @@ export const ProcurementValidationModule: React.FC = () => {
           invoiceCode: `FACT-${po.code.replace('BC-', '')}`,
           poCode: po.code,
           receiptCode: matchingReceipt ? matchingReceipt.code : (isConforme ? `REC-AUTO-${po.code.slice(-3)}` : 'En attente BL'),
-          supplier: po.supplier || 'FOURNISSEUR BTP AGRÉÉ',
+          supplier: po.supplier || (po as any).supplierName || 'Fournisseur non spécifié',
           article: po.items && po.items[0] ? po.items[0].description : 'Fournitures de chantier',
           poQty,
           poUnitPrice,
@@ -251,63 +251,6 @@ export const ProcurementValidationModule: React.FC = () => {
         });
       });
     }
-
-    list.push(
-      {
-        id: 'TWM-001',
-        invoiceCode: 'FACT-SOC-2026-088',
-        poCode: 'BC-GEBAT-2026-042',
-        receiptCode: 'REC-2026-089',
-        supplier: 'SOCIMAC Cimenteries',
-        article: 'Ciment CPJ 42.5 (Sacs 50kg)',
-        poQty: 500,
-        poUnitPrice: 5000,
-        poTaxes: 18,
-        poTotalAmount: 2950000,
-        receiptQty: 500,
-        receiptUnitPrice: 5000,
-        receiptTaxes: 18,
-        receiptTotalAmount: 2950000,
-        invoiceQty: 500,
-        invoiceUnitPrice: 5000,
-        invoiceTaxes: 18,
-        invoiceTotalAmount: 2950000,
-        qtyVariancePct: 0,
-        priceVariancePct: 0,
-        taxVariancePct: 0,
-        amountVariancePct: 0,
-        status: 'Conforme',
-        blockingReason: null,
-        createdAt: '2026-08-20',
-      },
-      {
-        id: 'TWM-002',
-        invoiceCode: 'FACT-FER-2026-014',
-        poCode: 'BC-GEBAT-2026-039',
-        receiptCode: 'REC-2026-085',
-        supplier: 'ACIÉRIES DE CÔTE D’IVOIRE',
-        article: 'Fer à béton FeE500 (Tonne)',
-        poQty: 20,
-        poUnitPrice: 700000,
-        poTaxes: 18,
-        poTotalAmount: 16520000,
-        receiptQty: 20,
-        receiptUnitPrice: 700000,
-        receiptTaxes: 18,
-        receiptTotalAmount: 16520000,
-        invoiceQty: 21,
-        invoiceUnitPrice: 735000,
-        invoiceTaxes: 18,
-        invoiceTotalAmount: 18218700,
-        qtyVariancePct: 5.0,
-        priceVariancePct: 5.0,
-        taxVariancePct: 0,
-        amountVariancePct: 10.28,
-        status: 'Écart Détecté',
-        blockingReason: `Surfacturation de 5.0% sur PU (735 000 vs 700 000 FCFA) et surquantité de +1T non livrée`,
-        createdAt: '2026-08-21',
-      }
-    );
 
     return list;
   }, [purchaseOrders, receipts]);
