@@ -11,17 +11,41 @@ if (typeof window !== 'undefined') {
     console.log('📱 [PWA] Evénement beforeinstallprompt capturé au niveau global window');
   });
 
-  // Détection automatique des erreurs de scripts obsolètes après un nouveau déploiement
-  window.addEventListener('vite:preload-error', (event) => {
-    console.warn('⚡ [GEBAT 360°] Mise à jour détectée sur le serveur. Rechargement...');
-    window.location.reload();
+  const handleScriptError = (reason: string) => {
+    const now = Date.now();
+    const lastPurge = Number(sessionStorage.getItem('gebat_main_purge') || 0);
+    if (now - lastPurge < 4000) return;
+    sessionStorage.setItem('gebat_main_purge', String(now));
+
+    console.warn('⚡ [GEBAT 360°] Auto-purge SW & cache client suite à un script obsolète:', reason);
+    if ('caches' in window) {
+      caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+      });
+    }
+    setTimeout(() => {
+      window.location.replace(window.location.origin + window.location.pathname + '?_refresh=' + Date.now());
+    }, 200);
+  };
+
+  window.addEventListener('vite:preload-error', () => {
+    handleScriptError('vite:preload-error');
   });
 
   window.addEventListener('error', (e: any) => {
     const msg = String(e?.message || e?.filename || '');
     if (msg.includes('Failed to load module script') || msg.includes('MIME type of "text/html"')) {
-      console.warn('⚡ [GEBAT 360°] Ancien hash de script détecté en cache. Rechargement...');
-      window.location.reload();
+      handleScriptError(msg);
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (e: any) => {
+    const reason = String(e?.reason || '');
+    if (reason.includes('Failed to fetch dynamically imported module') || reason.includes('text/html')) {
+      handleScriptError(reason);
     }
   });
 }

@@ -20,27 +20,54 @@
     <title>GEBAT 360° — BTP Construction Operating System</title>
     <script>
       (function() {
-        // Intercepteur d'erreur inline d'urgence pour purger le cache et recharger la page automatiquement
+        function purgeAndHardReload(reason) {
+          var now = Date.now();
+          var lastReload = Number(sessionStorage.getItem('gebat_last_purge') || 0);
+          if (now - lastReload < 4000) {
+            return;
+          }
+          sessionStorage.setItem('gebat_last_purge', String(now));
+          console.warn('⚡ [GEBAT 360°] Auto-purge SW & cache client suite à:', reason);
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              names.forEach(function(name) { caches.delete(name); });
+            });
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              regs.forEach(function(reg) { reg.unregister(); });
+            });
+          }
+          setTimeout(function() {
+            var freshUrl = window.location.origin + window.location.pathname + '?_v=' + now;
+            window.location.replace(freshUrl);
+          }, 150);
+        }
+
         window.addEventListener('error', function(e) {
           var target = e.target || {};
-          var src = String(target.src || e.message || '');
-          if (src.includes('index-') || src.includes('.js') || e.message.indexOf('Failed to load module script') !== -1 || e.message.indexOf('text/html') !== -1) {
-            console.warn('⚡ [GEBAT 360°] Ancien hash de build détecté. Rechargement propre...');
-            if ('caches' in window) {
-              caches.keys().then(function(names) {
-                names.forEach(function(name) { caches.delete(name); });
-              });
-            }
-            if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.getRegistrations().then(function(regs) {
-                regs.forEach(function(reg) { reg.unregister(); });
-              });
-            }
-            setTimeout(function() {
-              window.location.reload();
-            }, 200);
+          var src = String(target.src || '');
+          var msg = String(e.message || '');
+          if (
+            msg.indexOf('Failed to load module script') !== -1 ||
+            msg.indexOf('text/html') !== -1 ||
+            src.indexOf('.js') !== -1 ||
+            src.indexOf('index-') !== -1
+          ) {
+            purgeAndHardReload(msg || src);
           }
         }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = String(e.reason || '');
+          if (
+            reason.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+            reason.indexOf('text/html') !== -1 ||
+            reason.indexOf('Importing a module script failed') !== -1
+          ) {
+            purgeAndHardReload(reason);
+          }
+        });
       })();
     </script>
   </head>
