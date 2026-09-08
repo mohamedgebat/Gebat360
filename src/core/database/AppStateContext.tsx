@@ -106,7 +106,7 @@ interface AppStateContextType {
   deleteAlert: (alertId: string) => Promise<void>;
   clearAllTestAlerts: () => Promise<void>;
   addAlert: (alertData: Omit<SystemAlert, 'id' | 'timestamp'>) => void;
-  addAuditLog: (action: string, module: string, objectRef: string, newValue?: string, oldValue?: string, justification?: string) => void;
+  addAuditLog: (action: string | any, module?: string, objectRef?: string, newValue?: string, oldValue?: string, justification?: string) => void;
 }
 
 export const isTestAlert = (a: any): boolean => {
@@ -896,7 +896,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     safeSaveToStorage('gebat_alerts', alerts);
   }, [alerts]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gebat_audit_logs');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return INITIAL_AUDIT_LOGS;
+  });
+
+  useEffect(() => {
+    safeSaveToStorage('gebat_audit_logs', auditLogs);
+  }, [auditLogs]);
+
   const [costNatures, setCostNatures] = useState<CostNatureConfig[]>(DEFAULT_COST_NATURES);
 
   const [subcontracts, setSubcontracts] = useState<Subcontract[]>(() => {
@@ -1201,7 +1218,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       try {
         const dbAudit = await ApiService.getAuditLogs();
-        if (Array.isArray(dbAudit)) setAuditLogs(dbAudit);
+        if (Array.isArray(dbAudit) && dbAudit.length > 0) {
+          setAuditLogs(dbAudit);
+          safeSaveToStorage('gebat_audit_logs', dbAudit);
+        }
       } catch (e) {
         console.warn('⚠️ Erreur chargement audit logs API:', e);
       }
@@ -1235,20 +1255,46 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isBackendConnected, currentUser]);
 
 
-  const addAuditLog = (action: string, module: string, objectRef: string, newValue?: string, oldValue?: string, justification?: string) => {
-    const log: AuditLog = {
-      id: `AUD-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      user: currentUser.name,
-      role: currentUser.role,
-      action,
-      module,
-      objectRef,
-      newValue,
-      oldValue,
-      justification,
-    };
-    setAuditLogs(prev => [log, ...prev]);
+  const addAuditLog = (action: string | any, module?: string, objectRef?: string, newValue?: string, oldValue?: string, justification?: string) => {
+    let logObj: AuditLog;
+    if (typeof action === 'object' && action !== null) {
+      logObj = {
+        id: action.id || `AUD-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        timestamp: action.timestamp || new Date().toISOString().replace('T', ' ').substring(0, 19),
+        user: action.user || currentUser?.name || 'Utilisateur',
+        role: action.role || currentUser?.role || 'OPERATEUR',
+        action: action.action || 'ACTION',
+        module: action.module || 'SYSTEME',
+        objectRef: action.objectRef || action.details || '-',
+        newValue: action.newValue || action.details || undefined,
+        oldValue: action.oldValue || undefined,
+        justification: action.justification || undefined,
+      };
+    } else {
+      logObj = {
+        id: `AUD-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        user: currentUser?.name || 'Utilisateur',
+        role: currentUser?.role || 'OPERATEUR',
+        action: String(action || ''),
+        module: String(module || 'SYSTEME'),
+        objectRef: objectRef || '-',
+        newValue,
+        oldValue,
+        justification,
+      };
+    }
+
+    setAuditLogs(prev => {
+      const updated = [logObj, ...(prev || [])];
+      safeSaveToStorage('gebat_audit_logs', updated);
+      return updated;
+    });
+
+    if (isBackendConnected) {
+      ApiService.addAuditLog(logObj).catch(console.error);
+    }
+    window.dispatchEvent(new Event('gebat_state_updated'));
   };
 
   const createProject = async (newProjectData: Omit<Project, 'id'>, wbsNodes?: WBSNode[]) => {
