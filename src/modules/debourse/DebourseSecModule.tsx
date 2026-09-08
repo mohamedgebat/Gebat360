@@ -1473,27 +1473,31 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                 });
 
                 // Points SVG pour Engagé
+                // Pour les périodes échues (Juin à Sept. 2026), progression réelle vers le total engagé
+                // Pour les périodes non échues (Oct. 2026 à Mai 2027), les engagements restent constants au total engagé à date (pas de surévaluation fictive)
                 const engagedPoints = monthLabels.map((_, idx) => {
                   const x = 10 + (idx / (totalMonths - 1)) * 320;
-                  const factor = idx <= currentCutoffIndex ? (idx + 1) / (currentCutoffIndex + 1) : 1.0;
-                  const val = Math.round(idx <= currentCutoffIndex ? totalCom * factor : totalCom + (totalRev - totalCom) * ((idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex)));
+                  const isElapsed = idx <= currentCutoffIndex;
+                  const factor = isElapsed ? Math.pow((idx + 1) / (currentCutoffIndex + 1), 0.9) : 1.0;
+                  const val = Math.round(isElapsed ? totalCom * factor : totalCom);
                   const y = 105 - (val / (totalRev || 1)) * 80;
                   return { x, y, val };
                 });
 
-                // Points SVG pour Coût Réel Échu (Juin - Septembre) et Non Échu (Projection Octobre - Mai)
+                // Points SVG pour Coût Réel Échu (Juin - Septembre) et Projection EAC Non Échue (Octobre - Mai)
                 const actualPoints = monthLabels.map((_, idx) => {
                   const x = 10 + (idx / (totalMonths - 1)) * 320;
-                  if (idx <= currentCutoffIndex) {
-                    const factor = Math.pow((idx + 1) / (currentCutoffIndex + 1), 1.2);
-                    const val = Math.round(totalAct * factor);
+                  const isElapsed = idx <= currentCutoffIndex;
+                  if (isElapsed) {
+                    const factor = Math.pow((idx + 1) / (currentCutoffIndex + 1), 1.1);
+                    const val = Math.round(totalAct * (factor > 1 ? 1 : factor));
                     const y = 105 - (val / (totalRev || 1)) * 80;
-                    return { x, y, val, isFuture: false };
+                    return { x, y, val, valEac: val, isFuture: false };
                   } else {
                     const futureFraction = (idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex);
-                    const val = Math.round(totalAct + (totals.eac - totalAct) * futureFraction);
-                    const y = 105 - (val / (totalRev || 1)) * 80;
-                    return { x, y, val, isFuture: true };
+                    const valEac = Math.round(totalAct + (totals.eac - totalAct) * futureFraction);
+                    const y = 105 - (valEac / (totalRev || 1)) * 80;
+                    return { x, y, val: 0, valEac, isFuture: true };
                   }
                 });
 
@@ -1613,11 +1617,12 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                       const valBudget = budgetPoints[hIdx].val;
                       const valEngaged = engagedPoints[hIdx].val;
                       const valActual = actualPoints[hIdx].val;
+                      const valEac = actualPoints[hIdx].valEac || totals.eac;
                       const isRightSide = hIdx >= 6;
 
                       return (
                         <div
-                          className={`absolute z-30 top-1 ${isRightSide ? 'left-2' : 'right-2'} bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs backdrop-blur-md min-w-[215px] pointer-events-none transition-all duration-150 animate-in fade-in duration-100`}
+                          className={`absolute z-30 top-1 ${isRightSide ? 'left-2' : 'right-2'} bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs backdrop-blur-md min-w-[220px] pointer-events-none transition-all duration-150 animate-in fade-in duration-100`}
                         >
                           <div className="flex items-center justify-between gap-2 border-b border-slate-700 pb-1.5 mb-2">
                             <span className="font-extrabold text-white text-xs">{fullLabel}</span>
@@ -1631,13 +1636,19 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                               <span className="font-bold">{formatFCFA(valBudget)}</span>
                             </div>
                             <div className="flex items-center justify-between text-emerald-300">
-                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Engagé :</span>
+                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {isElapsed ? 'Engagé :' : 'Engagé à date :'}</span>
                               <span className="font-bold">{formatFCFA(valEngaged)}</span>
                             </div>
                             <div className="flex items-center justify-between text-amber-300">
-                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-amber-500" /> {isElapsed ? 'Coût Réel :' : 'Prévision EAC :'}</span>
-                              <span className="font-bold">{formatFCFA(valActual)}</span>
+                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-amber-500" /> Coût Réel :</span>
+                              <span className="font-bold">{isElapsed ? formatFCFA(valActual) : '0 FCFA'}</span>
                             </div>
+                            {!isElapsed && (
+                              <div className="flex items-center justify-between text-amber-400/90 pt-1 border-t border-slate-800/80">
+                                <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-amber-400 border border-dashed border-amber-400" /> Prévision EAC :</span>
+                                <span className="font-bold">{formatFCFA(valEac)}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
