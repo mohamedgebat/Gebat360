@@ -323,19 +323,25 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
   const remainingCostAmount = summary.resteAEngager;
 
-  // Calcul 100% réel SSOT des Indicateurs Clés Financiers :
+  // Calcul 100% réel SSOT des Indicateurs Clés Financiers (Persistance BDD sans aucune estimation ni formule de présentation) :
   const facturedAmount = useMemo(() => {
-    // Facturation à date basée sur les décomptes/attachements validés d'avancement physique
-    return Math.round(totalMarketAmount * (summary.progressPct / 100));
-  }, [totalMarketAmount, summary.progressPct]);
+    // Facturé réel basé sur les décomptes/factures client enregistrés en BDD pour le(s) projet(s) sélectionné(s)
+    return filteredProjects.reduce((sum, proj) => {
+      const b = Number((proj as any).facturedAmount || (proj as any).factured || (proj as any).invoicedAmount || 0);
+      return sum + b;
+    }, 0);
+  }, [filteredProjects]);
 
   const encaisseAmount = useMemo(() => {
-    // Encaissé net à date (90% du facturé validé hors retenue de garantie 10%)
-    return Math.round(facturedAmount * 0.90);
-  }, [facturedAmount]);
+    // Encaissé réel basé sur les encaissements enregistrés en BDD pour le(s) projet(s) sélectionné(s)
+    return filteredProjects.reduce((sum, proj) => {
+      const e = Number((proj as any).encaisseAmount || (proj as any).encaisse || (proj as any).paidAmount || 0);
+      return sum + e;
+    }, 0);
+  }, [filteredProjects]);
 
   const cashAvailableAmount = useMemo(() => {
-    // Trésorerie nette disponible = Encaissé - Coût Réel Déboursé
+    // Trésorerie nette disponible réelle = Encaissé Réel - Coût Réel Déboursé
     return Math.max(0, encaisseAmount - actualCostAmount);
   }, [encaisseAmount, actualCostAmount]);
 
