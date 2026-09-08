@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import { useAppState, isDemoReportObj } from '../../core/database/AppStateContext';
 import * as XLSX from 'xlsx';
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus,
@@ -151,6 +151,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   // Rapports d'étapes filtrés strictement pour le site sélectionné et le statut maître
   const stepReports = useMemo(() => {
     return dailyReports.filter(r => {
+      if (isDemoReportObj(r)) return false;
       const matchProj = isProjectReportMatch(r, selectedProject);
       if (!matchProj) return false;
 

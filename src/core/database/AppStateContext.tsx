@@ -132,6 +132,29 @@ export const isTestAlert = (a: any): boolean => {
   );
 };
 
+export const isDemoReportObj = (r: any): boolean => {
+  if (!r) return false;
+  const strId = String(r.id || '').trim();
+  const strCode = String(r.code || '').trim();
+  const strRepCode = String(r.reportCode || '').trim();
+
+  const isDemoStr = (s: string) =>
+    s === 'CR-2026-08-31-86' ||
+    s === 'CR-2026-08-31-87' ||
+    s === 'CR-2026-08-29-86' ||
+    s === 'CR-2026-08-29-87' ||
+    s === 'CR-2026-08-17-01' ||
+    s === 'CR-2026-09-03-13-292' ||
+    s === 'RJC-2026-00009' ||
+    s === 'CR-2026-08-01-07-549' ||
+    s.includes('1788439695094') ||
+    s.includes('1788439156385') ||
+    s.startsWith('VAL-RPT-') ||
+    s.startsWith('CR-REAL-');
+
+  return isDemoStr(strId) || isDemoStr(strCode) || isDemoStr(strRepCode);
+};
+
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -179,7 +202,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         checkAndSync('gebat_projects', setProjects, p => (Array.isArray(p) && p.length > 0 ? p : undefined));
         checkAndSync('gebat_wbs', setWbsMap, w => (w && typeof w === 'object' && Object.keys(w).length > 0 ? w : undefined));
-        checkAndSync('gebat_daily_reports', setDailyReports, r => (Array.isArray(r) ? r : undefined));
+        checkAndSync('gebat_daily_reports', setDailyReports, r => (Array.isArray(r) ? r.filter(rep => !isDemoReportObj(rep)) : undefined));
         checkAndSync('gebat_validation_tasks', setValidationTasks, t => (Array.isArray(t) ? t : undefined));
         checkAndSync('gebat_purchase_requests', setPurchaseRequests, d => (Array.isArray(d) ? d : undefined));
         checkAndSync('gebat_purchase_orders', setPurchaseOrders, po => (Array.isArray(po) ? po : undefined));
@@ -684,20 +707,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
-    const isDemoId = (id: string) =>
-      id === 'CR-2026-08-31-86' ||
-      id === 'CR-2026-08-31-87' ||
-      id === 'CR-2026-08-29-86' ||
-      id === 'CR-2026-08-29-87' ||
-      id === 'CR-2026-08-17-01' ||
-      id === 'CR-2026-09-03-13-292' ||
-      id === 'RJC-2026-00009' ||
-      id === 'CR-2026-08-01-07-549' ||
-      id.includes('1788439695094') ||
-      id.includes('1788439156385') ||
-      id.startsWith('VAL-RPT-') ||
-      id.startsWith('CR-REAL-');
-
     const saved = localStorage.getItem('gebat_daily_reports');
     const backupRaw = localStorage.getItem('gebat_user_created_reports_backup');
 
@@ -705,7 +714,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const clean = parsed.filter((r: any) => !isDemoId(String(r.id || r.code || r.reportCode || '')));
+          const clean = parsed.filter((r: any) => !isDemoReportObj(r));
           if (clean.length !== parsed.length) {
             safeSaveToStorage('gebat_daily_reports', clean);
           }
@@ -718,13 +727,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed)) {
-          const cleanBackup = backupParsed.filter((r: any) => !isDemoId(String(r.id || r.code || r.reportCode || '')));
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r));
           return cleanBackup;
         }
       } catch (e) {}
     }
 
-    return INITIAL_DAILY_REPORTS;
+    return INITIAL_DAILY_REPORTS.filter(r => !isDemoReportObj(r));
   });
 
   useEffect(() => {

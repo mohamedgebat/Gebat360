@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAppState, isTestAlert } from '../../core/database/AppStateContext';
+import { useAppState, isTestAlert, isDemoReportObj } from '../../core/database/AppStateContext';
 import { hasPermission } from '../../core/permissions';
 import { User } from '../../types';
 import {
@@ -127,23 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }).length;
 
   const pendingReportsCount = dailyReports.filter(r => {
-    if (!r) return false;
-    const repId = String(r.id || r.code || (r as any).reportCode || '');
-    if (
-      repId === 'CR-2026-08-31-86' ||
-      repId === 'CR-2026-08-31-87' ||
-      repId === 'CR-2026-08-29-86' ||
-      repId === 'CR-2026-08-29-87' ||
-      repId === 'CR-2026-08-17-01' ||
-      repId === 'CR-2026-09-03-13-292' ||
-      repId === 'RJC-2026-00009' ||
-      repId === 'CR-2026-08-01-07-549' ||
-      repId.includes('1788439695094') ||
-      repId.includes('1788439156385') ||
-      repId.startsWith('VAL-RPT-')
-    ) {
-      return false;
-    }
+    if (!r || isDemoReportObj(r)) return false;
     const s = (r.status || '').toUpperCase();
     return s === 'SOUMIS' || s === 'EN_ATTENTE' || s === 'EN_VALIDATION';
   }).length;

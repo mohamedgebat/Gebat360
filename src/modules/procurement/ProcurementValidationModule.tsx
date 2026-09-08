@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import { useAppState, isDemoReportObj } from '../../core/database/AppStateContext';
 import { ValidationItem, ThreeWayMatchConfig, ThreeWayMatchCheck } from '../../types';
 import { hasPermission, hasProjectAccess, normalizeRole } from '../../core/permissions';
 import * as XLSX from 'xlsx';
@@ -75,21 +75,7 @@ export const ProcurementValidationModule: React.FC = () => {
     // 2. RAPPORTS JOURNALIERS DE PRODUCTION
     if (dailyReports && dailyReports.length > 0) {
       dailyReports.forEach(rep => {
-        const repId = String(rep.id || rep.code || (rep as any).reportCode || '');
-        if (
-          repId === 'CR-2026-08-31-86' ||
-          repId === 'CR-2026-08-31-87' ||
-          repId === 'CR-2026-08-29-86' ||
-          repId === 'CR-2026-08-29-87' ||
-          repId === 'CR-2026-08-17-01' ||
-          repId === 'CR-2026-09-03-13-292' ||
-          repId === 'RJC-2026-00009' ||
-          repId === 'CR-2026-08-01-07-549' ||
-          repId.includes('1788439695094') ||
-          repId.includes('1788439156385')
-        ) {
-          return;
-        }
+        if (isDemoReportObj(rep)) return;
 
         const isApproved = rep.status === 'Validé' || rep.status === 'VALIDEE';
         const isRejected = rep.status === 'Refusé' || rep.status === 'REFUSEE';
