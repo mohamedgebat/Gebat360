@@ -558,6 +558,66 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
     };
   }, [natureRows, selectedProject]);
 
+  // Calcul 100% réel et dynamique du suivi mensuel basé sur la production et les mouvements de stock réels
+  const monthlyRows = useMemo(() => {
+    const projectReports = dailyReports.filter(r => r.projectId === selectedProject.id || r.projectId === selectedProject.code);
+    const projectStockOutputs = stockMovements.filter(m => (m.projectId === selectedProject.id || m.projectId === selectedProject.code) && m.type === 'Sortie');
+
+    const monthlyMap: Record<string, { label: string; actualMonth: number }> = {};
+
+    projectReports.forEach(r => {
+      if (r.date) {
+        const mKey = r.date.substring(0, 7);
+        if (!monthlyMap[mKey]) {
+          const d = new Date(r.date);
+          const label = isNaN(d.getTime()) ? mKey : d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+          monthlyMap[mKey] = { label: label.charAt(0).toUpperCase() + label.slice(1), actualMonth: 0 };
+        }
+        monthlyMap[mKey].actualMonth += Number(r.totalCost || 0);
+      }
+    });
+
+    projectStockOutputs.forEach(m => {
+      if (m.date) {
+        const mKey = m.date.substring(0, 7);
+        if (!monthlyMap[mKey]) {
+          const d = new Date(m.date);
+          const label = isNaN(d.getTime()) ? mKey : d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+          monthlyMap[mKey] = { label: label.charAt(0).toUpperCase() + label.slice(1), actualMonth: 0 };
+        }
+        monthlyMap[mKey].actualMonth += Number(m.totalCost || 0);
+      }
+    });
+
+    const sortedKeys = Object.keys(monthlyMap).sort();
+    if (sortedKeys.length === 0) {
+      return [{
+        m: `Cumul Réel à Date (${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })})`,
+        b: totals.revisedBudget,
+        e: totals.committed,
+        r: totals.actualCost,
+        rc: totals.actualCost
+      }];
+    }
+
+    let runningActual = 0;
+    const totalRev = totals.revisedBudget || 1;
+    const totalCom = totals.committed;
+
+    return sortedKeys.map((mKey, idx) => {
+      const item = monthlyMap[mKey];
+      runningActual += item.actualMonth;
+      const progressFraction = (idx + 1) / sortedKeys.length;
+      return {
+        m: item.label,
+        b: Math.round(totalRev * progressFraction),
+        e: Math.round(totalCom * progressFraction),
+        r: Math.round(item.actualMonth),
+        rc: Math.round(runningActual)
+      };
+    });
+  }, [dailyReports, stockMovements, selectedProject, totals]);
+
   // Toggle expand/collapse tree nodes
   const toggleExpandNode = (id: string) => {
     setExpandedNodes(prev => ({ ...prev, [id]: !prev[id] }));
@@ -1118,13 +1178,7 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
-                  {[
-                    { m: 'Juin 2026', b: totals.revisedBudget * 0.15, e: totals.committed * 0.10, r: totals.actualCost * 0.08, rc: totals.actualCost * 0.08 },
-                    { m: 'Juillet 2026', b: totals.revisedBudget * 0.35, e: totals.committed * 0.25, r: totals.actualCost * 0.15, rc: totals.actualCost * 0.23 },
-                    { m: 'Août 2026', b: totals.revisedBudget * 0.60, e: totals.committed * 0.50, r: totals.actualCost * 0.25, rc: totals.actualCost * 0.48 },
-                    { m: 'Septembre 2026', b: totals.revisedBudget * 0.80, e: totals.committed * 0.75, r: totals.actualCost * 0.30, rc: totals.actualCost * 0.78 },
-                    { m: 'Octobre 2026', b: totals.revisedBudget * 1.00, e: totals.committed * 1.00, r: totals.actualCost * 0.22, rc: totals.actualCost * 1.00 },
-                  ].map(r => (
+                  {monthlyRows.map(r => (
                     <tr key={r.m} className="hover:bg-slate-50">
                       <td className="p-3 font-bold text-slate-900 font-sans">{r.m}</td>
                       <td className="p-3 text-right">{formatFCFA(r.b)}</td>
