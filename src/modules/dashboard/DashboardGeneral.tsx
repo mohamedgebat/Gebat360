@@ -1263,7 +1263,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
             )}
           </div>
 
-          <button onClick={() => onNavigate && onNavigate('analytics-performance')} className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100 cursor-pointer">
+          <button onClick={() => onNavigate && onNavigate('btp-cost-control')} className="text-xs font-bold text-blue-600 hover:underline flex items-center justify-center gap-1 pt-2 border-t border-slate-100 cursor-pointer">
             <span>Voir plus d'analyses</span>
             <ArrowRight size={14} />
           </button>

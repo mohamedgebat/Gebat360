@@ -89,7 +89,7 @@ export function isMenuItemAllowed(role: string | undefined | User, itemId: strin
   }
 
   // Performance, Alertes & Dérives, et Audit Trail sont accessibles aux profils de direction, ingénieurs et gestionnaires
-  if (['analytics-performance', 'analytics-alerts', 'admin-audit'].includes(itemId)) {
+  if (['analytics-alerts', 'admin-audit'].includes(itemId)) {
     return true;
   }
 
@@ -210,7 +210,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Administration',
       icon: Sliders,
       items: [
-        { id: 'analytics-performance', label: 'Performance', icon: BarChart3 },
         { id: 'analytics-alerts', label: 'Alertes & Dérives', icon: AlertTriangle },
         { id: 'admin-audit', label: 'Registre d\'Audit Trail', icon: History },
         { id: 'admin-users', label: 'Utilisateurs & Rôles', icon: UserCheck },

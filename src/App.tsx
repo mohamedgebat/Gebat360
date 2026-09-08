@@ -27,8 +27,6 @@ import { PlanningModule } from './modules/production/PlanningModule';
 import { SettingsCostNaturesModule } from './modules/admin/SettingsCostNaturesModule';
 import { AuditTrailModule } from './modules/admin/AuditTrailModule';
 import { UsersRolesModule } from './modules/admin/UsersRolesModule';
-import { WorkflowsEngineModule } from './modules/admin/WorkflowsEngineModule';
-import { PerformanceAnalyticsModule } from './modules/analytics/PerformanceAnalyticsModule';
 import { AlertsDriftsModule } from './modules/analytics/AlertsDriftsModule';
 import { LoginPage } from './modules/auth/LoginPage';
 import { CeoCommandCenter } from './modules/dashboard/CeoCommandCenter';
@@ -152,7 +150,6 @@ const MainApp: React.FC = () => {
       case 'procurement-receptions': return 'Réception Marchandise & Mise à jour Stock';
       case 'stock-list': return 'Gestion des Stocks Magasins';
       case 'stock-movements': return 'Consommation Stock vers WBS Chantier';
-      case 'analytics-performance': return 'Performance Economique & Technique';
       case 'analytics-alerts': return 'Alertes Métier & Dépassements';
       case 'ceo-command-center': return 'CEO Command Center — Vue Exécutive Consolidée';
       case 'admin-users': return 'Gestion des Utilisateurs & Permissions Rôle';
@@ -230,13 +227,6 @@ const MainApp: React.FC = () => {
       case 'btp-risks':
         return (
           <RisksModule
-            onBackToProject={() => setSelectedProjectId(projects[0]?.id || 'CIV-2026-ASS-SON-001')}
-          />
-        );
-
-      case 'analytics-performance':
-        return (
-          <PerformanceAnalyticsModule
             onBackToProject={() => setSelectedProjectId(projects[0]?.id || 'CIV-2026-ASS-SON-001')}
           />
         );
@@ -394,9 +384,6 @@ const MainApp: React.FC = () => {
       case 'btp-cost-control':
       case 'btp-eac':
         return <CostControlModule />;
-
-      case 'analytics-performance':
-        return <PerformanceAnalyticsModule />;
 
       case 'analytics-alerts':
         return <AlertsDriftsModule />;
