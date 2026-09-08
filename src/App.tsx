@@ -26,6 +26,8 @@ import { DailyReportModule } from './modules/production/DailyReportModule';
 import { PlanningModule } from './modules/production/PlanningModule';
 import { SettingsCostNaturesModule } from './modules/admin/SettingsCostNaturesModule';
 import { AuditTrailModule } from './modules/admin/AuditTrailModule';
+import { UsersRolesModule } from './modules/admin/UsersRolesModule';
+import { WorkflowsEngineModule } from './modules/admin/WorkflowsEngineModule';
 import { PerformanceAnalyticsModule } from './modules/analytics/PerformanceAnalyticsModule';
 import { AlertsDriftsModule } from './modules/analytics/AlertsDriftsModule';
 import { LoginPage } from './modules/auth/LoginPage';
