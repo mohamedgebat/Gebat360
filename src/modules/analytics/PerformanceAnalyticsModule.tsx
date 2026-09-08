@@ -46,7 +46,7 @@ export const PerformanceAnalyticsModule: React.FC<PerformanceAnalyticsModuleProp
       totalPlannedQty += Number(r.plannedQty || 0);
     });
 
-    const avgProductivity = totalPlannedQty > 0 ? Math.min(100, Math.round((totalRealizedQty / totalPlannedQty) * 100)) : 94;
+    const avgProductivity = totalPlannedQty > 0 ? Math.min(100, Math.round((totalRealizedQty / totalPlannedQty) * 100)) : 0;
     const avgProgress = projects.length > 0 ? Math.round(projects.reduce((sum, p) => sum + Number(p.progress || 0), 0) / projects.length) : 0;
 
     return {

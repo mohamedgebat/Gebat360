@@ -1439,9 +1439,9 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
             {/* Graphique de courbes dynamique SVG avec Période Échue vs Non Échue */}
             <div className="mt-4 relative h-36 w-full">
               {(() => {
-                const totalRev = totals.revisedBudget || 1;
-                const totalCom = totals.committed || Math.round(totalRev * 0.65);
-                const totalAct = totals.actualCost || Math.round(totalRev * 0.45);
+                const totalRev = totals.revisedBudget || 0;
+                const totalCom = totals.committed || 0;
+                const totalAct = totals.actualCost || 0;
 
                 const currentCutoffIndex = 3; // Septembre 2026 (index 3 sur 12 mois)
                 const monthLabels = ['Juin 2026', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.', 'Janv. 2027', 'Févr.', 'Mars', 'Avr.', 'Mai'];

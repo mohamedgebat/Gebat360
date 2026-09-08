@@ -272,7 +272,7 @@ export const CostControlModule: React.FC = () => {
   // CALCULS EVM & EARNED VALUE MANAGEMENT (VALEUR ACQUISE)
   const evmMetrics = useMemo(() => {
     const bac = totalRevisedBudget || 1;
-    const progress = Math.min(100, Math.max(0, Number(selectedProject?.progress || 45)));
+    const progress = Math.min(100, Math.max(0, Number(selectedProject?.progress || 0)));
     const pv = Math.round(bac * (progress / 100));
     const ev = Math.round(bac * (progress / 100));
     const ac = totalActualCost || 1;
