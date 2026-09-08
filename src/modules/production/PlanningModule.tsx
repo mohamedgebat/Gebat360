@@ -46,7 +46,7 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
   onBackToProject,
   initialProjectId
 }) => {
-  const { projects, wbsMap, updateProjectWBS, addAuditLog } = useAppState();
+  const { projects, wbsMap, updateProjectWBS, addAuditLog, dailyReports = [] } = useAppState();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return initialProjectId || projects[0]?.id || projects[0]?.code || '';
