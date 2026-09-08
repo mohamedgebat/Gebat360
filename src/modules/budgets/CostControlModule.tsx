@@ -7,6 +7,7 @@ import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervi
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { REAL_BINGERVILLE_PLANNING_TASKS } from '../../core/database/realBingervillePlanningData';
 import { REAL_SONGON_PLANNING_TASKS } from '../../core/database/realSongonPlanningData';
+import { REAL_EXCEL_WBS } from '../../data/realExcelData';
 import * as XLSX from 'xlsx';
 import {
   Calculator, TrendingUp, DollarSign, ShieldCheck, CheckCircle2, AlertTriangle,
@@ -14,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const CostControlModule: React.FC = () => {
-  const { projects, wbsMap, purchaseRequests, stockMovements, dailyReports, addAuditLog, currentUser } = useAppState();
+  const { projects, wbsMap, purchaseRequests, purchaseOrders, receipts, stockMovements, dailyReports, addAuditLog, currentUser } = useAppState();
 
   const authorizedProjects = useMemo(() => {
     return projects.filter(p => hasProjectAccess(currentUser, p.id) || hasProjectAccess(currentUser, p.code));
@@ -35,8 +36,55 @@ export const CostControlModule: React.FC = () => {
     );
   }
 
-  // Nœuds WBS enregistrés pour ce projet
-  const projectWbs = useMemo(() => wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [], [wbsMap, selectedProject]);
+  // Nœuds WBS enregistrés pour ce projet avec résolution robuste des clés et fallbacks réels
+  const projectWbs = useMemo(() => {
+    if (!selectedProject) return [];
+
+    let nodes = wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [];
+
+    const isBingerville = (selectedProject?.id || '').includes('BEN') || (selectedProject?.code || '').includes('BEN') || (selectedProject?.name || '').toUpperCase().includes('BINGERVILLE');
+    const isSongon = (selectedProject?.id || '').includes('SON') || (selectedProject?.code || '').includes('SON') || (selectedProject?.name || '').toUpperCase().includes('SONGON');
+
+    if (!nodes || nodes.length === 0) {
+      if (isBingerville) {
+        nodes = wbsMap['CIV-2026-ST-BING-001'] || wbsMap['BINGERVILLE-ST'] || REAL_EXCEL_WBS['CIV-2026-ST-BING-001'] || [];
+      } else if (isSongon) {
+        nodes = wbsMap['CIV-2026-ST-SONG-002'] || wbsMap['SONGON-ST'] || REAL_EXCEL_WBS['CIV-2026-ST-SONG-002'] || [];
+      }
+    }
+
+    if (!nodes || nodes.length === 0) {
+      if (isBingerville) {
+        nodes = REAL_BINGERVILLE_PLANNING_TASKS.map((t) => ({
+          id: t.id,
+          projectId: selectedProject.id,
+          code: t.wbsCode,
+          name: t.name,
+          initialBudget: Math.round((selectedProject.revisedBudget || 1890812405) / 14),
+          revisedBudget: Math.round((selectedProject.revisedBudget || 1890812405) / 14),
+          committed: 0,
+          actualCost: 0,
+          progress: t.progress,
+          nature: 'MAT'
+        }));
+      } else if (isSongon) {
+        nodes = REAL_SONGON_PLANNING_TASKS.map((t) => ({
+          id: t.id,
+          projectId: selectedProject.id,
+          code: t.wbsCode,
+          name: t.name,
+          initialBudget: Math.round((selectedProject.revisedBudget || 778028406) / 41),
+          revisedBudget: Math.round((selectedProject.revisedBudget || 778028406) / 41),
+          committed: 0,
+          actualCost: 0,
+          progress: t.progress,
+          nature: 'MAT'
+        }));
+      }
+    }
+
+    return nodes || [];
+  }, [wbsMap, selectedProject]);
 
   // Onglet principal : Cockpit Cost Control (14 Indicateurs), Gestion des Avenants, ou Fiche Détaillée WBS
   const [mainTab, setMainTab] = useState<'cost_control' | 'amendments' | 'evm'>('cost_control');
@@ -115,10 +163,7 @@ export const CostControlModule: React.FC = () => {
     const flattenWBS = (nodes: any[]): any[] => {
       let list: any[] = [];
       nodes.forEach(n => {
-        const isNumericExcelCode = /^\d{5,6}$/.test(String(n.code || '').trim());
-        if (!isNumericExcelCode) {
-          list.push(n);
-        }
+        list.push(n);
         if (n.children && n.children.length > 0) list = list.concat(flattenWBS(n.children));
       });
       return list;
@@ -130,25 +175,65 @@ export const CostControlModule: React.FC = () => {
     }
 
     return baseSourceNodes.map((w) => {
-      const initial = Math.round(w.initialBudget || w.marketAmount || w.budget || 0);
+      const initial = Math.round(w.initialBudget || w.marketAmount || w.contractAmount || w.budget || 0);
       const revised = Math.round(w.revisedBudget || w.calculatedDsAmount || w.importedDsAmount || w.budget || initial);
 
-      // Coût Réel Constated = Cumul des Rapports Journaliers Terrain + Sorties Stock réelles
-      const wbsReports = dailyReports.filter(r =>
+      const wbsCodeStr = String(w.code || w.priceNo || w.id || '').toUpperCase();
+
+      // Engagé réel = Sum of Purchase Orders (PO) for this WBS node
+      const wbsPOs = (purchaseOrders || []).filter(po => {
+        const da = (purchaseRequests || []).find(d => d.id === po.daId);
+        if (!da) return false;
+        const pMatch = da.projectId === selectedProject?.id || da.projectId === selectedProject?.code || (isSongon && da.projectId?.includes('SON')) || (isBingerville && da.projectId?.includes('BEN'));
+        if (!pMatch) return false;
+        const wMatch = String(da.wbsCode || da.wbsId || '').toUpperCase();
+        return wMatch === wbsCodeStr || (wMatch && wbsCodeStr && (wMatch.includes(wbsCodeStr) || wbsCodeStr.includes(wMatch)));
+      });
+      const poCommittedCost = wbsPOs.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+      const committed = Math.round(w.committed > 0 ? w.committed : poCommittedCost);
+
+      // Réservé réel = Sum of Purchase Requests (DA) in validation for this WBS node
+      const wbsDAs = (purchaseRequests || []).filter(da => {
+        const pMatch = da.projectId === selectedProject?.id || da.projectId === selectedProject?.code || (isSongon && da.projectId?.includes('SON')) || (isBingerville && da.projectId?.includes('BEN'));
+        if (!pMatch) return false;
+        const wMatch = String(da.wbsCode || da.wbsId || '').toUpperCase();
+        return (wMatch === wbsCodeStr || (wMatch && wbsCodeStr && (wMatch.includes(wbsCodeStr) || wbsCodeStr.includes(wMatch)))) &&
+               da.status !== 'REJETEE' && da.status !== 'COMMANDEE';
+      });
+      const daReservedCost = wbsDAs.reduce((sum, d) => sum + (Number(d.estimatedTotal) || 0), 0);
+      const reserved = Math.round(w.reserved > 0 ? w.reserved : daReservedCost);
+
+      // Réceptionné réel = Sum of Goods Receipts for this WBS node
+      const wbsReceipts = (receipts || []).filter(r => {
+        const pMatch = r.projectId === selectedProject?.id || r.projectId === selectedProject?.code || (isSongon && r.projectId?.includes('SON')) || (isBingerville && r.projectId?.includes('BEN'));
+        if (!pMatch) return false;
+        const wMatch = String(r.wbsId || '').toUpperCase();
+        return wMatch === wbsCodeStr || (wMatch && wbsCodeStr && (wMatch.includes(wbsCodeStr) || wbsCodeStr.includes(wMatch)));
+      });
+      const receiptCost = wbsReceipts.reduce((sum, r) => {
+        const itemSum = (r.items || []).reduce((is, it) => is + (Number(it.totalCost) || 0), 0);
+        return sum + itemSum;
+      }, 0);
+      const received = Math.round(w.received > 0 ? w.received : receiptCost);
+
+      // Coût Réel Constaté = Cumul des Rapports Journaliers Terrain + Sorties Stock réelles
+      const wbsReports = (dailyReports || []).filter(r =>
         (r.projectId === selectedProject?.id || r.projectId === selectedProject?.code || (isSongon && (r.projectId || '').includes('SON')) || (isBingerville && (r.projectId || '').includes('BEN'))) &&
-        ['VALIDÉ', 'VERROUILLÉ', 'VALID', 'VERROUILLE'].some(status => String(r.status || '').toUpperCase().includes(status)) &&
+        ['VALIDÉ', 'VERROUILLÉ', 'VALID', 'VERROUILLE', 'APPROVED', 'CLOSED'].some(status => String(r.status || '').toUpperCase().includes(status)) &&
         (r.wbsCode === w.code || r.wbsId === w.code || r.wbsId === w.id ||
         (r.activityName && w.name && (r.activityName.toLowerCase().includes(w.name.toLowerCase()) || w.name.toLowerCase().includes(r.activityName.toLowerCase()))))
       );
       const actualReportCost = wbsReports.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
-      const wbsMovements = stockMovements.filter(m => m.wbsCode === w.code || (m.notes && m.notes.includes(w.code)));
+
+      const wbsMovements = (stockMovements || []).filter(m =>
+        (m.projectId === selectedProject?.id || m.projectId === selectedProject?.code || (isSongon && (m.projectId || '').includes('SON')) || (isBingerville && (m.projectId || '').includes('BEN'))) &&
+        m.type === 'Sortie' &&
+        (m.wbsCode === w.code || m.wbsId === w.id || (m.notes && m.notes.includes(w.code)))
+      );
       const actualStockCost = wbsMovements.reduce((sum, m) => sum + (Number(m.totalCost) || 0), 0);
 
-      const actualCost = Math.round(w.actualCost !== undefined && w.actualCost > 0 ? w.actualCost : (actualReportCost > 0 ? actualReportCost : actualStockCost));
+      const actualCost = Math.round(w.actualCost > 0 ? w.actualCost : Math.max(actualReportCost, actualStockCost));
 
-      const committed = Math.round(w.committed || 0);
-      const reserved = Math.round(w.reserved || 0);
-      const received = Math.round(w.received || 0);
       const invoiced = Math.round(w.invoiced || 0);
 
       const remainingToEngage = Math.max(0, Math.round(revised - committed));
@@ -178,7 +263,7 @@ export const CostControlModule: React.FC = () => {
         eacMargin,
       };
     });
-  }, [selectedProject, projectWbs, dailyReports, stockMovements]);
+  }, [selectedProject, projectWbs, purchaseRequests, purchaseOrders, receipts, dailyReports, stockMovements]);
 
   // SYNTHÈSE GLOBALE DES 14 INDICATEURS FINANCIERS DU COST CONTROL (PARTIE 5.23 & 5.24)
   const totalInitialBudget = useMemo(() => wbsCostData.reduce((s, w) => s + w.initialBudget, 0), [wbsCostData]);
