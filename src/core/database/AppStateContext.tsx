@@ -250,9 +250,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_04_async_production_auto_stock_v400';
+      const DATA_VERSION = 'v2026_09_08_purge_local_presentation_v487';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
+        localStorage.removeItem('gebat_subcontracts');
         localStorage.removeItem('gebat_daily_reports');
         localStorage.removeItem('gebat_user_created_reports_backup');
         localStorage.removeItem('gebat_submitted_reports_permanent_lock');
@@ -261,6 +262,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.removeItem('gebat_stock_items');
         localStorage.removeItem('gebat_stock_movements');
         localStorage.removeItem('gebat_warehouses');
+        localStorage.removeItem('gebat_purchase_requests');
+        localStorage.removeItem('gebat_purchase_orders');
+        localStorage.removeItem('gebat_receipts');
+        localStorage.removeItem('gebat_alerts');
         localStorage.setItem('gebat_data_version', DATA_VERSION);
       }
 
@@ -620,24 +625,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
     return INITIAL_WAREHOUSES;
   });
 
   useEffect(() => {
-    if (warehouses.length > 0) {
-      localStorage.setItem('gebat_warehouses', JSON.stringify(warehouses));
-    }
+    safeSaveToStorage('gebat_warehouses', warehouses);
   }, [warehouses]);
+
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('gebat_purchase_requests');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             const clean = parsed.filter((da: any) => !String(da.id || '').startsWith('DA-2026-00'));
             return clean;
           }
@@ -657,7 +661,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             const clean = parsed.filter((po: any) => !String(po.id || '').startsWith('PO-2026-') && !String(po.id || '').startsWith('BC-GEBAT-'));
             return clean;
           }
@@ -677,7 +681,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) return parsed;
         } catch (e) {}
       }
     }
@@ -685,9 +689,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    if (receipts.length > 0) {
-      safeSaveToStorage('gebat_receipts', receipts);
-    }
+    safeSaveToStorage('gebat_receipts', receipts);
   }, [receipts]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem('gebat_stock_movements');
