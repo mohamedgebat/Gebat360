@@ -1958,20 +1958,28 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                   >
                                     ↩️ Correction
                                   </button>
-                                  {deleteDailyReport && (
-                                    <button
-                                      onClick={() => {
-                                        if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${rep.code || rep.id} ?`)) {
-                                          deleteDailyReport(rep.id);
-                                        }
-                                      }}
-                                      className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
-                                      title="Supprimer ce rapport du registre"
-                                    >
-                                      <Trash2 size={13} />
-                                      <span>Supprimer</span>
-                                    </button>
-                                  )}
+                                   {deleteDailyReport && (
+                                     <button
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         const codeOrId = rep.code || (rep as any).reportCode || rep.id;
+                                         if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${codeOrId} ?`)) {
+                                           deleteDailyReport(rep.id);
+                                           if (rep.code && rep.code !== rep.id) {
+                                             deleteDailyReport(rep.code);
+                                           }
+                                           if ((rep as any).reportCode && (rep as any).reportCode !== rep.id) {
+                                             deleteDailyReport((rep as any).reportCode);
+                                           }
+                                         }
+                                       }}
+                                       className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
+                                       title="Supprimer ce rapport du registre"
+                                     >
+                                       <Trash2 size={13} />
+                                       <span>Supprimer</span>
+                                     </button>
+                                   )}
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-end gap-1.5">
@@ -1980,15 +1988,24 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                   </span>
                                   {deleteDailyReport && (
                                     <button
-                                      onClick={() => {
-                                        if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${rep.code || rep.id} ?`)) {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const codeOrId = rep.code || (rep as any).reportCode || rep.id;
+                                        if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${codeOrId} ?`)) {
                                           deleteDailyReport(rep.id);
+                                          if (rep.code && rep.code !== rep.id) {
+                                            deleteDailyReport(rep.code);
+                                          }
+                                          if ((rep as any).reportCode && (rep as any).reportCode !== rep.id) {
+                                            deleteDailyReport((rep as any).reportCode);
+                                          }
                                         }
                                       }}
                                       className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
                                       title="Supprimer ce rapport"
                                     >
                                       <Trash2 size={13} />
+                                      <span>Supprimer</span>
                                     </button>
                                   )}
                                 </div>

@@ -2502,18 +2502,50 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteDailyReport = (reportId: string) => {
+    if (!reportId) return;
+    const targetStr = String(reportId).trim();
+    const cleanTarget = targetStr.replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+
     setDailyReports(prev => {
-      const clean = prev.filter(r => r.id !== reportId && r.code !== reportId && (r as any).reportCode !== reportId);
+      const clean = prev.filter(r => {
+        const rId = String(r.id || '').trim();
+        const rCode = String(r.code || '').trim();
+        const rReportCode = String((r as any).reportCode || '').trim();
+
+        const isMatch =
+          rId === targetStr ||
+          rCode === targetStr ||
+          rReportCode === targetStr ||
+          rId === cleanTarget ||
+          rCode === cleanTarget ||
+          rReportCode === cleanTarget ||
+          (rCode && cleanTarget.includes(rCode)) ||
+          (rId && cleanTarget.includes(rId));
+
+        return !isMatch;
+      });
+
       safeSaveToStorage('gebat_daily_reports', clean);
       const userCreated = clean.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
       safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
+      safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
       return clean;
     });
+
     setValidationTasks(prev => {
-      const cleanTasks = prev.filter(t => t.reportId !== reportId && t.id !== reportId);
+      const cleanTasks = prev.filter(t => {
+        const tId = String(t.id || '').trim();
+        const tRepId = String(t.reportId || '').trim();
+        return tId !== targetStr && tRepId !== targetStr && tId !== cleanTarget && tRepId !== cleanTarget;
+      });
       safeSaveToStorage('gebat_validation_tasks', cleanTasks);
       return cleanTasks;
     });
+
+    try {
+      ApiService.deleteDailyReport(cleanTarget).catch(() => {});
+    } catch (e) {}
+
     addAuditLog('SUPPRESSION_RAPPORT', 'PRODUCTION', reportId, `Rapport ${reportId} supprimé définitivement du registre par ${currentUser?.name || 'Valideur'}`);
   };
 

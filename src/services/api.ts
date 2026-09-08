@@ -302,6 +302,12 @@ export class ApiService {
     });
   }
 
+  static async deleteDailyReport(id: string): Promise<any> {
+    return this.request<any>(`/daily-reports/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // 13. Alertes & Risques
   static async getAlerts(): Promise<any[]> {
     const raw = await this.request<any[]>('/alerts');
