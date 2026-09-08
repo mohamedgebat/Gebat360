@@ -683,14 +683,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
+    const isDemoId = (id: string) =>
+      id === 'CR-2026-08-31-86' ||
+      id === 'CR-2026-08-31-87' ||
+      id === 'CR-2026-08-29-86' ||
+      id === 'CR-2026-08-29-87' ||
+      id === 'CR-2026-08-17-01' ||
+      id.startsWith('CR-REAL-');
+
     const saved = localStorage.getItem('gebat_daily_reports');
     const backupRaw = localStorage.getItem('gebat_user_created_reports_backup');
 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter((r: any) => !isDemoId(String(r.id || r.code || '')));
+          if (clean.length !== parsed.length) {
+            safeSaveToStorage('gebat_daily_reports', clean);
+          }
+          return clean;
         }
       } catch (e) {}
     }
@@ -698,8 +710,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (backupRaw) {
       try {
         const backupParsed = JSON.parse(backupRaw);
-        if (Array.isArray(backupParsed) && backupParsed.length > 0) {
-          return backupParsed;
+        if (Array.isArray(backupParsed)) {
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoId(String(r.id || r.code || '')));
+          return cleanBackup;
         }
       } catch (e) {}
     }
