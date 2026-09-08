@@ -194,8 +194,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'btp-cost-control', label: 'Cost Control', icon: TrendingUp },
         { id: 'ceo-command-center', label: 'CEO Command Center', icon: Activity },
-        { id: 'analytics-performance', label: 'Performance', icon: BarChart3 },
-        { id: 'analytics-alerts', label: 'Alertes & Dérives', icon: AlertTriangle },
       ],
     },
     {
@@ -203,6 +201,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Administration',
       icon: Sliders,
       items: [
+        { id: 'analytics-performance', label: 'Performance', icon: BarChart3 },
+        { id: 'analytics-alerts', label: 'Alertes & Dérives', icon: AlertTriangle },
         { id: 'admin-audit', label: 'Registre d\'Audit Trail', icon: History },
         { id: 'admin-users', label: 'Utilisateurs & Rôles', icon: UserCheck },
         { id: 'admin-settings', label: 'Natures de coûts', icon: Tag },
