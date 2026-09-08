@@ -8,6 +8,16 @@ const API_BASE_URL = (
   'https://gebat360-production.up.railway.app/api/v1'
 ).replace(/\/$/, '');
 
+const safeParseJSON = (val: any, fallback: any = []) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val !== 'string' || !val.trim()) return fallback;
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
+};
+
 export class ApiService {
   static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('gebat_jwt_token');
@@ -105,7 +115,7 @@ export class ApiService {
       requestDate: da.requestDate || da.request_date || da.date,
       requiredDate: da.requiredDate || da.required_date,
       estimatedTotal: Number(da.estimatedTotal || da.estimated_total || da.amount || 0),
-      items: Array.isArray(da.items) ? da.items : (typeof da.items === 'string' ? JSON.parse(da.items || '[]') : [])
+      items: safeParseJSON(da.items)
     }));
   }
 
@@ -233,7 +243,7 @@ export class ApiService {
       orderDate: po.orderDate || po.order_date || po.date,
       deliveryDate: po.deliveryDate || po.delivery_date,
       totalAmount: Number(po.totalAmount || po.total_amount || po.amount || 0),
-      items: Array.isArray(po.items) ? po.items : (typeof po.items === 'string' ? JSON.parse(po.items || '[]') : [])
+      items: safeParseJSON(po.items)
     }));
   }
 
@@ -275,13 +285,13 @@ export class ApiService {
       equipmentHours: Number(r.equipmentHours || r.equipment_hours || 0),
       createdBy: r.createdBy || r.created_by || 'Chef de Chantier',
       productivityRate: Number(r.productivityRate || r.productivity_rate || 100),
-      consummations: Array.isArray(r.consummations) ? r.consummations : (typeof r.consummations === 'string' ? JSON.parse(r.consummations || '[]') : []),
-      historyLogs: Array.isArray(r.historyLogs || r.history_logs) ? (r.historyLogs || r.history_logs) : (typeof (r.historyLogs || r.history_logs) === 'string' ? JSON.parse(r.historyLogs || r.history_logs || '[]') : []),
+      consummations: safeParseJSON(r.consummations),
+      historyLogs: safeParseJSON(r.historyLogs || r.history_logs),
       totalCost: Number(r.totalCost || r.total_cost || 0),
       pu: Number(r.pu || r.unit_price || r.unitPrice || 0),
       unitPrice: Number(r.unitPrice || r.unit_price || r.pu || 0),
       advancePct: Number(r.advancePct || r.advance_pct || r.productivityRate || r.productivity_rate || 0),
-      rejectionHistory: Array.isArray(r.rejectionHistory || r.rejection_history) ? (r.rejectionHistory || r.rejection_history) : (typeof (r.rejectionHistory || r.rejection_history) === 'string' ? JSON.parse(r.rejectionHistory || r.rejection_history || '[]') : [])
+      rejectionHistory: safeParseJSON(r.rejectionHistory || r.rejection_history)
     }));
   }
 
