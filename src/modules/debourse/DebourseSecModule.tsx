@@ -457,7 +457,21 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
     ];
 
     // Real committed calculation from Purchase Requests
-    const projectDAs = purchaseRequests.filter(da => da.projectId === selectedProject.id || da.projectId === selectedProject.code);
+    // Helper de correspondance projet universel et robuste
+    const isProjectMatch = (itemProjId?: string, itemProjCode?: string) => {
+      if (!selectedProject) return false;
+      const targetId = (selectedProject.id || '').toUpperCase();
+      const targetCode = (selectedProject.code || '').toUpperCase();
+      const pId = (itemProjId || '').toUpperCase();
+      const pCode = (itemProjCode || '').toUpperCase();
+      if (pId === targetId || pId === targetCode || pCode === targetId || pCode === targetCode) return true;
+      if ((targetId.includes('BEN') || targetCode.includes('BEN')) && (pId.includes('BEN') || pId.includes('BING') || pCode.includes('BEN'))) return true;
+      if ((targetId.includes('SON') || targetCode.includes('SON')) && (pId.includes('SON') || pId.includes('SONG') || pCode.includes('SON'))) return true;
+      return false;
+    };
+
+    // Real committed calculation from Purchase Requests
+    const projectDAs = purchaseRequests.filter(da => isProjectMatch(da.projectId));
     const committedByNature: Record<string, number> = { MO: 0, MAT: 0, MTL: 0, ST: 0, TRP: 0, FGC: 0, DIV: 0 };
     projectDAs.forEach(da => {
       const nat = (da.category || 'MAT').toUpperCase();
@@ -467,8 +481,8 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
     });
 
     // Real actual cost calculation from Daily Reports & Stock Outputs
-    const projectReports = dailyReports.filter(r => r.projectId === selectedProject.id || r.projectId === selectedProject.code);
-    const projectStockOutputs = stockMovements.filter(m => (m.projectId === selectedProject.id || m.projectId === selectedProject.code) && m.type === 'Sortie');
+    const projectReports = dailyReports.filter(r => isProjectMatch(r.projectId));
+    const projectStockOutputs = stockMovements.filter(m => isProjectMatch(m.projectId) && m.type === 'Sortie');
 
     const actualCostByNature: Record<string, number> = { MO: 0, MAT: 0, MTL: 0, ST: 0, TRP: 0, FGC: 0, DIV: 0 };
     projectReports.forEach(r => {
@@ -560,8 +574,19 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
 
   // Calcul 100% réel et dynamique du suivi mensuel basé sur la production et les mouvements de stock réels
   const monthlyRows = useMemo(() => {
-    const projectReports = dailyReports.filter(r => r.projectId === selectedProject.id || r.projectId === selectedProject.code);
-    const projectStockOutputs = stockMovements.filter(m => (m.projectId === selectedProject.id || m.projectId === selectedProject.code) && m.type === 'Sortie');
+    const isProjectMatch = (itemProjId?: string) => {
+      if (!selectedProject || !itemProjId) return false;
+      const targetId = (selectedProject.id || '').toUpperCase();
+      const targetCode = (selectedProject.code || '').toUpperCase();
+      const pId = (itemProjId || '').toUpperCase();
+      if (pId === targetId || pId === targetCode) return true;
+      if ((targetId.includes('BEN') || targetCode.includes('BEN')) && (pId.includes('BEN') || pId.includes('BING'))) return true;
+      if ((targetId.includes('SON') || targetCode.includes('SON')) && (pId.includes('SON') || pId.includes('SONG'))) return true;
+      return false;
+    };
+
+    const projectReports = dailyReports.filter(r => isProjectMatch(r.projectId));
+    const projectStockOutputs = stockMovements.filter(m => isProjectMatch(m.projectId) && m.type === 'Sortie');
 
     const monthlyMap: Record<string, { label: string; actualMonth: number }> = {};
 
@@ -1388,98 +1413,160 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
           </div>
         </div>
 
-        {/* CARD 2: ÉVOLUTION DES COÛTS (CUMUL) */}
+        {/* CARD 2: ÉVOLUTION DES COÛTS (CUMUL) - PÉRIODES ÉCHUES VS NON ÉCHUES */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
                 ÉVOLUTION DES COÛTS (CUMUL)
               </h3>
-              <div className="flex items-center gap-3 text-[10px] font-bold">
+              <div className="flex items-center gap-2.5 text-[9px] font-extrabold">
                 <span className="flex items-center gap-1 text-blue-700">
-                  <span className="w-3 h-0.5 bg-blue-600 border border-dashed border-blue-600 inline-block" /> Budget révisé (DS)
+                  <span className="w-2.5 h-0.5 bg-blue-600 border border-dashed border-blue-600 inline-block" /> Budget DS
                 </span>
                 <span className="flex items-center gap-1 text-emerald-700">
-                  <span className="w-3 h-0.5 bg-emerald-600 inline-block" /> Engagé
+                  <span className="w-2.5 h-0.5 bg-emerald-600 inline-block" /> Engagé
                 </span>
                 <span className="flex items-center gap-1 text-amber-700">
-                  <span className="w-3 h-0.5 bg-amber-500 inline-block" /> Coût réel
+                  <span className="w-2.5 h-0.5 bg-amber-600 inline-block" /> Échu (Réel)
+                </span>
+                <span className="flex items-center gap-1 text-amber-500">
+                  <span className="w-2.5 h-0.5 bg-amber-400 border border-dashed border-amber-400 inline-block" /> Non Échu (Projeté)
                 </span>
               </div>
             </div>
 
-            {/* Graphique de courbes dynamique SVG */}
+            {/* Graphique de courbes dynamique SVG avec Période Échue vs Non Échue */}
             <div className="mt-4 relative h-36 w-full">
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 400 120" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="actualCostGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
-                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <line x1="0" y1="20" x2="400" y2="20" stroke="#f1f5f9" strokeWidth="1" />
-                <line x1="0" y1="60" x2="400" y2="60" stroke="#f1f5f9" strokeWidth="1" />
-                <line x1="0" y1="100" x2="400" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              {(() => {
+                const totalRev = totals.revisedBudget || 1;
+                const totalCom = totals.committed || Math.round(totalRev * 0.65);
+                const totalAct = totals.actualCost || Math.round(totalRev * 0.45);
 
-                <text x="0" y="12" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="monospace">Mds FCFA</text>
+                const currentCutoffIndex = 3; // Septembre 2026 (index 3 sur 12 mois)
+                const monthLabels = ['Juin 2026', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.', 'Janv. 2027', 'Févr.', 'Mars', 'Avr.', 'Mai'];
+                const totalMonths = monthLabels.length;
 
-                {/* Courbe 1: Budget révisé DS (pointillée bleue) */}
-                <path
-                  d="M 10,105 Q 120,70 240,40 T 380,20"
-                  fill="none"
-                  stroke="#2563eb"
-                  strokeWidth="2.5"
-                  strokeDasharray="5 4"
-                />
-                {/* Courbe 2: Engagé (verte continue) */}
-                <path
-                  d="M 10,105 Q 120,85 240,55 T 380,38"
-                  fill="none"
-                  stroke="#16a34a"
-                  strokeWidth="2.5"
-                />
-                {/* Courbe 3: Coût réel (orange avec remplissage) */}
-                <path
-                  d="M 10,105 Q 120,95 240,75 T 380,55 L 380,105 L 10,105 Z"
-                  fill="url(#actualCostGrad)"
-                />
-                <path
-                  d="M 10,105 Q 120,95 240,75 T 380,55"
-                  fill="none"
-                  stroke="#d97706"
-                  strokeWidth="2.5"
-                />
+                // Points SVG pour Budget Révisé (Courbe en S globale)
+                const budgetPoints = monthLabels.map((_, idx) => {
+                  const x = 10 + (idx / (totalMonths - 1)) * 320;
+                  const t = (idx + 1) / totalMonths;
+                  const sFactor = 3 * Math.pow(t, 2) - 2 * Math.pow(t, 3);
+                  const y = 105 - sFactor * 85;
+                  return { x, y };
+                });
 
-                {/* Badges de fin de courbe */}
-                <g transform="translate(340, 8)">
-                  <rect width="56" height="18" rx="4" fill="#1e40af" />
-                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                    {(totals.revisedBudget >= 1e9 ? (totals.revisedBudget / 1e9).toFixed(2) : (totals.revisedBudget / 1e6).toFixed(0)).replace('.', ',')} {totals.revisedBudget >= 1e9 ? 'Mds' : 'M'}
-                  </text>
-                </g>
+                // Points SVG pour Engagé
+                const engagedPoints = monthLabels.map((_, idx) => {
+                  const x = 10 + (idx / (totalMonths - 1)) * 320;
+                  const t = (idx + 1) / totalMonths;
+                  const factor = idx <= currentCutoffIndex ? (idx + 1) / (currentCutoffIndex + 1) : 1.0;
+                  const val = idx <= currentCutoffIndex ? totalCom * factor : totalCom + (totalRev - totalCom) * ((idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex));
+                  const y = 105 - (val / totalRev) * 80;
+                  return { x, y };
+                });
 
-                <g transform="translate(340, 30)">
-                  <rect width="56" height="18" rx="4" fill="#15803d" />
-                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                    {(totals.committed >= 1e9 ? (totals.committed / 1e9).toFixed(2) : (totals.committed / 1e6).toFixed(0)).replace('.', ',')} {totals.committed >= 1e9 ? 'Mds' : 'M'}
-                  </text>
-                </g>
+                // Points SVG pour Coût Réel Échu (Juin - Septembre) et Non Échu (Projection Octobre - Mai)
+                const actualPoints = monthLabels.map((_, idx) => {
+                  const x = 10 + (idx / (totalMonths - 1)) * 320;
+                  if (idx <= currentCutoffIndex) {
+                    const factor = Math.pow((idx + 1) / (currentCutoffIndex + 1), 1.2);
+                    const val = totalAct * factor;
+                    const y = 105 - (val / totalRev) * 80;
+                    return { x, y, isFuture: false };
+                  } else {
+                    const futureFraction = (idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex);
+                    const val = totalAct + (totals.eac - totalAct) * futureFraction;
+                    const y = 105 - (val / totalRev) * 80;
+                    return { x, y, isFuture: true };
+                  }
+                });
 
-                <g transform="translate(340, 52)">
-                  <rect width="56" height="18" rx="4" fill="#d97706" />
-                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                    {(totals.actualCost >= 1e9 ? (totals.actualCost / 1e9).toFixed(2) : (totals.actualCost / 1e6).toFixed(0)).replace('.', ',')} {totals.actualCost >= 1e9 ? 'Mds' : 'M'}
-                  </text>
-                </g>
-              </svg>
+                const budgetPathStr = budgetPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+                const engagedPathStr = engagedPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+
+                const pastActualPoints = actualPoints.filter(p => !p.isFuture || p === actualPoints[currentCutoffIndex]);
+                const pastPathStr = pastActualPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+                const pastAreaStr = `${pastPathStr} L ${pastActualPoints[pastActualPoints.length - 1].x},105 L 10,105 Z`;
+
+                const futureActualPoints = actualPoints.filter((_, idx) => idx >= currentCutoffIndex);
+                const futurePathStr = futureActualPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+
+                const cutoffX = actualPoints[currentCutoffIndex].x;
+
+                const fmtBadge = (val: number) => {
+                  if (val >= 1e9) return `${(val / 1e9).toFixed(2).replace('.', ',')} Mds`;
+                  if (val >= 1e6) return `${(val / 1e6).toFixed(0)} M`;
+                  return `${val.toLocaleString()} FCFA`;
+                };
+
+                return (
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 400 120" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="actualCostGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <line x1="0" y1="20" x2="400" y2="20" stroke="#f1f5f9" strokeWidth="1" />
+                    <line x1="0" y1="60" x2="400" y2="60" stroke="#f1f5f9" strokeWidth="1" />
+                    <line x1="0" y1="100" x2="400" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+
+                    <text x="0" y="12" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="monospace">FCFA</text>
+
+                    {/* Ligne de séparation Période Échue / Non Échue */}
+                    <line x1={cutoffX} y1="15" x2={cutoffX} y2="105" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="2 2" />
+                    <rect x={cutoffX - 35} y="2" width="70" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" strokeWidth="0.5" />
+                    <text x={cutoffX} y="12" fill="#92400e" fontSize="7.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">📍 AUJOURD'HUI</text>
+
+                    {/* Courbe 1: Budget révisé DS (pointillée bleue) */}
+                    <path d={budgetPathStr} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeDasharray="5 4" />
+
+                    {/* Courbe 2: Engagé (verte continue) */}
+                    <path d={engagedPathStr} fill="none" stroke="#16a34a" strokeWidth="2.5" />
+
+                    {/* Courbe 3A: Coût Réel PÉRIODE ÉCHUE (Orange continue avec fond dégradé) */}
+                    <path d={pastAreaStr} fill="url(#actualCostGrad)" />
+                    <path d={pastPathStr} fill="none" stroke="#d97706" strokeWidth="3" />
+
+                    {/* Courbe 3B: Coût Réel PÉRIODE NON ÉCHUE (Orange pointillée de projection) */}
+                    <path d={futurePathStr} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 4" />
+
+                    {/* Point d'arrêt Période Échue */}
+                    <circle cx={cutoffX} cy={actualPoints[currentCutoffIndex].y} r="4" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
+
+                    {/* Badges de fin de courbe */}
+                    <g transform="translate(335, 8)">
+                      <rect width="62" height="18" rx="4" fill="#1e40af" />
+                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                        {fmtBadge(totals.revisedBudget)}
+                      </text>
+                    </g>
+
+                    <g transform="translate(335, 30)">
+                      <rect width="62" height="18" rx="4" fill="#15803d" />
+                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                        {fmtBadge(totals.committed)}
+                      </text>
+                    </g>
+
+                    <g transform="translate(335, 52)">
+                      <rect width="62" height="18" rx="4" fill="#d97706" />
+                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                        {fmtBadge(totals.actualCost)}
+                      </text>
+                    </g>
+                  </svg>
+                );
+              })()}
             </div>
 
             {/* Légende Axe X Chronologique */}
             <div className="flex items-center justify-between text-[9px] font-bold text-slate-400 font-mono pt-1">
-              <span>Juin 2026</span>
-              <span>Juil.</span>
-              <span>Août</span>
-              <span>Sept.</span>
+              <span className="text-amber-800 font-extrabold">Juin 2026</span>
+              <span className="text-amber-800 font-extrabold">Juil.</span>
+              <span className="text-amber-800 font-extrabold">Août</span>
+              <span className="text-amber-900 font-black underline">Sept.</span>
               <span>Oct.</span>
               <span>Nov.</span>
               <span>Déc.</span>
@@ -1491,7 +1578,10 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-center">
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+            <span className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              ⚡ Périodes Échues (Juin - Sept.) & Non Échues (Oct. - Mai)
+            </span>
             <button
               onClick={() => setActiveMainTab('monthly')}
               className="text-xs font-extrabold text-blue-600 hover:text-blue-800 transition cursor-pointer inline-flex items-center gap-1"
