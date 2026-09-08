@@ -1916,6 +1916,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                         const wbsCode = r.wbsCode || `WBS.${String((idx % 8) + 1).padStart(2, '0')}`;
                         const actName = r.activityName || r.taskName || 'Travaux de génie civil et béton armé';
                         const qte = Number(r.realizedQty) || 0;
+                        const unit = r.unit || 'U';
                         const pu = Number(r.pu) || 0;
                         let cost = Number(r.totalCost);
                         if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
