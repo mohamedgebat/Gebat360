@@ -30,12 +30,22 @@ const formatFCFA = (amount?: number): string => {
   return `${Math.round(amount).toLocaleString('fr-FR')} FCFA`;
 };
 
-// Formateur monétaire exact en chiffres complets (sans Mds/M) pour les cartes KPIs
+// Formateur monétaire Mds / M FCFA conforme à la maquette de référence
 const formatCompactMds = (val: number, withSuffix: boolean = true, isDiff: boolean = false): string => {
-  if (val === undefined || val === null || isNaN(val)) return withSuffix ? '0 FCFA' : '0';
-  const rounded = Math.round(val);
-  const formatted = rounded.toLocaleString('fr-FR');
-  return withSuffix ? `${formatted} FCFA` : formatted;
+  if (val === undefined || val === null || isNaN(val)) return withSuffix ? '0 FCFA' : '0 FCFA';
+  const absVal = Math.abs(val);
+  const sign = val < 0 ? '-' : (isDiff && val > 0 ? '+' : '');
+  
+  if (absVal >= 1e9) {
+    const num = (absVal / 1e9).toFixed(2).replace('.', ',');
+    return withSuffix ? `${sign}${num} Mds FCFA` : `${sign}${num} Mds`;
+  }
+  if (absVal >= 1e6) {
+    const num = (absVal / 1e6).toFixed(2).replace('.', ',');
+    return withSuffix ? `${sign}${num} M FCFA` : `${sign}${num} M`;
+  }
+  const num = Math.round(absVal).toLocaleString('fr-FR');
+  return withSuffix ? `${sign}${num} FCFA` : `${sign}${num} FCFA`;
 };
 
 interface WbsHierarchyNode {
