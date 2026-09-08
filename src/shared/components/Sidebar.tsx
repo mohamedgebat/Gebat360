@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAppState } from '../../core/database/AppStateContext';
+import { useAppState, isTestAlert } from '../../core/database/AppStateContext';
 import { hasPermission } from '../../core/permissions';
 import { User } from '../../types';
 import {
@@ -117,12 +117,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { alerts, purchaseRequests = [], dailyReports = [], currentUser } = useAppState();
   const userRole = currentUser?.role;
 
-  const activeAlertsCount = alerts.filter(a => a.status === 'Actif').length;
-  const pendingDACount = purchaseRequests.filter(da => da.status === 'EN_ATTENTE_VALIDATION' || da.status === 'En attente validation' || da.status === 'En attente').length;
-  const pendingReportsCount = dailyReports.filter(r => {
-    const s = (r.status || '').toUpperCase();
-    return s.includes('SOUMIS') || s.includes('ATTENTE') || s.includes('PENDING');
+  const activeAlertsCount = alerts.filter(a => a.status === 'Actif' && !isTestAlert(a)).length;
+  const pendingDACount = purchaseRequests.filter(da => {
+    if (!da) return false;
+    const idStr = String(da.id || da.code || '');
+    if (idStr.includes('DEMO') || idStr.includes('TEST')) return false;
+    const s = (da.status || '').toUpperCase();
+    return s === 'EN_ATTENTE_VALIDATION' || s === 'EN ATTENTE VALIDATION' || s === 'EN_ATTENTE' || s === 'SOUMIS';
   }).length;
+
+  const pendingReportsCount = dailyReports.filter(r => {
+    if (!r) return false;
+    const repId = String(r.id || r.code || (r as any).reportCode || '');
+    if (
+      repId === 'CR-2026-08-31-86' ||
+      repId === 'CR-2026-08-31-87' ||
+      repId === 'CR-2026-08-29-86' ||
+      repId === 'CR-2026-08-29-87' ||
+      repId === 'CR-2026-08-17-01' ||
+      repId === 'CR-2026-09-03-13-292' ||
+      repId === 'RJC-2026-00009' ||
+      repId === 'CR-2026-08-01-07-549' ||
+      repId.includes('1788439695094') ||
+      repId.includes('1788439156385') ||
+      repId.startsWith('VAL-RPT-')
+    ) {
+      return false;
+    }
+    const s = (r.status || '').toUpperCase();
+    return s === 'SOUMIS' || s === 'EN_ATTENTE' || s === 'EN_VALIDATION';
+  }).length;
+
   const totalValidationBadge = pendingDACount + pendingReportsCount;
 
   // Mode Accordéon : Lorsqu'un grand titre est ouvert, toutes les autres sections se ferment automatiquement

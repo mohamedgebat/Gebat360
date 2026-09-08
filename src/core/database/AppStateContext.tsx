@@ -1153,7 +1153,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               equipmentCount: Number(r.equipmentCount ?? r.equipment_count ?? 2),
               weather: String(r.weather || 'Ensoleillé'),
               notes: String(r.notes || ''),
-              status: String(r.status || (String(r.code || r.id).includes('86') || String(r.code || r.id).includes('87') ? 'Soumis' : 'Validé')),
+              status: String(r.status || 'Validé'),
               createdAt: String(r.createdAt || r.created_at || r.date || '')
             };
           });
@@ -1168,9 +1168,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               const localStat = localStatusMap.get(r.id) || localCodeMap.get(r.code);
               if (localStat) {
                 return { ...r, status: localStat };
-              }
-              if (String(r.code || r.id).includes('86') || String(r.code || r.id).includes('87')) {
-                return { ...r, status: 'Soumis' };
               }
               return r;
             });

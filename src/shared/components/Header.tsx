@@ -70,7 +70,13 @@ export const Header: React.FC<HeaderProps> = ({ currentViewTitle, onNavigate, on
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const pendingValidationsCount = purchaseRequests.filter(da => da.status === 'EN_ATTENTE_VALIDATION' || da.status === 'En attente validation').length;
+  const pendingValidationsCount = purchaseRequests.filter(da => {
+    if (!da) return false;
+    const idStr = String(da.id || da.code || '');
+    if (idStr.includes('DEMO') || idStr.includes('TEST')) return false;
+    const s = (da.status || '').toUpperCase();
+    return s === 'EN_ATTENTE_VALIDATION' || s === 'EN ATTENTE VALIDATION' || s === 'EN_ATTENTE' || s === 'SOUMIS';
+  }).length;
   
   const isGlobalRole = (role: string) => {
     const norm = role.toUpperCase().replace(/\s+/g, '_');
