@@ -171,6 +171,9 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
   const [showDqeImportModal, setShowDqeImportModal] = useState(false);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
 
+  // État de survol interactif du graphique de courbe en S (Légende & Tooltip)
+  const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+
   // Dates réelles dynamiques du jour
   const now = new Date();
   const rawMonthYearStr = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -1438,15 +1441,12 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                   <span className="w-2.5 h-0.5 bg-emerald-600 inline-block" /> Engagé
                 </span>
                 <span className="flex items-center gap-1 text-amber-700">
-                  <span className="w-2.5 h-0.5 bg-amber-600 inline-block" /> Échu (Réel)
-                </span>
-                <span className="flex items-center gap-1 text-amber-500">
-                  <span className="w-2.5 h-0.5 bg-amber-400 border border-dashed border-amber-400 inline-block" /> Non Échu (Projeté)
+                  <span className="w-2.5 h-0.5 bg-amber-600 inline-block" /> Coût Réel / EAC
                 </span>
               </div>
             </div>
 
-            {/* Graphique de courbes dynamique SVG avec Période Échue vs Non Échue */}
+            {/* Graphique de courbes dynamique SVG avec Période Échue vs Non Échue & Survol interactif */}
             <div className="mt-4 relative h-36 w-full">
               {(() => {
                 const totalRev = totals.revisedBudget || 0;
@@ -1455,6 +1455,11 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
 
                 const currentCutoffIndex = 3; // Septembre 2026 (index 3 sur 12 mois)
                 const monthLabels = ['Juin 2026', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.', 'Janv. 2027', 'Févr.', 'Mars', 'Avr.', 'Mai'];
+                const monthFullLabels = [
+                  'Juin 2026', 'Juillet 2026', 'Août 2026', 'Septembre 2026',
+                  'Octobre 2026', 'Novembre 2026', 'Décembre 2026', 'Janvier 2027',
+                  'Février 2027', 'Mars 2027', 'Avril 2027', 'Mai 2027'
+                ];
                 const totalMonths = monthLabels.length;
 
                 // Points SVG pour Budget Révisé (Courbe en S globale)
@@ -1463,17 +1468,17 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                   const t = (idx + 1) / totalMonths;
                   const sFactor = 3 * Math.pow(t, 2) - 2 * Math.pow(t, 3);
                   const y = 105 - sFactor * 85;
-                  return { x, y };
+                  const val = Math.round(totalRev * sFactor);
+                  return { x, y, val };
                 });
 
                 // Points SVG pour Engagé
                 const engagedPoints = monthLabels.map((_, idx) => {
                   const x = 10 + (idx / (totalMonths - 1)) * 320;
-                  const t = (idx + 1) / totalMonths;
                   const factor = idx <= currentCutoffIndex ? (idx + 1) / (currentCutoffIndex + 1) : 1.0;
-                  const val = idx <= currentCutoffIndex ? totalCom * factor : totalCom + (totalRev - totalCom) * ((idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex));
-                  const y = 105 - (val / totalRev) * 80;
-                  return { x, y };
+                  const val = Math.round(idx <= currentCutoffIndex ? totalCom * factor : totalCom + (totalRev - totalCom) * ((idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex)));
+                  const y = 105 - (val / (totalRev || 1)) * 80;
+                  return { x, y, val };
                 });
 
                 // Points SVG pour Coût Réel Échu (Juin - Septembre) et Non Échu (Projection Octobre - Mai)
@@ -1481,14 +1486,14 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                   const x = 10 + (idx / (totalMonths - 1)) * 320;
                   if (idx <= currentCutoffIndex) {
                     const factor = Math.pow((idx + 1) / (currentCutoffIndex + 1), 1.2);
-                    const val = totalAct * factor;
-                    const y = 105 - (val / totalRev) * 80;
-                    return { x, y, isFuture: false };
+                    const val = Math.round(totalAct * factor);
+                    const y = 105 - (val / (totalRev || 1)) * 80;
+                    return { x, y, val, isFuture: false };
                   } else {
                     const futureFraction = (idx - currentCutoffIndex) / (totalMonths - 1 - currentCutoffIndex);
-                    const val = totalAct + (totals.eac - totalAct) * futureFraction;
-                    const y = 105 - (val / totalRev) * 80;
-                    return { x, y, isFuture: true };
+                    const val = Math.round(totalAct + (totals.eac - totalAct) * futureFraction);
+                    const y = 105 - (val / (totalRev || 1)) * 80;
+                    return { x, y, val, isFuture: true };
                   }
                 });
 
@@ -1510,63 +1515,134 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
                   return `${val.toLocaleString()} FCFA`;
                 };
 
+                const hIdx = hoveredPointIndex;
+                const hoveredX = hIdx !== null ? budgetPoints[hIdx].x : null;
+
                 return (
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="actualCostGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <line x1="0" y1="20" x2="400" y2="20" stroke="#f1f5f9" strokeWidth="1" />
-                    <line x1="0" y1="60" x2="400" y2="60" stroke="#f1f5f9" strokeWidth="1" />
-                    <line x1="0" y1="100" x2="400" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                  <>
+                    <svg className="w-full h-full overflow-visible" viewBox="0 0 400 120" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="actualCostGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      <line x1="0" y1="20" x2="400" y2="20" stroke="#f1f5f9" strokeWidth="1" />
+                      <line x1="0" y1="60" x2="400" y2="60" stroke="#f1f5f9" strokeWidth="1" />
+                      <line x1="0" y1="100" x2="400" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
 
-                    <text x="0" y="12" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="monospace">FCFA</text>
+                      <text x="0" y="12" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="monospace">FCFA</text>
 
-                    {/* Ligne de séparation Période Échue / Non Échue */}
-                    <line x1={cutoffX} y1="15" x2={cutoffX} y2="105" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="2 2" />
-                    <rect x={cutoffX - 35} y="2" width="70" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" strokeWidth="0.5" />
-                    <text x={cutoffX} y="12" fill="#92400e" fontSize="7.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">📍 AUJOURD'HUI</text>
+                      {/* Ligne de séparation Période Échue / Non Échue */}
+                      <line x1={cutoffX} y1="15" x2={cutoffX} y2="105" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="2 2" />
+                      <rect x={cutoffX - 35} y="2" width="70" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" strokeWidth="0.5" />
+                      <text x={cutoffX} y="12" fill="#92400e" fontSize="7.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">📍 AUJOURD'HUI</text>
 
-                    {/* Courbe 1: Budget révisé DS (pointillée bleue) */}
-                    <path d={budgetPathStr} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeDasharray="5 4" />
+                      {/* Courbe 1: Budget révisé DS (pointillée bleue) */}
+                      <path d={budgetPathStr} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeDasharray="5 4" />
 
-                    {/* Courbe 2: Engagé (verte continue) */}
-                    <path d={engagedPathStr} fill="none" stroke="#16a34a" strokeWidth="2.5" />
+                      {/* Courbe 2: Engagé (verte continue) */}
+                      <path d={engagedPathStr} fill="none" stroke="#16a34a" strokeWidth="2.5" />
 
-                    {/* Courbe 3A: Coût Réel PÉRIODE ÉCHUE (Orange continue avec fond dégradé) */}
-                    <path d={pastAreaStr} fill="url(#actualCostGrad)" />
-                    <path d={pastPathStr} fill="none" stroke="#d97706" strokeWidth="3" />
+                      {/* Courbe 3A: Coût Réel PÉRIODE ÉCHUE (Orange continue avec fond dégradé) */}
+                      <path d={pastAreaStr} fill="url(#actualCostGrad)" />
+                      <path d={pastPathStr} fill="none" stroke="#d97706" strokeWidth="3" />
 
-                    {/* Courbe 3B: Coût Réel PÉRIODE NON ÉCHUE (Orange pointillée de projection) */}
-                    <path d={futurePathStr} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 4" />
+                      {/* Courbe 3B: Coût Réel PÉRIODE NON ÉCHUE (Orange pointillée de projection) */}
+                      <path d={futurePathStr} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 4" />
 
-                    {/* Point d'arrêt Période Échue */}
-                    <circle cx={cutoffX} cy={actualPoints[currentCutoffIndex].y} r="4" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
+                      {/* Point d'arrêt Période Échue */}
+                      <circle cx={cutoffX} cy={actualPoints[currentCutoffIndex].y} r="4" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
 
-                    {/* Badges de fin de courbe */}
-                    <g transform="translate(335, 8)">
-                      <rect width="62" height="18" rx="4" fill="#1e40af" />
-                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                        {fmtBadge(totals.revisedBudget)}
-                      </text>
-                    </g>
+                      {/* Badges de fin de courbe */}
+                      <g transform="translate(335, 8)">
+                        <rect width="62" height="18" rx="4" fill="#1e40af" />
+                        <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                          {fmtBadge(totals.revisedBudget)}
+                        </text>
+                      </g>
 
-                    <g transform="translate(335, 30)">
-                      <rect width="62" height="18" rx="4" fill="#15803d" />
-                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                        {fmtBadge(totals.committed)}
-                      </text>
-                    </g>
+                      <g transform="translate(335, 30)">
+                        <rect width="62" height="18" rx="4" fill="#15803d" />
+                        <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                          {fmtBadge(totals.committed)}
+                        </text>
+                      </g>
 
-                    <g transform="translate(335, 52)">
-                      <rect width="62" height="18" rx="4" fill="#d97706" />
-                      <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
-                        {fmtBadge(totals.actualCost)}
-                      </text>
-                    </g>
-                  </svg>
+                      <g transform="translate(335, 52)">
+                        <rect width="62" height="18" rx="4" fill="#d97706" />
+                        <text x="31" y="12" fill="#ffffff" fontSize="8.5" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                          {fmtBadge(totals.actualCost)}
+                        </text>
+                      </g>
+
+                      {/* Ligne verticale & points au survol */}
+                      {hIdx !== null && hoveredX !== null && (
+                        <g>
+                          <line x1={hoveredX} y1="15" x2={hoveredX} y2="105" stroke="#2563eb" strokeWidth="1.5" strokeDasharray="3 3" />
+                          <circle cx={hoveredX} cy={budgetPoints[hIdx].y} r="5" fill="#2563eb" stroke="#ffffff" strokeWidth="2" />
+                          <circle cx={hoveredX} cy={engagedPoints[hIdx].y} r="5" fill="#16a34a" stroke="#ffffff" strokeWidth="2" />
+                          <circle cx={hoveredX} cy={actualPoints[hIdx].y} r="5" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
+                        </g>
+                      )}
+
+                      {/* Tranches invisibles d'interaction au survol pour chaque mois */}
+                      {monthLabels.map((_, idx) => {
+                        const x = 10 + (idx / (totalMonths - 1)) * 320;
+                        const colWidth = 320 / (totalMonths - 1);
+                        return (
+                          <rect
+                            key={`hover-zone-${idx}`}
+                            x={x - colWidth / 2}
+                            y="0"
+                            width={colWidth}
+                            height="120"
+                            fill="transparent"
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredPointIndex(idx)}
+                            onMouseLeave={() => setHoveredPointIndex(null)}
+                          />
+                        );
+                      })}
+                    </svg>
+
+                    {/* Tooltip flottant au survol dynamique */}
+                    {hIdx !== null && (() => {
+                      const isElapsed = hIdx <= currentCutoffIndex;
+                      const fullLabel = monthFullLabels[hIdx];
+                      const valBudget = budgetPoints[hIdx].val;
+                      const valEngaged = engagedPoints[hIdx].val;
+                      const valActual = actualPoints[hIdx].val;
+                      const isRightSide = hIdx >= 6;
+
+                      return (
+                        <div
+                          className={`absolute z-30 top-1 ${isRightSide ? 'left-2' : 'right-2'} bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs backdrop-blur-md min-w-[215px] pointer-events-none transition-all duration-150 animate-in fade-in duration-100`}
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-700 pb-1.5 mb-2">
+                            <span className="font-extrabold text-white text-xs">{fullLabel}</span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${isElapsed ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'}`}>
+                              {isElapsed ? '⚡ Période Échue' : '🔮 Non Échue'}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5 font-mono text-[11px]">
+                            <div className="flex items-center justify-between text-blue-300">
+                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-blue-500" /> Budget DS :</span>
+                              <span className="font-bold">{formatFCFA(valBudget)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-emerald-300">
+                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Engagé :</span>
+                              <span className="font-bold">{formatFCFA(valEngaged)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-amber-300">
+                              <span className="flex items-center gap-1.5 font-medium"><span className="w-2 h-2 rounded-full bg-amber-500" /> {isElapsed ? 'Coût Réel :' : 'Prévision EAC :'}</span>
+                              <span className="font-bold">{formatFCFA(valActual)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
                 );
               })()}
             </div>
