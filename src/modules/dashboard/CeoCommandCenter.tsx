@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
-import { CeoProjectItem, CeoExecutiveAlert, CeoDecisionItem } from '../../types/ceoDashboard';
+import { CeoProjectItem, CeoExecutiveAlert, CeoDecisionItem, CashForecastHorizon } from '../../types/ceoDashboard';
 import {
   Building2, TrendingUp, TrendingDown, DollarSign, CreditCard, ShoppingBag,
   CheckCircle2, AlertTriangle, AlertCircle, ShieldAlert, ChevronRight, RefreshCw,
@@ -12,6 +12,7 @@ import { SiteSelector } from '../../shared/components/SiteSelector';
 import { DataInsight } from '../../shared/components/DataInsight';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
+import { REAL_EXCEL_WBS } from '../../data/realExcelData';
 
 export const CeoCommandCenter: React.FC = () => {
   const {
@@ -70,7 +71,17 @@ export const CeoCommandCenter: React.FC = () => {
   // RECEPTACLE DES PROJETS DU PORTEFEUILLE AVEC ALIMENTATION DYNAMIQUE SSOT
   const realCeoProjects = useMemo<CeoProjectItem[]>(() => {
     return projects.map((p, idx) => {
-      const userWbsNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+      let userWbsNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+      if (!userWbsNodes || userWbsNodes.length === 0) {
+        const isBingerville = (p.id || '').includes('BEN') || (p.code || '').includes('BEN') || (p.name || '').toUpperCase().includes('BINGERVILLE');
+        const isSongon = (p.id || '').includes('SON') || (p.code || '').includes('SON') || (p.name || '').toUpperCase().includes('SONGON');
+        if (isBingerville) {
+          userWbsNodes = wbsMap['CIV-2026-ST-BING-001'] || wbsMap['BINGERVILLE-ST'] || REAL_EXCEL_WBS['CIV-2026-ST-BING-001'] || [];
+        } else if (isSongon) {
+          userWbsNodes = wbsMap['CIV-2026-ST-SONG-002'] || wbsMap['SONGON-ST'] || REAL_EXCEL_WBS['CIV-2026-ST-SONG-002'] || [];
+        }
+      }
+
       const summary = getProjectFinancialSummary(p, userWbsNodes, [], purchaseRequests, dailyReports);
 
       const contractValue = summary.contractAmount;
