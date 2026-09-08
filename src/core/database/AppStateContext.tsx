@@ -2577,6 +2577,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 4. Traçabilité Observations & Photos ➔ Audit Trail & Historique
     const logDetails = `Rapport ${reportCode} [${reportData.activityName || reportData.wbsCode}]: Qte ${reportData.realizedQty} ${reportData.unit || 'U'} (Taux ${rate}%). Personnel: ${reportData.workersCount || 0} p., Engins: ${reportData.equipmentCount || 0} u., Météo: ${reportData.weather || 'NC'}. Obs: ${reportData.notes || 'R.A.S.'}`;
     addAuditLog('CREATION_RAPPORT_JOURNALIER', 'PRODUCTION', reportCode, logDetails);
+
+    // 5. Mise à jour immédiate et synchrone des avancements WBS, Projet et Planning si statut Validé ou Verrouillé
+    if (report.status === 'Validé' || report.status === 'Verrouillé') {
+      setTimeout(() => {
+        updateDailyReportStatus(report.id, report.status as any);
+      }, 0);
+    }
   };
 
   const deleteDailyReport = (reportId: string) => {
