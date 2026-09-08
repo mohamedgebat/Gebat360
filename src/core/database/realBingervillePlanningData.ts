@@ -7,9 +7,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2026-08-31",
     "durationMonths": 3,
     "durationDays": 90,
-    "progress": 13,
+    "progress": 100,
     "isCategory": true,
-    "status": "En cours"
+    "status": "Terminé"
   },
   {
     "id": "plan-ben-2",
@@ -19,7 +19,7 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-02-28",
     "durationMonths": 9,
     "durationDays": 270,
-    "progress": 13,
+    "progress": 65,
     "isCategory": false,
     "status": "En cours"
   },
@@ -31,7 +31,7 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-03-31",
     "durationMonths": 10,
     "durationDays": 300,
-    "progress": 13,
+    "progress": 40,
     "isCategory": false,
     "status": "En cours"
   },
@@ -43,9 +43,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-07-31",
     "durationMonths": 4,
     "durationDays": 120,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-5",
@@ -55,7 +55,7 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-04-30",
     "durationMonths": 8,
     "durationDays": 240,
-    "progress": 13,
+    "progress": 15,
     "isCategory": false,
     "status": "En cours"
   },
@@ -67,7 +67,7 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-01-31",
     "durationMonths": 8,
     "durationDays": 240,
-    "progress": 13,
+    "progress": 30,
     "isCategory": false,
     "status": "En cours"
   },
@@ -79,9 +79,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-09-30",
     "durationMonths": 8,
     "durationDays": 240,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-8",
@@ -91,9 +91,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-06-30",
     "durationMonths": 3,
     "durationDays": 90,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-9",
@@ -103,9 +103,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-09-30",
     "durationMonths": 8,
     "durationDays": 240,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-10",
@@ -115,9 +115,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-06-30",
     "durationMonths": 8,
     "durationDays": 240,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-11",
@@ -127,9 +127,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-08-31",
     "durationMonths": 5,
     "durationDays": 150,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-12",
@@ -139,9 +139,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-06-30",
     "durationMonths": 6,
     "durationDays": 180,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-13",
@@ -151,9 +151,9 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-09-30",
     "durationMonths": 1,
     "durationDays": 30,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   },
   {
     "id": "plan-ben-14",
@@ -163,8 +163,8 @@ export const REAL_BINGERVILLE_PLANNING_TASKS = [
     "endDate": "2027-09-30",
     "durationMonths": 1,
     "durationDays": 30,
-    "progress": 13,
+    "progress": 0,
     "isCategory": false,
-    "status": "En cours"
+    "status": "A venir"
   }
 ];

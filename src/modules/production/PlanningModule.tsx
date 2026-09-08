@@ -188,11 +188,12 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     alert(`✅ Succès : ${parsedPlanningTasks.length} tâches de planning importées avec succès pour ${selectedProject.name} !`);
   };
 
-  // Résolution 100% dynamique des tâches du planning
+  // Résolution 100% dynamique des tâches du planning avec calcul réel d'avancement
   const tasks = useMemo<PlanningTask[]>(() => {
     if (!selectedProject) return [];
 
     const wbsNodes = wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [];
+    const projectReports = dailyReports.filter(r => isReportForProject(r, selectedProject));
     
     // Si des nœuds WBS existent, les utiliser prioritairement pour une dynamique 100% réactive
     if (wbsNodes && wbsNodes.length > 0) {
@@ -200,7 +201,24 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
       const flatten = (nodes: any[]) => {
         nodes.forEach((n, idx) => {
           const isCat = Boolean((n.children && n.children.length > 0) || n.level === 'lot' || n.level === 'sous_lot');
-          const prog = Number(n.progress !== undefined ? n.progress : 0);
+          
+          let prog = Number(n.progress !== undefined ? n.progress : 0);
+          
+          // Recherche de rapports quotidiens correspondants pour affiner le % d'avancement réel
+          const matchingReports = projectReports.filter(r => 
+            (r.wbsCode && r.wbsCode === n.code) || 
+            (r.wbsId && r.wbsId === n.id) ||
+            (r.activityName && n.name && r.activityName.toLowerCase().includes(n.name.toLowerCase()))
+          );
+          
+          if (matchingReports.length > 0) {
+            const sumPlanned = matchingReports.reduce((acc, r) => acc + Number(r.plannedQty || 0), 0);
+            const sumRealized = matchingReports.reduce((acc, r) => acc + Number(r.realizedQty || 0), 0);
+            if (sumPlanned > 0) {
+              prog = Math.min(100, Math.round((sumRealized / sumPlanned) * 100));
+            }
+          }
+
           let stat: 'Terminé' | 'En cours' | 'A venir' = 'A venir';
           if (prog >= 100) stat = 'Terminé';
           else if (prog > 0) stat = 'En cours';
@@ -237,15 +255,39 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     const isBingerville = selectedProject.id?.includes('BEN') || selectedProject.code?.includes('BEN') || selectedProject.name?.toUpperCase().includes('BINGERVILLE');
     const isSongon = selectedProject.id?.includes('SON') || selectedProject.code?.includes('SON') || selectedProject.name?.toUpperCase().includes('SONGON');
 
+    let baseTasks: PlanningTask[] = [];
     if (isBingerville) {
-      return REAL_BINGERVILLE_PLANNING_TASKS as PlanningTask[];
-    }
-    if (isSongon) {
-      return REAL_SONGON_PLANNING_TASKS as PlanningTask[];
+      baseTasks = REAL_BINGERVILLE_PLANNING_TASKS as PlanningTask[];
+    } else if (isSongon) {
+      baseTasks = REAL_SONGON_PLANNING_TASKS as PlanningTask[];
     }
 
-    return [];
-  }, [wbsMap, selectedProject]);
+    return baseTasks.map(t => {
+      let prog = t.progress;
+      const matchingReports = projectReports.filter(r => 
+        (r.wbsCode && r.wbsCode === t.wbsCode) || 
+        (r.activityName && t.name && r.activityName.toLowerCase().includes(t.name.toLowerCase()))
+      );
+      if (matchingReports.length > 0) {
+        const sumPlanned = matchingReports.reduce((acc, r) => acc + Number(r.plannedQty || 0), 0);
+        const sumRealized = matchingReports.reduce((acc, r) => acc + Number(r.realizedQty || 0), 0);
+        if (sumPlanned > 0) {
+          prog = Math.min(100, Math.round((sumRealized / sumPlanned) * 100));
+        }
+      }
+
+      let stat: 'Terminé' | 'En cours' | 'A venir' = t.status;
+      if (prog >= 100) stat = 'Terminé';
+      else if (prog > 0) stat = 'En cours';
+      else stat = 'A venir';
+
+      return {
+        ...t,
+        progress: prog,
+        status: stat
+      };
+    });
+  }, [wbsMap, dailyReports, selectedProject]);
 
   // Dates de début et fin globales
   const validStartDates = tasks.map(t => t.startDate).filter(Boolean).sort();
