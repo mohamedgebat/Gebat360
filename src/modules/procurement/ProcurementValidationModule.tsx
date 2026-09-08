@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 export const ProcurementValidationModule: React.FC = () => {
-  const { projects, purchaseRequests, alerts, dailyReports, purchaseOrders, receipts, addAuditLog, currentUser, updateDAStatus, updateDailyReportStatus } = useAppState();
+  const { projects, purchaseRequests, alerts, dailyReports, purchaseOrders, receipts, addAuditLog, currentUser, updateDAStatus, updateDailyReportStatus, deleteDailyReport } = useAppState();
 
   // Navigation par Onglets
   const [activeTab, setActiveTab] = useState<'center' | 'cycle' | 'threeway'>('center');
@@ -75,6 +75,22 @@ export const ProcurementValidationModule: React.FC = () => {
     // 2. RAPPORTS JOURNALIERS DE PRODUCTION
     if (dailyReports && dailyReports.length > 0) {
       dailyReports.forEach(rep => {
+        const repId = String(rep.id || rep.code || (rep as any).reportCode || '');
+        if (
+          repId === 'CR-2026-08-31-86' ||
+          repId === 'CR-2026-08-31-87' ||
+          repId === 'CR-2026-08-29-86' ||
+          repId === 'CR-2026-08-29-87' ||
+          repId === 'CR-2026-08-17-01' ||
+          repId === 'CR-2026-09-03-13-292' ||
+          repId === 'RJC-2026-00009' ||
+          repId === 'CR-2026-08-01-07-549' ||
+          repId.includes('1788439695094') ||
+          repId.includes('1788439156385')
+        ) {
+          return;
+        }
+
         const isApproved = rep.status === 'Validé' || rep.status === 'VALIDEE';
         const isRejected = rep.status === 'Refusé' || rep.status === 'REFUSEE';
         const isReturned = rep.status === 'Brouillon' || rep.status === 'RETOUR_CORRECTION';
@@ -83,7 +99,7 @@ export const ProcurementValidationModule: React.FC = () => {
         list.push({
           id: `VAL-RPT-${rep.id || rep.code}`,
           category: 'Rapport Journalier',
-          object: `Rapport Journalier ${rep.code || rep.reportCode || ''} — ${rep.activityName || 'Rapport terrain'} (${rep.realizedQty || 0} ${rep.unit || ''})`,
+          object: `Rapport Journalier ${rep.code || (rep as any).reportCode || ''} — ${rep.activityName || 'Rapport terrain'} (${rep.realizedQty || 0} ${rep.unit || ''})`,
           amount: 0,
           projectId: rep.projectId,
           projectName: rep.projectName || projects.find(p => p.id === rep.projectId)?.name || rep.projectId || '',
@@ -648,6 +664,21 @@ export const ProcurementValidationModule: React.FC = () => {
                                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs shadow-2xs transition"
                                 >
                                   Refuser
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`🗑️ Voulez-vous purger et supprimer définitivement le dossier ${item.id} ?`)) {
+                                      setItems(prev => prev.filter(i => i.id !== item.id));
+                                      const cleanId = item.id.replace('VAL-DA-', '').replace('VAL-RPT-', '').replace('VAL-ALT-', '');
+                                      if (item.category === 'Rapport Journalier' && deleteDailyReport) {
+                                        deleteDailyReport(cleanId);
+                                      }
+                                    }
+                                  }}
+                                  className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold rounded-xl text-xs border border-rose-200 transition cursor-pointer"
+                                  title="Purger ce dossier"
+                                >
+                                  Purge
                                 </button>
                               </>
                             )}

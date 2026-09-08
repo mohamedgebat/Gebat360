@@ -693,6 +693,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id === 'CR-2026-09-03-13-292' ||
       id === 'RJC-2026-00009' ||
       id === 'CR-2026-08-01-07-549' ||
+      id.includes('1788439695094') ||
+      id.includes('1788439156385') ||
+      id.startsWith('VAL-RPT-') ||
       id.startsWith('CR-REAL-');
 
     const saved = localStorage.getItem('gebat_daily_reports');
