@@ -1611,7 +1611,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   <span>2. Soumis</span>
                   <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-black rounded-full text-[10.5px]">
                     {dailyReports.filter(r => {
-                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      if (isDemoReportObj(r) || !isProjectReportMatch(r, selectedProject)) return false;
                       const s = (r.status || '').toUpperCase();
                       return s.includes('SOUMIS') || s.includes('ATTENTE') || s.includes('PENDING');
                     }).length}
@@ -1644,7 +1644,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   <span>3. Validé</span>
                   <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full text-[10.5px]">
                     {dailyReports.filter(r => {
-                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      if (isDemoReportObj(r) || !isProjectReportMatch(r, selectedProject)) return false;
                       const s = (r.status || '').toUpperCase();
                       return s.includes('VALID') || s.includes('APPROVED');
                     }).length}
@@ -1673,7 +1673,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   <span>4. Verrouillé</span>
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-black rounded-full text-[10.5px]">
                     {dailyReports.filter(r => {
-                      if (!isProjectReportMatch(r, selectedProject)) return false;
+                      if (isDemoReportObj(r) || !isProjectReportMatch(r, selectedProject)) return false;
                       const s = (r.status || '').toUpperCase();
                       return s.includes('VERROU') || s.includes('CLOSED');
                     }).length}
