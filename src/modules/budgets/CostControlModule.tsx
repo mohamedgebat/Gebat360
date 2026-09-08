@@ -158,23 +158,10 @@ export const CostControlModule: React.FC = () => {
     const isSongon = (selectedProject?.id || '').includes('SON') || (selectedProject?.code || '').includes('SON');
     const isBingerville = (selectedProject?.id || '').includes('BEN') || (selectedProject?.code || '').includes('BEN');
 
-    let baseSourceNodes: any[] = [];
+    // Nœuds racines principaux (lots/sections du projet) pour calcul des KPI sans double comptage
+    const rootNodes = projectWbs.length > 0 ? projectWbs : [];
 
-    const flattenWBS = (nodes: any[]): any[] => {
-      let list: any[] = [];
-      nodes.forEach(n => {
-        list.push(n);
-        if (n.children && n.children.length > 0) list = list.concat(flattenWBS(n.children));
-      });
-      return list;
-    };
-
-    const flatWbs = flattenWBS(projectWbs);
-    if (flatWbs.length > 0) {
-      baseSourceNodes = flatWbs;
-    }
-
-    return baseSourceNodes.map((w) => {
+    const mapNodeCostData = (w: any) => {
       const initial = Math.round(w.initialBudget || w.marketAmount || w.contractAmount || w.budget || 0);
       const revised = Math.round(w.revisedBudget || w.calculatedDsAmount || w.importedDsAmount || w.budget || initial);
 
@@ -262,7 +249,9 @@ export const CostControlModule: React.FC = () => {
         initialMargin,
         eacMargin,
       };
-    });
+    };
+
+    return rootNodes.map(mapNodeCostData);
   }, [selectedProject, projectWbs, purchaseRequests, purchaseOrders, receipts, dailyReports, stockMovements]);
 
   // SYNTHÈSE GLOBALE DES 14 INDICATEURS FINANCIERS DU COST CONTROL (PARTIE 5.23 & 5.24)
