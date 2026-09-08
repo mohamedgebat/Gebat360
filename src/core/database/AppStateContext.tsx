@@ -1529,8 +1529,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteSubcontract = async (id: string) => {
+    if (!id) return;
+    const targetStr = String(id).trim();
+
     setSubcontracts(prev => {
-      const updated = prev.filter(st => st.id !== id);
+      const updated = prev.filter(st => {
+        const stId = String(st.id || '').trim();
+        const stCode = String(st.code || '').trim();
+        return stId !== targetStr && stCode !== targetStr;
+      });
       safeSaveToStorage('gebat_subcontracts', updated);
       return updated;
     });
@@ -1542,6 +1549,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     addAuditLog('SUPPRESSION_CONTRAT_ST', 'SOUS_TRAITANCE', id, `Suppression contrat sous-traitance ${id}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('gebat_state_updated'));
+    }
   };
 
   const addSubcontractSituation = async (subcontractId: string, sitData: Partial<SubcontractSituation>) => {

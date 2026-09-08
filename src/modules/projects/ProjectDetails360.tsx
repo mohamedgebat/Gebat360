@@ -682,7 +682,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   const handleDeleteSubcontract = async (id: string, name: string) => {
     if (window.confirm(`Confirmez-vous la suppression du contrat sous-traitant "${name}" ? Cette action est irréversible.`)) {
       await deleteSubcontract(id);
-      if (selectedSubcontractDetails?.id === id) {
+      if (selectedSubcontractDetails && (selectedSubcontractDetails.id === id || selectedSubcontractDetails.code === id)) {
         setSelectedSubcontractDetails(null);
       }
     }
