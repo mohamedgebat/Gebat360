@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { useAppState } from '../../core/database/AppStateContext';
 import { REAL_BINGERVILLE_PLANNING_TASKS } from '../../core/database/realBingervillePlanningData';
 import { REAL_SONGON_PLANNING_TASKS } from '../../core/database/realSongonPlanningData';
+import { isReportForProject } from '../../utils/projectMatcher';
 import {
   Calendar,
   Clock,
@@ -486,7 +487,9 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">AVANCEMENT PHYSIQUE</span>
             <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">
-              {selectedProject ? `${Number(selectedProject.progress || 0).toFixed(1)}%` : '0.0%'}
+              {tasks.length > 0 
+                ? `${(tasks.reduce((acc, t) => acc + Number(t.progress || 0), 0) / tasks.length).toFixed(1)}%`
+                : selectedProject ? `${Number(selectedProject.progress || 0).toFixed(1)}%` : '0.0%'}
             </span>
             <span className="text-[10px] text-emerald-600 font-bold block mt-1">
               Planning rattaché au découpage WBS
