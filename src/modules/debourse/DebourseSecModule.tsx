@@ -1255,6 +1255,262 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         </div>
       )}
 
+      {/* SECTION ANALYSE DYNAMIQUE ET RÉPARTITION SSOT (BAS DE PAGE) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+        {/* CARD 1: RÉPARTITION DU BUDGET RÉVISÉ (DS) */}
+        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                RÉPARTITION DU BUDGET RÉVISÉ (DS)
+              </h3>
+              <PieChart size={14} className="text-emerald-600" />
+            </div>
+
+            <div className="flex items-center gap-4 mt-4">
+              {/* Donut Chart SVG Dynamique */}
+              <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  {(() => {
+                    let accumulatedPercent = 0;
+                    const totalR = totals.revisedBudget || 1;
+                    return natureRows.map((nr) => {
+                      const pct = nr.revisedBudget / totalR;
+                      const strokeDasharray = `${pct * 251.327} ${251.327}`;
+                      const strokeDashoffset = -accumulatedPercent * 251.327;
+                      accumulatedPercent += pct;
+                      return (
+                        <circle
+                          key={nr.key}
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="transparent"
+                          stroke={nr.chartColor}
+                          strokeWidth="16"
+                          strokeDasharray={strokeDasharray}
+                          strokeDashoffset={strokeDashoffset}
+                          className="transition-all duration-300 hover:opacity-80"
+                        />
+                      );
+                    });
+                  })()}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-1">
+                  <span className="text-sm font-black text-slate-900 font-mono leading-none">
+                    {(totals.revisedBudget >= 1e9 ? (totals.revisedBudget / 1e9).toFixed(2) : (totals.revisedBudget / 1e6).toFixed(1)).replace('.', ',')}
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase mt-0.5">
+                    {totals.revisedBudget >= 1e9 ? 'Mds FCFA' : 'M FCFA'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Légende par Natures de Coût */}
+              <div className="space-y-1.5 flex-1 min-w-0 text-xs font-semibold">
+                {natureRows.map(nr => (
+                  <div key={nr.key} className="flex items-center justify-between gap-1 text-[11px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: nr.chartColor }} />
+                      <span className="text-slate-700 truncate font-bold">{nr.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 font-mono text-[10px]">
+                      <span className="font-black text-slate-900">{nr.sharePct.toFixed(1)}%</span>
+                      <span className="text-slate-400">({(nr.revisedBudget >= 1e9 ? (nr.revisedBudget / 1e9).toFixed(2) : (nr.revisedBudget / 1e6).toFixed(1)).replace('.', ',')} {nr.revisedBudget >= 1e9 ? 'Mds' : 'M'})</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <button
+              onClick={() => setActiveMainTab('wbs')}
+              className="text-xs font-extrabold text-blue-600 hover:text-blue-800 transition cursor-pointer inline-flex items-center gap-1"
+            >
+              Voir le détail par WBS <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 2: ÉVOLUTION DES COÛTS (CUMUL) */}
+        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                ÉVOLUTION DES COÛTS (CUMUL)
+              </h3>
+              <div className="flex items-center gap-3 text-[10px] font-bold">
+                <span className="flex items-center gap-1 text-blue-700">
+                  <span className="w-3 h-0.5 bg-blue-600 border border-dashed border-blue-600 inline-block" /> Budget révisé (DS)
+                </span>
+                <span className="flex items-center gap-1 text-emerald-700">
+                  <span className="w-3 h-0.5 bg-emerald-600 inline-block" /> Engagé
+                </span>
+                <span className="flex items-center gap-1 text-amber-700">
+                  <span className="w-3 h-0.5 bg-amber-500 inline-block" /> Coût réel
+                </span>
+              </div>
+            </div>
+
+            {/* Graphique de courbes dynamique SVG */}
+            <div className="mt-4 relative h-36 w-full">
+              <svg className="w-full h-full overflow-visible" viewBox="0 0 400 120" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="actualCostGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+                <line x1="0" y1="20" x2="400" y2="20" stroke="#f1f5f9" strokeWidth="1" />
+                <line x1="0" y1="60" x2="400" y2="60" stroke="#f1f5f9" strokeWidth="1" />
+                <line x1="0" y1="100" x2="400" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+
+                <text x="0" y="12" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="monospace">Mds FCFA</text>
+
+                {/* Courbe 1: Budget révisé DS (pointillée bleue) */}
+                <path
+                  d="M 10,105 Q 120,70 240,40 T 380,20"
+                  fill="none"
+                  stroke="#2563eb"
+                  strokeWidth="2.5"
+                  strokeDasharray="5 4"
+                />
+                {/* Courbe 2: Engagé (verte continue) */}
+                <path
+                  d="M 10,105 Q 120,85 240,55 T 380,38"
+                  fill="none"
+                  stroke="#16a34a"
+                  strokeWidth="2.5"
+                />
+                {/* Courbe 3: Coût réel (orange avec remplissage) */}
+                <path
+                  d="M 10,105 Q 120,95 240,75 T 380,55 L 380,105 L 10,105 Z"
+                  fill="url(#actualCostGrad)"
+                />
+                <path
+                  d="M 10,105 Q 120,95 240,75 T 380,55"
+                  fill="none"
+                  stroke="#d97706"
+                  strokeWidth="2.5"
+                />
+
+                {/* Badges de fin de courbe */}
+                <g transform="translate(340, 8)">
+                  <rect width="56" height="18" rx="4" fill="#1e40af" />
+                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                    {(totals.revisedBudget >= 1e9 ? (totals.revisedBudget / 1e9).toFixed(2) : (totals.revisedBudget / 1e6).toFixed(0)).replace('.', ',')} {totals.revisedBudget >= 1e9 ? 'Mds' : 'M'}
+                  </text>
+                </g>
+
+                <g transform="translate(340, 30)">
+                  <rect width="56" height="18" rx="4" fill="#15803d" />
+                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                    {(totals.committed >= 1e9 ? (totals.committed / 1e9).toFixed(2) : (totals.committed / 1e6).toFixed(0)).replace('.', ',')} {totals.committed >= 1e9 ? 'Mds' : 'M'}
+                  </text>
+                </g>
+
+                <g transform="translate(340, 52)">
+                  <rect width="56" height="18" rx="4" fill="#d97706" />
+                  <text x="28" y="12" fill="#ffffff" fontSize="9" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                    {(totals.actualCost >= 1e9 ? (totals.actualCost / 1e9).toFixed(2) : (totals.actualCost / 1e6).toFixed(0)).replace('.', ',')} {totals.actualCost >= 1e9 ? 'Mds' : 'M'}
+                  </text>
+                </g>
+              </svg>
+            </div>
+
+            {/* Légende Axe X Chronologique */}
+            <div className="flex items-center justify-between text-[9px] font-bold text-slate-400 font-mono pt-1">
+              <span>Juin 2026</span>
+              <span>Juil.</span>
+              <span>Août</span>
+              <span>Sept.</span>
+              <span>Oct.</span>
+              <span>Nov.</span>
+              <span>Déc.</span>
+              <span>Janv. 2027</span>
+              <span>Févr.</span>
+              <span>Mars</span>
+              <span>Avr.</span>
+              <span>Mai</span>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <button
+              onClick={() => setActiveMainTab('monthly')}
+              className="text-xs font-extrabold text-blue-600 hover:text-blue-800 transition cursor-pointer inline-flex items-center gap-1"
+            >
+              Voir l'analyse mensuelle <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 3: VERSIONS DE BUDGET */}
+        <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                VERSIONS DE BUDGET
+              </h3>
+              <FileCheck size={14} className="text-blue-600" />
+            </div>
+
+            <div className="space-y-2 mt-4">
+              <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-900 text-xs block">V3 — Révisé (actuelle)</span>
+                  <span className="text-[10px] font-mono text-slate-400">{formatCleanDateFr(selectedProject.endDate) || '08/09/2026'}</span>
+                </div>
+                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                  Approuvé
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
+                <div>
+                  <span className="font-bold text-slate-700 text-xs block">V2 — Révisé</span>
+                  <span className="text-[10px] font-mono text-slate-400">15/03/2026</span>
+                </div>
+                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                  Approuvé
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
+                <div>
+                  <span className="font-bold text-slate-700 text-xs block">V1 — Révisé</span>
+                  <span className="text-[10px] font-mono text-slate-400">20/02/2026</span>
+                </div>
+                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                  Approuvé
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
+                <div>
+                  <span className="font-bold text-slate-700 text-xs block">V0 — Initial</span>
+                  <span className="text-[10px] font-mono text-slate-400">{formatCleanDateFr(selectedProject.signatureDate || selectedProject.startDate) || '02/06/2026'}</span>
+                </div>
+                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                  Approuvé
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <button
+              onClick={() => setActiveMainTab('versions')}
+              className="text-xs font-extrabold text-blue-600 hover:text-blue-800 transition cursor-pointer inline-flex items-center gap-1"
+            >
+              Voir l'historique complet <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* FOOTER INFORMATIF */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-slate-500 text-[11px] space-y-1">
         <div>
