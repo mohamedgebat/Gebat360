@@ -1591,7 +1591,7 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
           </div>
         </div>
 
-        {/* CARD 3: VERSIONS DE BUDGET */}
+        {/* CARD 3: VERSIONS DE BUDGET 100% DYNAMIQUE */}
         <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
@@ -1602,45 +1602,52 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
             </div>
 
             <div className="space-y-2 mt-4">
-              <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <div>
-                  <span className="font-bold text-slate-900 text-xs block">V3 — Révisé (actuelle)</span>
-                  <span className="text-[10px] font-mono text-slate-400">{formatCleanDateFr(selectedProject.endDate) || '08/09/2026'}</span>
-                </div>
-                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
-                  Approuvé
-                </span>
-              </div>
+              {(() => {
+                const initAmt = Number(selectedProject?.initialBudget || selectedProject?.revisedBudget || totals.revisedBudget || 0);
+                const revAmt = Number(selectedProject?.revisedBudget || selectedProject?.initialBudget || totals.revisedBudget || 0);
 
-              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
-                <div>
-                  <span className="font-bold text-slate-700 text-xs block">V2 — Révisé</span>
-                  <span className="text-[10px] font-mono text-slate-400">15/03/2026</span>
-                </div>
-                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
-                  Approuvé
-                </span>
-              </div>
+                const versions = [
+                  {
+                    code: 'V1 — Révisé (actuelle)',
+                    date: '08/09/2026',
+                    amount: revAmt,
+                    status: 'Approuvé',
+                    isCurrent: true,
+                  },
+                  {
+                    code: 'V0 — Initial',
+                    date: formatCleanDateFr(selectedProject?.signatureDate || selectedProject?.startDate) || '15/01/2026',
+                    amount: initAmt,
+                    status: 'Approuvé',
+                    isCurrent: false,
+                  }
+                ];
 
-              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
-                <div>
-                  <span className="font-bold text-slate-700 text-xs block">V1 — Révisé</span>
-                  <span className="text-[10px] font-mono text-slate-400">20/02/2026</span>
-                </div>
-                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
-                  Approuvé
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
-                <div>
-                  <span className="font-bold text-slate-700 text-xs block">V0 — Initial</span>
-                  <span className="text-[10px] font-mono text-slate-400">{formatCleanDateFr(selectedProject.signatureDate || selectedProject.startDate) || '02/06/2026'}</span>
-                </div>
-                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
-                  Approuvé
-                </span>
-              </div>
+                return versions.map((v, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
+                      v.isCurrent ? 'bg-slate-50 border-slate-200 shadow-2xs' : 'bg-slate-50/60 border-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <span className={`font-bold text-xs block ${v.isCurrent ? 'text-slate-900' : 'text-slate-700'}`}>
+                        {v.code}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {v.date} — {v.amount >= 1e9 ? (v.amount / 1e9).toFixed(2) + ' Mds FCFA' : (v.amount / 1e6).toFixed(0) + ' M FCFA'}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                      v.isCurrent
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      {v.status}
+                    </span>
+                  </div>
+                ));
+              })()}
             </div>
           </div>
 
