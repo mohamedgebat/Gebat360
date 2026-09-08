@@ -804,9 +804,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 1 : BUDGET INITIAL (DS) */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              BUDGET INITIAL (DS)
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                BUDGET INITIAL (DS)
+              </span>
+              <DataInsight
+                metricId="budget_initial"
+                title="Budget Initial Déboursé Sec (DS V0)"
+                value={formatFCFA(totals.initialBudget)}
+                context={{ ...selectedProject, initialBudget: totals.initialBudget }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-blue-600 text-white rounded-full shadow-sm shrink-0">
               <Briefcase size={14} />
             </div>
@@ -819,9 +828,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 2 : BUDGET RÉVISÉ (DS) */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              BUDGET RÉVISÉ (DS)
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                BUDGET RÉVISÉ (DS)
+              </span>
+              <DataInsight
+                metricId="budget_revised"
+                title="Budget Révisé Déboursé Sec (DS)"
+                value={formatFCFA(totals.revisedBudget)}
+                context={{ ...selectedProject, revisedBudget: totals.revisedBudget, initialBudget: totals.initialBudget }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-purple-600 text-white rounded-full shadow-sm shrink-0">
               <Calculator size={14} />
             </div>
@@ -839,9 +857,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 3 : ENGAGÉ TOTAL */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              ENGAGÉ TOTAL
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                ENGAGÉ TOTAL
+              </span>
+              <DataInsight
+                metricId="committed_total"
+                title="Engagé Total Déboursé Sec"
+                value={formatFCFA(totals.committed)}
+                context={{ ...selectedProject, committed: totals.committed, revisedBudget: totals.revisedBudget }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-emerald-600 text-white rounded-full shadow-sm shrink-0">
               <ShoppingBag size={14} />
             </div>
@@ -857,9 +884,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 4 : COÛT RÉEL À DATE */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              COÛT RÉEL À DATE
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                COÛT RÉEL À DATE
+              </span>
+              <DataInsight
+                metricId="cost_real"
+                title="Coût Réel Constaté à Date"
+                value={formatFCFA(totals.actualCost)}
+                context={{ ...selectedProject, actualCost: totals.actualCost, revisedBudget: totals.revisedBudget }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-orange-500 text-white rounded-full shadow-sm shrink-0">
               <Coins size={14} />
             </div>
@@ -875,9 +911,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 5 : PRÉVISION À TERMINAISON (EAC) */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              PRÉVISION À TERMINAISON (EAC)
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                PRÉVISION À TERMINAISON (EAC)
+              </span>
+              <DataInsight
+                metricId="forecast_eac"
+                title="Prévision à Terminaison (EAC)"
+                value={formatFCFA(totals.eac)}
+                context={{ ...selectedProject, eac: totals.eac, revisedBudget: totals.revisedBudget }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-teal-500 text-white rounded-full shadow-sm shrink-0">
               <TrendingUp size={14} />
             </div>
@@ -893,9 +938,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         {/* CARD 6 : MARGE PRÉVISIONNELLE */}
         <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 relative">
           <div className="flex items-start justify-between gap-1">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
-              MARGE PRÉVISIONNELLE
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide leading-tight block">
+                MARGE PRÉVISIONNELLE
+              </span>
+              <DataInsight
+                metricId="margin_forecast"
+                title="Marge Prévisionnelle Chantier"
+                value={formatFCFA((Number(selectedProject.contractAmount || (totals.revisedBudget * 1.25))) - totals.eac)}
+                context={{ ...selectedProject, contractAmount: selectedProject.contractAmount, eac: totals.eac }}
+                iconSize={12}
+              />
+            </div>
             <div className="p-2 bg-amber-500 text-white rounded-full shadow-sm shrink-0">
               <BarChart2 size={14} />
             </div>
@@ -1237,6 +1291,13 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
                 <FileCheck className="text-blue-600" size={18} /> Historique Comparatif des Révisions Budgétaires
+                <DataInsight
+                  metricId="debourse_versions"
+                  title="Historique Comparatif des Révisions Budgétaires"
+                  value="2 versions validées (V0 & V1)"
+                  context={{ ...selectedProject }}
+                  iconSize={13}
+                />
               </h3>
               <span className="text-xs font-bold text-slate-500">2 versions enregistrées</span>
             </div>
@@ -1353,9 +1414,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                RÉPARTITION DU BUDGET RÉVISÉ (DS)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  RÉPARTITION DU BUDGET RÉVISÉ (DS)
+                </h3>
+                <DataInsight
+                  metricId="debourse_nature_distribution"
+                  title="Répartition du Budget DS par Nature de Coût"
+                  value={formatFCFA(totals.revisedBudget)}
+                  context={{ ...selectedProject, revisedBudget: totals.revisedBudget, natureRows }}
+                  iconSize={12}
+                />
+              </div>
               <PieChart size={14} className="text-emerald-600" />
             </div>
 
@@ -1430,9 +1500,18 @@ export const DebourseSecModule: React.FC<DebourseSecModuleProps> = ({
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                ÉVOLUTION DES COÛTS (CUMUL)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  ÉVOLUTION DES COÛTS (CUMUL)
+                </h3>
+                <DataInsight
+                  metricId="debourse_scurve"
+                  title="Courbe en S d’Évolution des Coûts Cumulés"
+                  value={formatFCFA(totals.actualCost)}
+                  context={{ ...selectedProject, actualCost: totals.actualCost, committed: totals.committed, revisedBudget: totals.revisedBudget }}
+                  iconSize={12}
+                />
+              </div>
               <div className="flex items-center gap-2.5 text-[9px] font-extrabold">
                 <span className="flex items-center gap-1 text-blue-700">
                   <span className="w-2.5 h-0.5 bg-blue-600 border border-dashed border-blue-600 inline-block" /> Budget DS

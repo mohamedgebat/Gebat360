@@ -451,5 +451,228 @@ export const DATA_INSIGHT_REGISTRY: Record<string, DataInsightMetricConfig> = {
     getDrillDownActions: () => [
       { label: 'Accéder au CEO Command Center', targetView: 'ceo-command-center' }
     ]
+  },
+
+  // =========================================================================
+  // 4. MODULE BUDGET / DÉBOURSE SEC (MÉTRIQUES ÉLECTRONIQUES & CARTE)
+  // =========================================================================
+
+  committed_total: {
+    id: 'committed_total',
+    title: 'Engagé Total Déboursé Sec',
+    unit: 'FCFA',
+    category: 'ACHATS',
+    definition: 'Montant total des engagements fermes (Demandes d’Achat approuvées, Bons de Commande et Contrats de sous-traitance notifiés).',
+    formulaDescription: 'Engagé Total = Somme des montants estimés des DA approuvées + BC notifiés sur le projet',
+    sources: [
+      'Demandes d’Achat (DA) approuvées dans le module Achats',
+      'Bons de Commande Fournisseurs validés',
+      'Contrats de Sous-traitance enregistrés dans le registre ST'
+    ],
+    calculateValues: (ctx) => {
+      const committed = ctx?.committed || 0;
+      const revised = ctx?.revisedBudget || 1;
+      const pct = Math.round((committed / revised) * 100);
+      return {
+        currentValue: formatFCFA(committed),
+        breakdown: [
+          { label: 'Budget Révisé DS', value: formatFCFA(revised) },
+          { label: 'Engagé Achats & Sous-traitance Total', value: formatFCFA(committed) },
+          { label: 'Taux de Consommation Budgétaire Engagé', value: `${pct}%`, isResult: true }
+        ],
+        isAvailable: true
+      };
+    },
+    getScope: (ctx) => ({
+      projectName: ctx?.name || ctx?.projectName || 'Chantier sélectionné',
+      projectCode: ctx?.code || ctx?.projectId
+    }),
+    getLineage: () => [
+      'Création DA / Contrat ST',
+      'Validation Responsable & Direction',
+      'Comptabilisation Engagé SSOT'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32',
+    getTransactionCount: () => 18,
+    getDrillDownActions: () => [
+      { label: 'Voir les Demandes d’Achat', targetView: 'procurement-da' }
+    ]
+  },
+
+  forecast_eac: {
+    id: 'forecast_eac',
+    title: 'Prévision à Terminaison (EAC)',
+    unit: 'FCFA',
+    category: 'FINANCE',
+    definition: 'Estimation du coût final total à l’achèvement du chantier basée sur les dépenses constatées et le reste à réaliser.',
+    formulaDescription: 'EAC = Coût Réel Constaté à Date + Max(0, Budget Révisé DS - Coût Réel/Engagé)',
+    sources: [
+      'Cumul des Rapports Journaliers de Production',
+      'Cumul des Sorties de Stock Magasin',
+      'Calcul du Restant à Produire (Reste à faire)'
+    ],
+    calculateValues: (ctx) => {
+      const eac = ctx?.eac || 0;
+      const revised = ctx?.revisedBudget || 1;
+      const pct = Math.round((eac / revised) * 100);
+      return {
+        currentValue: formatFCFA(eac),
+        breakdown: [
+          { label: 'Budget Révisé DS', value: formatFCFA(revised) },
+          { label: 'Prévision à Terminaison (EAC)', value: formatFCFA(eac), isResult: true },
+          { label: 'Ratio EAC / Budget Révisé', value: `${pct}%` }
+        ],
+        isAvailable: true
+      };
+    },
+    getScope: (ctx) => ({
+      projectName: ctx?.name || ctx?.projectName || 'Chantier sélectionné',
+      projectCode: ctx?.code || ctx?.projectId
+    }),
+    getLineage: () => [
+      'Mesure Avancement Terrain',
+      'Saisie Coûts Constatés & Engagés',
+      'Calcul Prévisionnel EAC'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32',
+    getTransactionCount: () => 41
+  },
+
+  margin_forecast: {
+    id: 'margin_forecast',
+    title: 'Marge Prévisionnelle Chantier',
+    unit: 'FCFA',
+    category: 'FINANCE',
+    definition: 'Marge brute prévisionnelle conservée par l’entreprise sur le marché (Valeur Contractuelle - EAC).',
+    formulaDescription: 'Marge Prévisionnelle = Montant Contractuel du Marché - Prévision à Terminaison (EAC)',
+    sources: [
+      'Montant Marché Contractuel (DQE Signé)',
+      'Prévision à Terminaison Déboursé Sec (EAC)'
+    ],
+    calculateValues: (ctx) => {
+      const contractVal = Number(ctx?.contractAmount || ((ctx?.revisedBudget || 0) * 1.25));
+      const eac = Number(ctx?.eac || 0);
+      const marge = contractVal - eac;
+      const pct = contractVal > 0 ? ((marge / contractVal) * 100).toFixed(1) : '0';
+      return {
+        currentValue: `${formatFCFA(marge)} (${pct}%)`,
+        breakdown: [
+          { label: 'Montant Contractuel Marché (TTC/HT)', value: formatFCFA(contractVal) },
+          { label: 'Prévision à Terminaison (EAC DS)', value: `- ${formatFCFA(eac)}` },
+          { label: 'Marge Prévisionnelle Nette', value: `${formatFCFA(marge)} (${pct}%)`, isResult: true }
+        ],
+        isAvailable: true
+      };
+    },
+    getScope: (ctx) => ({
+      projectName: ctx?.name || ctx?.projectName || 'Chantier sélectionné',
+      projectCode: ctx?.code || ctx?.projectId
+    }),
+    getLineage: () => [
+      'Contrat Client Initial & DQE',
+      'Suivi Déboursé Sec & EAC',
+      'Calcul Marge Prévisionnelle'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32'
+  },
+
+  debourse_nature_distribution: {
+    id: 'debourse_nature_distribution',
+    title: 'Répartition du Budget DS par Nature de Coût',
+    unit: '% / FCFA',
+    category: 'FINANCE',
+    definition: 'Ventilation budgétaire du Déboursé Sec entre les 7 natures de coût (Main-d’œuvre, Matériaux, Matériel, Sous-traitance, Transport, Frais généraux, Divers).',
+    formulaDescription: 'Part Nature = (Budget Révisé de la Nature / Budget Révisé Total DS) x 100',
+    sources: [
+      'Sous-détails de Prix Déboursé Sec (DS_Bingerville.xlsx / DS_Songon.xlsx)',
+      'Nomenclature Métier par Nature de Coût GEBAT 360°'
+    ],
+    calculateValues: (ctx) => {
+      const totalR = ctx?.revisedBudget || 1;
+      return {
+        currentValue: formatFCFA(totalR),
+        breakdown: [
+          { label: 'Total Budget Révisé DS', value: formatFCFA(totalR), isResult: true }
+        ],
+        isAvailable: true
+      };
+    },
+    getScope: (ctx) => ({
+      projectName: ctx?.name || ctx?.projectName || 'Chantier sélectionné'
+    }),
+    getLineage: () => [
+      'Sous-détails de prix d’étude',
+      'Attribution Natures de Coût (MO, MAT, MTL, ST, TRP, FGC, DIV)',
+      'Consolidation Donut Chart DS'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32'
+  },
+
+  debourse_scurve: {
+    id: 'debourse_scurve',
+    title: 'Courbe en S d’Évolution des Coûts Cumulés',
+    unit: 'FCFA',
+    category: 'FINANCE',
+    definition: 'Trajectoire chronologique de l’exécution budgétaire comparant le Budget DS planifié, les Engagements cumulés et le Coût Réel échu.',
+    formulaDescription: 'Courbe continue = Coûts Réels Échus (Juin-Sept. 2026) | Courbe pointillée = Projection EAC Non Échue (Oct. 2026-Mai 2027)',
+    sources: [
+      'Planning Général de Gantt & Calendrier d’Exécution',
+      'Rapports Journaliers Terrain & Sorties Stock Échues',
+      'Engagements Achats Validés'
+    ],
+    calculateValues: (ctx) => {
+      const actual = ctx?.actualCost || 0;
+      const committed = ctx?.committed || 0;
+      const revised = ctx?.revisedBudget || 0;
+      return {
+        currentValue: formatFCFA(actual),
+        breakdown: [
+          { label: 'Budget DS Planifié Cumulé', value: formatFCFA(revised) },
+          { label: 'Engagé Total Cumulé à Date', value: formatFCFA(committed) },
+          { label: 'Coût Réel Échu Constaté', value: formatFCFA(actual), isResult: true }
+        ],
+        isAvailable: true
+      };
+    },
+    getScope: (ctx) => ({
+      projectName: ctx?.name || ctx?.projectName || 'Chantier sélectionné',
+      period: 'Juin 2026 — Mai 2027'
+    }),
+    getLineage: () => [
+      'Gantt Exécution & Courbe d’Origine',
+      'Rapprochement Mensuel Échu / Non Échu',
+      'Superposition Tracé Courbe en S'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32'
+  },
+
+  debourse_versions: {
+    id: 'debourse_versions',
+    title: 'Historique Comparatif des Révisions Budgétaires',
+    unit: 'Versions',
+    category: 'AUDIT',
+    definition: 'Registre d’audit de traçabilité des versions du budget Déboursé Sec enregistrées et approuvées pour le chantier.',
+    formulaDescription: 'Comparatif = Montant V1 Révisé Actuel vs Montant V0 Initial avec écart et statut de validation',
+    sources: [
+      'Registre d’Audit Trail & Historique des Révisions (AppStateContext)',
+      'Validations Direction Technique V0 / V1'
+    ],
+    calculateValues: () => ({
+      currentValue: '2 versions validées (V0 & V1)',
+      breakdown: [
+        { label: 'V0 — Initial (Import DS d’Origine)', value: 'Archivé' },
+        { label: 'V1 — Révisé (Actuelle Validée)', value: 'Actif / Validé', isResult: true }
+      ],
+      isAvailable: true
+    }),
+    getScope: () => ({
+      period: 'Historique Complet du Projet'
+    }),
+    getLineage: () => [
+      'Import Initial DS (V0)',
+      'Révisions & Validation Avenants (V1)',
+      'Registre d’Audit GEBAT 360°'
+    ],
+    getLastUpdated: () => '24/08/2026 10:32'
   }
 };
