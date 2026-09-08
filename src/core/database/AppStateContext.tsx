@@ -922,7 +922,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter(st => 
+              st.id !== 'ST-SON-001' && 
+              st.id !== 'ST-SON-002' && 
+              st.id !== 'ST-BEN-001' &&
+              st.code !== 'CTR-ST-SON-2026-001' &&
+              st.code !== 'CTR-ST-SON-2026-002' &&
+              st.code !== 'CTR-ST-BEN-2026-001'
+            );
+            if (clean.length !== parsed.length) {
+              localStorage.setItem('gebat_subcontracts', JSON.stringify(clean));
+            }
+            return clean;
+          }
         } catch (e) {}
       }
     }
@@ -930,9 +943,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    if (subcontracts.length > 0) {
-      localStorage.setItem('gebat_subcontracts', JSON.stringify(subcontracts));
-    }
+    safeSaveToStorage('gebat_subcontracts', subcontracts);
   }, [subcontracts]);
 
   // Synchronisation 100% dynamique depuis la base de données MySQL via REST API
