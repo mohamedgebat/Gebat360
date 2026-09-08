@@ -79,6 +79,7 @@ interface AppStateContextType {
   deleteSubcontract: (id: string) => Promise<void>;
   addSubcontractSituation: (subcontractId: string, sitData: Partial<SubcontractSituation>) => Promise<void>;
   createDailyReport: (reportData: Omit<DailyReport, 'id' | 'createdAt' | 'reportCode'>) => void;
+  deleteDailyReport: (reportId: string) => void;
   updateDailyReportStatus: (reportId: string, status: any, comment?: string) => void;
   createValidationTask: (taskData: Omit<ValidationTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateValidationTaskStatus: (taskIdOrReportId: string, status: ValidationTaskStatus, comment?: string) => void;
@@ -689,6 +690,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id === 'CR-2026-08-29-86' ||
       id === 'CR-2026-08-29-87' ||
       id === 'CR-2026-08-17-01' ||
+      id === 'CR-2026-09-03-13-292' ||
+      id === 'RJC-2026-00009' ||
+      id === 'CR-2026-08-01-07-549' ||
       id.startsWith('CR-REAL-');
 
     const saved = localStorage.getItem('gebat_daily_reports');
@@ -698,7 +702,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const clean = parsed.filter((r: any) => !isDemoId(String(r.id || r.code || '')));
+          const clean = parsed.filter((r: any) => !isDemoId(String(r.id || r.code || r.reportCode || '')));
           if (clean.length !== parsed.length) {
             safeSaveToStorage('gebat_daily_reports', clean);
           }
@@ -711,7 +715,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed)) {
-          const cleanBackup = backupParsed.filter((r: any) => !isDemoId(String(r.id || r.code || '')));
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoId(String(r.id || r.code || r.reportCode || '')));
           return cleanBackup;
         }
       } catch (e) {}
@@ -2497,6 +2501,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addAuditLog('CREATION_RAPPORT_JOURNALIER', 'PRODUCTION', reportCode, logDetails);
   };
 
+  const deleteDailyReport = (reportId: string) => {
+    setDailyReports(prev => {
+      const clean = prev.filter(r => r.id !== reportId && r.code !== reportId && (r as any).reportCode !== reportId);
+      safeSaveToStorage('gebat_daily_reports', clean);
+      const userCreated = clean.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
+      return clean;
+    });
+    setValidationTasks(prev => {
+      const cleanTasks = prev.filter(t => t.reportId !== reportId && t.id !== reportId);
+      safeSaveToStorage('gebat_validation_tasks', cleanTasks);
+      return cleanTasks;
+    });
+    addAuditLog('SUPPRESSION_RAPPORT', 'PRODUCTION', reportId, `Rapport ${reportId} supprimé définitivement du registre par ${currentUser?.name || 'Valideur'}`);
+  };
+
   const updateDailyReportStatus = (reportId: string, newStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé' | 'Refusé', comment?: string) => {
     const timestampStr = new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     const actorName = currentUser?.name || 'Utilisateur';
@@ -3220,6 +3240,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateStockItem,
         deleteStockItem,
         createDailyReport,
+        deleteDailyReport,
         updateDailyReportStatus,
         createValidationTask,
         updateValidationTaskStatus,

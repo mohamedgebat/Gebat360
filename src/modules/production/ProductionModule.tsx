@@ -50,7 +50,7 @@ interface ProductionModuleProps {
 }
 
 export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProject, initialProjectId }) => {
-  const { projects, createDailyReport, updateDailyReportStatus, updateValidationTaskStatus, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], setActiveTab } = useAppState();
+  const { projects, createDailyReport, updateDailyReportStatus, updateValidationTaskStatus, deleteDailyReport, addAuditLog, currentUser, users = [], wbsMap, dailyReports, stockItems = [], setActiveTab } = useAppState();
 
   // État local réactif du projet/site sélectionné
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
@@ -1958,11 +1958,40 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                   >
                                     ↩️ Correction
                                   </button>
+                                  {deleteDailyReport && (
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${rep.code || rep.id} ?`)) {
+                                          deleteDailyReport(rep.id);
+                                        }
+                                      }}
+                                      className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
+                                      title="Supprimer ce rapport du registre"
+                                    >
+                                      <Trash2 size={13} />
+                                      <span>Supprimer</span>
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
-                                <span className="px-2.5 py-1 bg-amber-50 text-amber-800 font-bold rounded-lg text-[10.5px] border border-amber-200">
-                                  ⏳ En attente de validation
-                                </span>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="px-2.5 py-1 bg-amber-50 text-amber-800 font-bold rounded-lg text-[10.5px] border border-amber-200">
+                                    ⏳ En attente de validation
+                                  </span>
+                                  {deleteDailyReport && (
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`🗑️ Voulez-vous supprimer définitivement le rapport ${rep.code || rep.id} ?`)) {
+                                          deleteDailyReport(rep.id);
+                                        }
+                                      }}
+                                      className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
+                                      title="Supprimer ce rapport"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
                               );
                             }
 
