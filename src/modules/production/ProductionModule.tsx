@@ -1578,7 +1578,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           <div className="flex-1 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
             {/* Step 1 : Brouillon */}
             <button
-              onClick={() => handleStatusChange('Brouillon')}
+              onClick={() => handleStepTabClick('Brouillon')}
               className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
                 reportStatus === 'Brouillon'
                   ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs ring-2 ring-blue-500/20'
@@ -1604,7 +1604,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
             {/* Step 2 : Soumis */}
             <button
-              onClick={() => handleStatusChange('Soumis')}
+              onClick={() => handleStepTabClick('Soumis')}
               className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
                 reportStatus === 'Soumis'
                   ? 'bg-blue-50/80 border-blue-300 text-blue-900 shadow-2xs ring-2 ring-blue-500/20'
@@ -1641,7 +1641,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
             {/* Step 3 : Validé */}
             <button
-              onClick={() => handleStatusChange('Validé')}
+              onClick={() => handleStepTabClick('Validé')}
               className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
                 reportStatus === 'Validé'
                   ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-2xs ring-2 ring-emerald-500/20'
@@ -1674,7 +1674,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
             {/* Step 4 : Verrouillé */}
             <button
-              onClick={() => handleStatusChange('Verrouillé')}
+              onClick={() => handleStepTabClick('Verrouillé')}
               className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
                 reportStatus === 'Verrouillé'
                   ? 'bg-purple-50/90 border-purple-300 text-purple-900 shadow-2xs ring-2 ring-purple-500/20'
