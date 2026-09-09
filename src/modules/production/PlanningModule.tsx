@@ -4,6 +4,7 @@ import { useAppState } from '../../core/database/AppStateContext';
 import { REAL_BINGERVILLE_PLANNING_TASKS } from '../../core/database/realBingervillePlanningData';
 import { REAL_SONGON_PLANNING_TASKS } from '../../core/database/realSongonPlanningData';
 import { isReportForProject } from '../../utils/projectMatcher';
+import { calculateActivityProgress, isReportValidatedOrLocked } from '../../core/database/projectProgressEngine';
 import {
   Calendar,
   Clock,
@@ -40,6 +41,8 @@ export interface PlanningTask {
   progress: number;
   isCategory: boolean;
   status: 'Terminé' | 'En cours' | 'A venir';
+  predecessors?: string[];
+  isUnlockedByPredecessors?: boolean;
 }
 
 export const PlanningModule: React.FC<PlanningModuleProps> = ({
@@ -189,35 +192,25 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
     alert(`✅ Succès : ${parsedPlanningTasks.length} tâches de planning importées avec succès pour ${selectedProject.name} !`);
   };
 
-  // Résolution 100% dynamique des tâches du planning avec calcul réel d'avancement
+  // Résolution 100% dynamique et synchrone des tâches du planning avec propagation SSOT post-validation
   const tasks = useMemo<PlanningTask[]>(() => {
     if (!selectedProject) return [];
 
     const wbsNodes = wbsMap[selectedProject.id] || wbsMap[selectedProject.code] || [];
     const projectReports = dailyReports.filter(r => isReportForProject(r, selectedProject));
     
-    // Si des nœuds WBS existent, les utiliser prioritairement pour une dynamique 100% réactive
     if (wbsNodes && wbsNodes.length > 0) {
       const list: PlanningTask[] = [];
       const flatten = (nodes: any[]) => {
         nodes.forEach((n, idx) => {
           const isCat = Boolean((n.children && n.children.length > 0) || n.level === 'lot' || n.level === 'sous_lot');
           
-          let prog = Number(n.progress !== undefined ? n.progress : 0);
+          // Calcul SSOT de l'activité à partir des rapports validés/verrouillés et du WBS
+          const metrics = calculateActivityProgress(n, projectReports);
           
-          // Recherche de rapports quotidiens correspondants pour affiner le % d'avancement réel
-          const matchingReports = projectReports.filter(r => 
-            (r.wbsCode && r.wbsCode === n.code) || 
-            (r.wbsId && r.wbsId === n.id) ||
-            (r.activityName && n.name && r.activityName.toLowerCase().includes(n.name.toLowerCase()))
-          );
-          
-          if (matchingReports.length > 0) {
-            const sumPlanned = matchingReports.reduce((acc, r) => acc + Number(r.plannedQty || 0), 0);
-            const sumRealized = matchingReports.reduce((acc, r) => acc + Number(r.realizedQty || 0), 0);
-            if (sumPlanned > 0) {
-              prog = Math.min(100, Math.round((sumRealized / sumPlanned) * 100));
-            }
+          let prog = Number(n.progress !== undefined ? n.progress : metrics.realizedProgress);
+          if (metrics.contractQty > 0 && (!n.children || n.children.length === 0)) {
+            prog = metrics.realizedProgress;
           }
 
           let stat: 'Terminé' | 'En cours' | 'A venir' = 'A venir';
@@ -234,6 +227,8 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
             dur = !isNaN(sMs) && !isNaN(eMs) && eMs > sMs ? Math.round((eMs - sMs) / (1000 * 60 * 60 * 24)) : 30;
           }
 
+          const predecessors = Array.isArray(n.predecessors) ? n.predecessors : (n.predecessorCode ? [n.predecessorCode] : []);
+
           list.push({
             id: n.id || `task-${idx}`,
             wbsCode: n.code || n.priceNo || `0${idx + 1}`,
@@ -244,12 +239,24 @@ export const PlanningModule: React.FC<PlanningModuleProps> = ({
             progress: prog,
             isCategory: isCat,
             status: stat,
+            predecessors
           });
           if (n.children && n.children.length > 0) flatten(n.children);
         });
       };
       flatten(wbsNodes);
-      return list;
+
+      // Propagation des dépendances et déblocage dynamique des prédécesseurs
+      const completedCodes = new Set(list.filter(t => t.progress >= 100).map(t => t.wbsCode));
+      return list.map(task => {
+        const isUnlocked = Array.isArray(task.predecessors) && task.predecessors.length > 0
+          ? task.predecessors.every(pCode => completedCodes.has(pCode))
+          : true;
+        return {
+          ...task,
+          isUnlockedByPredecessors: isUnlocked
+        };
+      });
     }
 
     // Fallback baseline des stations réelles Bingerville / Songon
