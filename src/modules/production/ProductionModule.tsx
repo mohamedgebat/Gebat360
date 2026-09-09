@@ -1445,7 +1445,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           await updateValidationTaskStatus(targetId, 'APPROVED', `Validation groupée par ${currentUser?.name || 'Direction'}`);
         }
       }
-      alert(`✅ ${reportsToValidate.length} rapport(s) validé(s) avec succès ! Les avancements WBS et du projet ont été actualisés.`);
+      setReportStatus('Validé');
+      setMasterStatusFilter('Validé');
+      alert(`✅ ${reportsToValidate.length} rapport(s) validé(s) avec succès !\n\n• Redirection vers l'Étape 3. Validé\n• Avancements WBS et du projet actualisés.`);
     } catch (err: any) {
       alert(`❌ Erreur lors de la validation : ${err?.message || 'Erreur serveur.'}`);
     } finally {
@@ -1931,7 +1933,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                         if (updateValidationTaskStatus) {
                                           await updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
                                         }
-                                        alert(`✅ Rapport ${targetCode || targetId} validé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés.`);
+                                        setReportStatus('Validé');
+                                        setMasterStatusFilter('Validé');
+                                        alert(`✅ Rapport ${targetCode || targetId} validé et comptabilisé avec succès !\n\n• Redirection vers l'Étape 3. Validé\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés.`);
                                       } catch (err: any) {
                                         alert(`❌ Échec de la validation : ${err?.message || 'Erreur de communication serveur.'}`);
                                       } finally {
@@ -1961,9 +1965,11 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                         if (updateValidationTaskStatus) {
                                           await updateValidationTaskStatus(targetId, 'RETURNED', reason);
                                         }
-                                        alert(`↩️ Rapport ${targetCode || targetId} renvoyé en Brouillon pour correction.`);
+                                        setReportStatus('Brouillon');
+                                        setMasterStatusFilter('Brouillon');
+                                        alert(`↩️ Demande de correction envoyée pour le rapport ${targetCode || targetId}.\n\n• Statut repassé en Brouillon\n• Redirection vers l'Étape 1. Brouillon.`);
                                       } catch (err: any) {
-                                        alert(`❌ Erreur lors du renvoi : ${err?.message || 'Erreur serveur.'}`);
+                                        alert(`❌ Échec du renvoi : ${err?.message || 'Erreur serveur.'}`);
                                       } finally {
                                         setIsValidating(false);
                                       }
