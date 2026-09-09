@@ -121,30 +121,17 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     if (!proj) return true;
     const pId = String(proj.id || '').toUpperCase().trim();
     const pCode = String(proj.code || '').toUpperCase().trim();
-
     const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
-    const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase().trim();
-    const rText = `${rProjId} ${rCode} ${String(r.wbsCode || '')} ${String(r.activityName || '')}`.toUpperCase();
 
     if (!rProjId) return true;
     if (rProjId === pId || rProjId === pCode) return true;
 
-    const isSongonProject = pId.includes('SON') || pCode.includes('SON') || (proj.name && proj.name.toUpperCase().includes('SONGON'));
-    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || (proj.name && proj.name.toUpperCase().includes('BINGERVILLE'));
+    // Isolation étanche entre sites uniquement en cas d'appartenance explicite opposée
+    const isSongonProject = pId.includes('SON') || pCode.includes('SON');
+    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN');
 
-    if (isSongonProject) {
-      if (rCode.startsWith('REP-BEN-') || rText.includes('BEN-002') || rText.includes('BINGERVILLE')) {
-        return false;
-      }
-      return true;
-    }
-
-    if (isBingervilleProject) {
-      if (rCode.startsWith('REP-SON-') || rText.includes('SON-001') || rText.includes('SONGON')) {
-        return false;
-      }
-      return true;
-    }
+    if (isSongonProject && rProjId.includes('BEN')) return false;
+    if (isBingervilleProject && rProjId.includes('SON')) return false;
 
     return true;
   };

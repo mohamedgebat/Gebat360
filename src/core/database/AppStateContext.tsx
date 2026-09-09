@@ -139,17 +139,9 @@ export const isTestAlert = (a: any): boolean => {
 
 export const isDemoReportObj = (r: any): boolean => {
   if (!r) return false;
-  // Seuls les anciens objets de démo strictement identifiés sont filtrés
   const strId = String(r.id || '').trim();
-  const strCode = String(r.code || '').trim();
-
-  return (
-    strId === 'CR-2026-08-31-86' ||
-    strId === 'CR-2026-08-31-87' ||
-    strId === 'CR-2026-08-29-86' ||
-    strId === 'RJC-2026-00009' ||
-    strCode === 'RJC-2026-00009'
-  );
+  // Ne JAMAIS filtrer les rapports créés ou soumis par les utilisateurs
+  return strId === 'DEMO-CR-EXCEL-001' || strId === 'DEMO-CR-EXCEL-002';
 };
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
