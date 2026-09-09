@@ -39,12 +39,12 @@ export const isReportForProject = (report: any, project: any): boolean => {
   const pStr = `${targetId} ${targetCode} ${targetName}`.toUpperCase();
   const rStr = `${rProjId} ${rWbs} ${rName}`.toUpperCase();
 
-  const isSongonProject = pStr.includes('SON') || pStr.includes('OUEST');
-  const isReportSongon = rStr.includes('SON') || rStr.includes('OUEST');
+  const isSongonProject = pStr.includes('SON') || pStr.includes('SONGON') || pStr.includes('ABIDJAN OUEST');
+  const isReportSongon = rStr.includes('SON') || rStr.includes('SONGON') || rStr.includes('ABIDJAN OUEST');
   if (isSongonProject && isReportSongon) return true;
 
-  const isBingervilleProject = pStr.includes('BEN') || pStr.includes('BING') || pStr.includes('EST');
-  const isReportBingerville = rStr.includes('BEN') || rStr.includes('BING') || rStr.includes('EST');
+  const isBingervilleProject = pStr.includes('BEN') || pStr.includes('BINGERVILLE') || pStr.includes('ABIDJAN EST');
+  const isReportBingerville = rStr.includes('BEN') || rStr.includes('BINGERVILLE') || rStr.includes('ABIDJAN EST');
   if (isBingervilleProject && isReportBingerville) return true;
 
   if (isSongonProject && isReportBingerville) return false;

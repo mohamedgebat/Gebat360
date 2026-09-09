@@ -133,13 +133,13 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     if (rProjName && pName && (rProjName === pName || rProjName.includes(pName) || pName.includes(rProjName))) return true;
 
     // 3. Alias spécifique : Site de Songon
-    const isSongonProject = pId.includes('SON') || pCode.includes('SON') || pName.includes('SONG') || pName.includes('OUEST');
-    const isReportSongon = rProjId.includes('SON') || rProjId.includes('OUEST') || rProjName.includes('SONG') || rProjName.includes('OUEST');
+    const isSongonProject = pId.includes('SON') || pCode.includes('SON') || pName.includes('SONG') || pName.includes('ABIDJAN OUEST');
+    const isReportSongon = rProjId.includes('SON') || rProjId.includes('ABIDJAN OUEST') || rProjName.includes('SONG') || rProjName.includes('ABIDJAN OUEST');
     if (isSongonProject && isReportSongon) return true;
 
     // 4. Alias spécifique : Site de Bingerville
-    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || pName.includes('BING') || pName.includes('EST');
-    const isReportBingerville = rProjId.includes('BEN') || rProjId.includes('BING') || rProjId.includes('EST') || rProjName.includes('BING') || rProjName.includes('EST');
+    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || pName.includes('BING') || pName.includes('ABIDJAN EST');
+    const isReportBingerville = rProjId.includes('BEN') || rProjId.includes('BING') || rProjId.includes('ABIDJAN EST') || rProjName.includes('BING') || rProjName.includes('ABIDJAN EST');
     if (isBingervilleProject && isReportBingerville) return true;
 
     // 5. Protection anti-pollution inter-sites
