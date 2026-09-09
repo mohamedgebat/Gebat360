@@ -562,8 +562,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           localStorage.setItem('gebat_projects', JSON.stringify(cleanProjects));
         }
         if (Array.isArray(dbReports) && dbReports.length > 0) {
-          setDailyReports(dbReports);
-          localStorage.setItem('gebat_daily_reports', JSON.stringify(dbReports));
+          setDailyReports(prev => {
+            const backupRaw = typeof window !== 'undefined' ? localStorage.getItem('gebat_user_created_reports_backup') : null;
+            let localBackup: DailyReport[] = [];
+            if (backupRaw) {
+              try { localBackup = JSON.parse(backupRaw); } catch(e) {}
+            }
+            
+            const existingMap = new Map<string, DailyReport>();
+            dbReports.forEach(r => {
+              const rId = r.id || r.code || r.reportCode;
+              if (rId) existingMap.set(rId, r);
+            });
+
+            [...prev, ...localBackup].forEach(lr => {
+              const lId = lr.id || lr.code || lr.reportCode;
+              if (lId && !isDemoReportObj(lr)) {
+                if (!existingMap.has(lId)) {
+                  existingMap.set(lId, lr);
+                } else {
+                  const dbRep = existingMap.get(lId)!;
+                  if (lr.status && lr.status !== dbRep.status) {
+                    existingMap.set(lId, { ...dbRep, ...lr });
+                  }
+                }
+              }
+            });
+
+            const mergedList = Array.from(existingMap.values());
+            safeSaveToStorage('gebat_daily_reports', mergedList);
+            return mergedList;
+          });
         }
         if (Array.isArray(dbDA) && dbDA.length > 0) {
           setPurchaseRequests(dbDA);

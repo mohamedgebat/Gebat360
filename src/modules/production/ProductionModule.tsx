@@ -1243,16 +1243,17 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
   const persistReportItems = async (status: 'Brouillon' | 'Soumis' | 'Validé') => {
     const itemsToSave = [...recordedActivities];
-    if (currentWbsCode && currentSelectedAct && currentRealizedQty !== '') {
+    if (currentWbsCode && currentRealizedQty !== '') {
+      const actDesc = currentSelectedAct?.description || currentSelectedAct?.name || `Activité ${currentWbsCode}`;
       itemsToSave.push({
         id: `rec-current`,
         wbsCode: currentWbsCode,
-        activityName: currentSelectedAct.description,
-        unit: currentActUnit,
-        targetQty: currentTargetQty,
-        realizedQty: Number(currentRealizedQty),
-        totalPlanned: currentContractVol,
-        cumulDate: currentCumulDate
+        activityName: actDesc,
+        unit: currentActUnit || 'm3',
+        targetQty: currentTargetQty || 0,
+        realizedQty: Number(currentRealizedQty || 0),
+        totalPlanned: currentContractVol || 0,
+        cumulDate: currentCumulDate || reportDate
       });
     }
 
@@ -1268,7 +1269,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         const timestamp = Date.now().toString().slice(-4);
         const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}-${timestamp}`;
         await createDailyReport({
-          id: rjcCode, code: rjcCode, reportCode: rjcCode, projectId: selectedProject.id,
+          id: rjcCode, code: rjcCode, reportCode: rjcCode,
+          projectId: selectedProject.id,
+          projectName: selectedProject.name,
           date: reportDate, wbsCode: item.wbsCode, wbsId: item.wbsCode,
           activityName: item.activityName || 'Activité', weather, temperature, workShift,
           locationZone, generalComment, teamLeader, unit: item.unit, targetQty: item.targetQty,
