@@ -42,6 +42,11 @@ import {
   INITIAL_SUBCONTRACTS
 } from './initialData';
 import { ApiService } from '../../services/api';
+import {
+  calculateActivityProgress,
+  calculateProjectOverallProgress,
+  isReportValidatedOrLocked
+} from './projectProgressEngine';
 
 interface AppStateContextType {
   currentUser: User;
@@ -745,108 +750,71 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!dailyReports || dailyReports.length === 0 || !projects || projects.length === 0) return;
 
-    const validReports = dailyReports.filter(r => {
-      const s = (r.status || '').toUpperCase();
-      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
+    let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
+
+    setWbsMap(prevMap => {
+      const nextMap = { ...prevMap };
+
+      Object.keys(nextMap).forEach(pKey => {
+        const tree = nextMap[pKey];
+        if (!Array.isArray(tree) || tree.length === 0) return;
+
+        const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
+          return nodes.map(node => {
+            let updatedChildren: WBSNode[] | undefined = undefined;
+            if (node.children && node.children.length > 0) {
+              updatedChildren = updateNodeDeterministic(node.children);
+            }
+
+            const metrics = calculateActivityProgress(node, dailyReports);
+
+            let nodeProgress = metrics.realizedProgress;
+            if (updatedChildren && updatedChildren.length > 0) {
+              const totalChildAmount = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.revisedBudget || 1), 0);
+              const totalChildEarned = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.revisedBudget || 1) * ((c.progress || 0) / 100)), 0);
+              nodeProgress = totalChildAmount > 0 ? Math.min(100, Number(((totalChildEarned / totalChildAmount) * 100).toFixed(1))) : nodeProgress;
+            }
+
+            return {
+              ...node,
+              contractQty: metrics.contractQty,
+              plannedQty: metrics.plannedQty,
+              actualQty: metrics.validatedRealizedQty,
+              realizedQty: metrics.validatedRealizedQty,
+              pendingQty: metrics.pendingRealizedQty,
+              contractAmount: metrics.contractAmount,
+              progress: nodeProgress,
+              children: updatedChildren
+            };
+          });
+        };
+
+        nextMap[pKey] = updateNodeDeterministic(tree);
+      });
+
+      calculatedNextWbsMap = nextMap;
+      return nextMap;
     });
 
-    if (validReports.length > 0) {
-      let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
-
-      setWbsMap(prevMap => {
-        const nextMap = { ...prevMap };
-
-        Object.keys(nextMap).forEach(pKey => {
-          const tree = nextMap[pKey];
-          if (!Array.isArray(tree) || tree.length === 0) return;
-
-          const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
-            return nodes.map(node => {
-              const nodeReports = validReports.filter(r => {
-                const rProj = String(r.projectId || r.project_id || '').toUpperCase();
-                const pMatch = rProj.includes(pKey.toUpperCase()) || pKey.toUpperCase().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
-                if (!pMatch) return false;
-                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase();
-                const nCode = String(node.code || node.id || '').toUpperCase();
-                return rWbs === nCode || (rWbs && nCode && (rWbs.includes(nCode) || nCode.includes(rWbs)));
-              });
-
-              const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);
-
-              let updatedChildren: WBSNode[] | undefined = undefined;
-              if (node.children && node.children.length > 0) {
-                updatedChildren = updateNodeDeterministic(node.children);
-              }
-
-              const targetP = Number(node.plannedQty || node.contractQty || node.revisedBudget || 1);
-              let nodeProgress = node.progress || 0;
-
-              if (updatedChildren && updatedChildren.length > 0) {
-                const totalChildBudget = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.initialBudget || 1), 0);
-                const totalChildDone = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.initialBudget || 1) * ((c.progress || 0) / 100)), 0);
-                nodeProgress = totalChildBudget > 0 ? Math.min(100, Number(((totalChildDone / totalChildBudget) * 100).toFixed(1))) : node.progress;
-              } else if (nodeReports.length > 0) {
-                nodeProgress = targetP > 0 ? Math.min(100, Number(((totalRealizedQty / targetP) * 100).toFixed(1))) : node.progress;
-              }
-
-              return {
-                ...node,
-                actualQty: totalRealizedQty > 0 ? totalRealizedQty : node.actualQty || node.realizedQty || 0,
-                realizedQty: totalRealizedQty > 0 ? totalRealizedQty : node.realizedQty || node.actualQty || 0,
-                progress: nodeProgress,
-                children: updatedChildren
-              };
-            });
-          };
-
-          nextMap[pKey] = updateNodeDeterministic(tree);
-        });
-
-        calculatedNextWbsMap = nextMap;
-        return nextMap;
-      });
-
-      setProjects(prevProjects => {
-        let changed = false;
-        const updated = prevProjects.map(proj => {
-          const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
-          if (projTree.length > 0) {
-            const getLeaves = (arr: any[]): any[] => {
-              let res: any[] = [];
-              arr.forEach(n => {
-                if (!n.children || n.children.length === 0) {
-                  res.push(n);
-                } else {
-                  res = res.concat(getLeaves(n.children));
-                }
-              });
-              return res;
+    setProjects(prevProjects => {
+      let changed = false;
+      const updated = prevProjects.map(proj => {
+        const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
+        if (projTree.length > 0) {
+          const summary = calculateProjectOverallProgress(proj, projTree, dailyReports);
+          if (proj.progress !== summary.overallPhysicalProgress || proj.physicalProgress !== summary.overallPhysicalProgress) {
+            changed = true;
+            return {
+              ...proj,
+              progress: summary.overallPhysicalProgress,
+              physicalProgress: summary.overallPhysicalProgress
             };
-            const leafNodes = getLeaves(projTree);
-            const totalPlanned = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
-              return acc + budget;
-            }, 0);
-            const totalDone = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
-              const prog = Number(n.progress || 0);
-              return acc + (budget * (prog / 100));
-            }, 0);
-            const overallPct = totalPlanned > 0 ? Number(((totalDone / totalPlanned) * 100).toFixed(1)) : proj.progress;
-            if (proj.progress !== overallPct || proj.physicalProgress !== overallPct) {
-              changed = true;
-              return {
-                ...proj,
-                progress: overallPct,
-                physicalProgress: overallPct
-              };
-            }
           }
-          return proj;
-        });
-        return changed ? updated : prevProjects;
+        }
+        return proj;
       });
-    }
+      return changed ? updated : prevProjects;
+    });
   }, [dailyReports.length, projects.length]);
 
   const [validationTasks, setValidationTasks] = useState<ValidationTask[]>(() => {

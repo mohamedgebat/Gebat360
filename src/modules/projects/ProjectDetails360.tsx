@@ -4,6 +4,7 @@ import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { REAL_PLANNING_DATA } from '../../data/planningRealData';
+import { generateSCurveSeries, calculateProjectOverallProgress } from '../../core/database/projectProgressEngine';
 import {
   ArrowLeft,
   Briefcase,
@@ -1264,6 +1265,44 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                             {yb.year}
                           </div>
                         ))}
+                      </div>
+
+                      {/* TABLEAU PÉRIODIQUE S-CURVE (PLANIFIÉ VS RÉEL & ÉCARTS EN POINTS) */}
+                      <div className="pt-2 overflow-x-auto">
+                        <table className="w-full text-left text-[10px] border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
+                              <th className="p-1.5">Mois</th>
+                              <th className="p-1.5 text-right text-blue-700">Planifié</th>
+                              <th className="p-1.5 text-right text-emerald-700">Réel</th>
+                              <th className="p-1.5 text-center">Écart (pts)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-mono font-bold text-slate-800">
+                            {(() => {
+                              const pNodes = wbsMap[project.id] || wbsMap[project.code] || [];
+                              const pReports = dailyReports.filter(r => isReportForProject(r, project));
+                              const pPeriods = monthsList.map(m => ({ key: m.key, label: m.monthName, endDate: `${m.key}-31` }));
+                              const series = generateSCurveSeries(project, pNodes, pReports, pPeriods);
+
+                              return series.map(s => (
+                                <tr key={s.periodKey} className={s.isFuture ? 'bg-slate-50/50 text-slate-400' : 'hover:bg-slate-50'}>
+                                  <td className="p-1.5 font-sans font-bold text-slate-900">{s.periodLabel}</td>
+                                  <td className="p-1.5 text-right text-blue-700 font-black">{s.plannedCumulQtyPct}%</td>
+                                  <td className="p-1.5 text-right text-emerald-700 font-black">{s.realCumulQtyPct}%</td>
+                                  <td className="p-1.5 text-center">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-black ${
+                                      s.gapPoints > 0 ? 'bg-emerald-100 text-emerald-800' :
+                                      s.gapPoints < 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                      {s.gapPoints > 0 ? `+${s.gapPoints}` : s.gapPoints} pts
+                                    </span>
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   );
