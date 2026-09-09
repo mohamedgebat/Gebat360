@@ -1839,7 +1839,13 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               <span className="text-[11px] font-bold text-slate-500">Statut :</span>
               <select
                 value={masterStatusFilter}
-                onChange={e => setMasterStatusFilter(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setMasterStatusFilter(val);
+                  if (val === 'Brouillon' || val === 'Soumis' || val === 'Validé' || val === 'Verrouillé') {
+                    setReportStatus(val as any);
+                  }
+                }}
                 className="bg-slate-50 border border-slate-300 text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-xl focus:bg-white focus:outline-none cursor-pointer"
               >
                 <option value="ALL">📋 Tous les statuts ({dailyReports.filter(r => isProjectReportMatch(r, selectedProject)).length})</option>
@@ -2098,8 +2104,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           )}
         </div>
 
-      {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (UNIQUEMENT DISPONIBLE EN ÉTAPE BROUILLON) */}
-      {reportStatus === 'Brouillon' && (
+      {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (UNIQUEMENT DISPONIBLE EN ÉTAPE BROUILLON ET EXCLUE SUR SOUMIS/VALIDÉ/VERROUILLÉ) */}
+      {(reportStatus === 'Brouillon' && masterStatusFilter !== 'Soumis' && masterStatusFilter !== 'Validé' && masterStatusFilter !== 'Verrouillé') && (
         <div className="space-y-6">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
