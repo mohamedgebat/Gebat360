@@ -2738,8 +2738,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         r.id === cleanReqId || r.code === cleanReqId
       );
 
-      // 1. Décrémentation automatique des stocks et création des mouvements de sortie
-      if (targetReport && Array.isArray(targetReport.consummations) && targetReport.consummations.length > 0) {
+      // 1. Décrémentation automatique des stocks et création des mouvements de sortie (IDEMPOTENCE GARANTIE)
+      if (targetReport && !targetReport.isAccounted && Array.isArray(targetReport.consummations) && targetReport.consummations.length > 0) {
         targetReport.consummations.forEach((cons: any) => {
           const qty = Number(cons.consommee || cons.consumed || cons.qty || cons.quantity || 0);
           const articleName = cons.article || cons.name || cons.itemName || '';
