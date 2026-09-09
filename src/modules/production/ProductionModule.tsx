@@ -1259,6 +1259,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     }
 
     setReportStatus(targetStatus);
+    setMasterStatusFilter('ALL');
     const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     setLastSaveTime(timeStr);
     setHistoryLogs(prev => [
@@ -1314,16 +1315,30 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     }
   };
 
+  // Réinitialisation pour nouveau brouillon terrain
+  const handleNewDraft = () => {
+    setRecordedActivities([]);
+    setCurrentWbsCode('');
+    setCurrentTargetQty(0);
+    setCurrentRealizedQty('');
+    setReportStatus('Brouillon');
+    setMasterStatusFilter('ALL');
+  };
+
   // Enregistrement Brouillon
   const handleSaveDraft = async () => {
     const saved = await persistReportItems('Brouillon');
-    if (saved) alert('✅ Brouillon enregistré dans la base de données.');
+    if (saved) {
+      setMasterStatusFilter('ALL');
+      alert('✅ Brouillon enregistré dans la base de données.');
+    }
   };
 
   // Soumission pour validation
   const handleSubmitValidation = async () => {
     const saved = await persistReportItems('Soumis');
     if (saved) {
+      setMasterStatusFilter('ALL');
       alert('🚀 Rapport journalier soumis pour validation avec succès !\n\n• Statut passé à SOUMIS\n• Tâche de validation assignée au Directeur de Projet\n• Notification envoyée dans le centre de validation.');
     }
   };
@@ -1344,6 +1359,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
     const saved = await persistReportItems('Validé');
     if (saved) {
+      setMasterStatusFilter('ALL');
       alert('✅ Rapport de production enregistré, validé et comptabilisé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés\n• Avancement physique du projet recalculé.');
     }
   };
@@ -2112,9 +2128,36 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           )}
         </div>
 
-      {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (EXCLUSIF AU MODE BROUILLON) */}
-      {reportStatus === 'Brouillon' && (
-        <div className="space-y-6">
+      {/* 3. SECTION INFORMATIONS GÉNÉRALES & SAISIE TERRAIN (CONSULTATION PERMANENTE ET ÉDITION) */}
+      <div className="space-y-6">
+        {reportStatus !== 'Brouillon' && (
+          <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md border border-slate-700">
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-xl ${
+                reportStatus === 'Soumis' ? 'bg-amber-500' :
+                reportStatus === 'Validé' ? 'bg-emerald-500' : 'bg-purple-600'
+              }`}>
+                {reportStatus === 'Soumis' ? <Clock size={18} /> :
+                 reportStatus === 'Validé' ? <CheckCircle2 size={18} /> : <Lock size={18} />}
+              </div>
+              <div>
+                <div className="font-extrabold text-xs">
+                  Formulaire en Mode Consultation (Statut : <span className="uppercase text-amber-300 font-black">{reportStatus}</span>)
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Les données ci-dessous sont scellées en lecture seule. Pour réaliser une nouvelle saisie terrain, cliquez sur "Nouveau Rapport".
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleNewDraft}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0"
+            >
+              <Plus size={15} />
+              <span>➕ Saisir un Nouveau Rapport</span>
+            </button>
+          </div>
+        )}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
@@ -3249,7 +3292,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         </div>
       </div>
     </div>
-  )}
 
       {/* MODAL SYNTHÈSE & DÉTAILS DU RAPPORT POUR LE VALIDEUR */}
       {viewingReportDetail && (
