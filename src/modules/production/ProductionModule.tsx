@@ -1219,51 +1219,12 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     const isConducteur = userRole.includes('conducteur');
     const isControleur = userRole.includes('contrôleur') || userRole.includes('controleur');
 
-    if (targetStatus === 'Validé') {
-      if (!isSuperAdmin && !isDirection && !isDirecteurProjet && !isDirecteurTechnique && !isConducteur) {
-        alert(`⛔ HABILITATION INSUFFISANTE\n\nVotre compte (${currentUser?.name || 'Utilisateur'}, Rôle: "${currentUser?.role || 'Non spécifié'}") n'est pas habilité à VALIDER ce rapport.\n\nSeuls les comptes habilités suivants disposent des droits de validation :\n• Conducteur de Travaux\n• Directeur de Projet (DP)\n• Directeur Technique (DT)\n• Direction Générale (DG)\n• Super Administrateur`);
-        return;
-      }
-
-      if (recordedActivities.length > 0 || (currentWbsCode && currentRealizedQty !== '')) {
-        await handleDirectValidate();
-        return;
-      }
-
-      const reportsToValidate = dailyReports.filter(r => {
-        if (!isProjectReportMatch(r, selectedProject)) return false;
-        const normS = (r.status || '').toUpperCase();
-        return normS.includes('SOUMIS');
-      });
-
-      if (reportsToValidate.length > 0) {
-        try {
-          for (const rep of reportsToValidate) {
-            await updateDailyReportStatus(rep.id, 'Validé', `Validé par ${currentUser?.name || 'Valideur'} (${currentUser?.role || 'DP/DT'})`);
-          }
-        } catch (error: any) {
-          alert(`❌ Validation annulée : ${error?.message || 'la comptabilisation a échoué.'}`);
-          return;
-        }
-        alert(`✅ ${reportsToValidate.length} rapport(s) du chantier ${selectedProject.name} validé(s) avec succès !\n\n• Métrés & WBS actualisés déterministiquement\n• % Avancement Physique du Projet recalculé\n• Cost Control (AC, EV, EAC, Marge) propagé\n• Sorties de stock enregistrées sans double imputation`);
-      } else {
-        alert('ℹ️ Aucun rapport en attente de validation pour ce chantier.');
-      }
-    }
-
-    if (targetStatus === 'Verrouillé') {
-      if (!isSuperAdmin && !isDirection && !isDirecteurProjet && !isControleur) {
-        alert(`⛔ HABILITATION INSUFFISANTE\n\nVotre compte (${currentUser?.name || 'Utilisateur'}, Rôle: "${currentUser?.role || 'Non spécifié'}") n'est pas habilité à VERROUILLER définitivement ce rapport.\n\nSeuls les comptes habilités suivants peuvent verrouiller un rapport :\n• Directeur de Projet (DP)\n• Contrôleur de Gestion\n• Direction Générale (DG)\n• Super Administrateur`);
-        return;
-      }
-    }
-
     setReportStatus(targetStatus);
-    setMasterStatusFilter('ALL');
+    setMasterStatusFilter(targetStatus);
     const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     setLastSaveTime(timeStr);
     setHistoryLogs(prev => [
-      { time: `${formattedReportDate} ${timeStr}`, text: `Statut passé à "${targetStatus}" par ${currentUser?.name || 'Utilisateur'} (${currentUser?.role || 'Compte Habilité'})` },
+      { time: `${formattedReportDate} ${timeStr}`, text: `Affichage de l'étape "${targetStatus}"` },
       ...prev
     ]);
   };
@@ -1315,6 +1276,12 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     }
   };
 
+  // Navigation propre par étape du workflow (1. Brouillon -> 2. Soumis -> 3. Validé -> 4. Verrouillé)
+  const handleStepTabClick = (targetStatus: 'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé') => {
+    setReportStatus(targetStatus);
+    setMasterStatusFilter(targetStatus);
+  };
+
   // Réinitialisation pour nouveau brouillon terrain
   const handleNewDraft = () => {
     setRecordedActivities([]);
@@ -1322,14 +1289,15 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     setCurrentTargetQty(0);
     setCurrentRealizedQty('');
     setReportStatus('Brouillon');
-    setMasterStatusFilter('ALL');
+    setMasterStatusFilter('Brouillon');
   };
 
   // Enregistrement Brouillon
   const handleSaveDraft = async () => {
     const saved = await persistReportItems('Brouillon');
     if (saved) {
-      setMasterStatusFilter('ALL');
+      setReportStatus('Brouillon');
+      setMasterStatusFilter('Brouillon');
       alert('✅ Brouillon enregistré dans la base de données.');
     }
   };
@@ -1338,8 +1306,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const handleSubmitValidation = async () => {
     const saved = await persistReportItems('Soumis');
     if (saved) {
-      setMasterStatusFilter('ALL');
-      alert('🚀 Rapport journalier soumis pour validation avec succès !\n\n• Statut passé à SOUMIS\n• Tâche de validation assignée au Directeur de Projet\n• Notification envoyée dans le centre de validation.');
+      setReportStatus('Soumis');
+      setMasterStatusFilter('Soumis');
+      alert('🚀 Rapport journalier soumis pour validation avec succès !\n\n• Le rapport est disponible à l\'Étape 2. Soumis\n• Tâche de validation assignée au Directeur de Projet.');
     }
   };
 
@@ -1359,8 +1328,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
     const saved = await persistReportItems('Validé');
     if (saved) {
-      setMasterStatusFilter('ALL');
-      alert('✅ Rapport de production enregistré, validé et comptabilisé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés\n• Avancement physique du projet recalculé.');
+      setReportStatus('Validé');
+      setMasterStatusFilter('Validé');
+      alert('✅ Rapport de production enregistré, validé et comptabilisé avec succès !\n\n• Le rapport est disponible à l\'Étape 3. Validé\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés\n• Avancement physique du projet recalculé.');
     }
   };
 
