@@ -2740,19 +2740,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 1. Décrémentation automatique des stocks et création des mouvements de sortie
       if (targetReport && Array.isArray(targetReport.consummations) && targetReport.consummations.length > 0) {
-        targetReport.consummations.forEach(cons => {
-          const qty = Number(cons.consumed || 0);
-          if (qty > 0 && cons.article) {
+        targetReport.consummations.forEach((cons: any) => {
+          const qty = Number(cons.consommee || cons.consumed || cons.qty || cons.quantity || 0);
+          const articleName = cons.article || cons.name || cons.itemName || '';
+          if (qty > 0 && articleName) {
             const matchingItem = stockItems.find(item => 
-              item.name.toLowerCase() === cons.article.toLowerCase() ||
-              (item.code && cons.article && item.code.toLowerCase() === cons.article.toLowerCase())
+              item.name.toLowerCase().trim() === articleName.toLowerCase().trim() ||
+              (item.code && item.code.toLowerCase().trim() === articleName.toLowerCase().trim())
             );
 
             createStockMovement({
-              code: `MVT-PROD-${Date.now().toString().slice(-6)}`,
+              code: `MVT-PROD-${Date.now().toString().slice(-6)}-${Math.floor(Math.random()*1000)}`,
               type: 'Sortie',
-              itemId: matchingItem?.id || `STK-${cons.article.replace(/\s+/g, '-').toUpperCase()}`,
-              itemName: cons.article,
+              itemId: matchingItem?.id || `STK-${articleName.replace(/\s+/g, '-').toUpperCase()}`,
+              itemName: articleName,
               quantity: qty,
               unit: cons.unit || matchingItem?.unit || 'U',
               date: targetReport.date || new Date().toISOString().split('T')[0],
@@ -2761,8 +2762,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               notes: `Consommation automatique validée du rapport de production ${targetReport.code || targetReport.id}`,
               performedBy: actorName,
               costNature: 'MAT',
-              unitPrice: Number(matchingItem?.averageUnitPrice || cons.theoreticalPrice || 0),
-              totalCost: Number((matchingItem?.averageUnitPrice || cons.theoreticalPrice || 0) * qty)
+              unitPrice: Number(matchingItem?.averageUnitPrice || cons.theoreticalPrice || cons.pu || 0),
+              totalCost: Number((matchingItem?.averageUnitPrice || cons.theoreticalPrice || cons.pu || 0) * qty)
             });
           }
         });
@@ -2786,12 +2787,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
             return nodes.map(node => {
               const nodeReports = validReports.filter(r => {
-                const rProj = String(r.projectId || r.project_id || '').toUpperCase();
-                const pMatch = rProj.includes(pKey.toUpperCase()) || pKey.toUpperCase().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
+                const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
+                const pMatch = rProj.includes(pKey.toUpperCase().trim()) || pKey.toUpperCase().trim().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
                 if (!pMatch) return false;
-                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase();
-                const nCode = String(node.code || node.id || '').toUpperCase();
-                return rWbs === nCode || (rWbs && nCode && (rWbs.includes(nCode) || nCode.includes(rWbs)));
+                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase().trim();
+                const nCode = String(node.code || node.id || '').toUpperCase().trim();
+                const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
+                return rWbs === nCode || (nPriceNo !== '' && rWbs === nPriceNo);
               });
 
               const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);

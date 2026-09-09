@@ -1225,7 +1225,11 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         return;
       }
 
-      // Valider les rapports non validés du chantier actif
+      if (recordedActivities.length > 0 || (currentWbsCode && currentRealizedQty !== '')) {
+        await handleDirectValidate();
+        return;
+      }
+
       const reportsToValidate = dailyReports.filter(r => {
         if (!isProjectReportMatch(r, selectedProject)) return false;
         const normS = (r.status || '').toUpperCase();
@@ -1242,8 +1246,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           return;
         }
         alert(`✅ ${reportsToValidate.length} rapport(s) du chantier ${selectedProject.name} validé(s) avec succès !\n\n• Métrés & WBS actualisés déterministiquement\n• % Avancement Physique du Projet recalculé\n• Cost Control (AC, EV, EAC, Marge) propagé\n• Sorties de stock enregistrées sans double imputation`);
-      } else if (recordedActivities.length > 0 || currentWbsCode) {
-        handleSubmitValidation();
       } else {
         alert('ℹ️ Aucun rapport en attente de validation pour ce chantier.');
       }
@@ -1265,7 +1267,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     ]);
   };
 
-  const persistReportItems = async (status: 'Brouillon' | 'Soumis') => {
+  const persistReportItems = async (status: 'Brouillon' | 'Soumis' | 'Validé') => {
     const itemsToSave = [...recordedActivities];
     if (currentWbsCode && currentSelectedAct && currentRealizedQty !== '') {
       itemsToSave.push({
@@ -1289,7 +1291,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       for (const [index, item] of itemsToSave.entries()) {
         const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
         const currentYear = new Date().getFullYear();
-        const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}`;
+        const timestamp = Date.now().toString().slice(-4);
+        const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}-${timestamp}`;
         await createDailyReport({
           id: rjcCode, code: rjcCode, reportCode: rjcCode, projectId: selectedProject.id,
           date: reportDate, wbsCode: item.wbsCode, wbsId: item.wbsCode,
@@ -1302,6 +1305,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       }
       setRecordedActivities([]);
       setCurrentRealizedQty('');
+      setCurrentWbsCode('');
       setReportStatus(status);
       return true;
     } catch (error: any) {
@@ -1310,17 +1314,37 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     }
   };
 
-  // Enregistrement Brouillon : confirmation affichée seulement après le succès API.
+  // Enregistrement Brouillon
   const handleSaveDraft = async () => {
     const saved = await persistReportItems('Brouillon');
     if (saved) alert('✅ Brouillon enregistré dans la base de données.');
   };
 
-  // Soumission pour validation : Enregistrement en statut 'Soumis' et transmission au DP/DT
+  // Soumission pour validation
   const handleSubmitValidation = async () => {
     const saved = await persistReportItems('Soumis');
     if (saved) {
       alert('🚀 Rapport journalier soumis pour validation avec succès !\n\n• Statut passé à SOUMIS\n• Tâche de validation assignée au Directeur de Projet\n• Notification envoyée dans le centre de validation.');
+    }
+  };
+
+  // Validation directe et comptabilisation instantanée
+  const handleDirectValidate = async () => {
+    const userRole = (currentUser?.role || '').toLowerCase();
+    const isSuperAdmin = userRole.includes('super admin') || userRole.includes('admin');
+    const isDirection = userRole.includes('direction') || userRole.includes('dg');
+    const isDirecteurProjet = userRole.includes('directeur projet') || userRole.includes('dp');
+    const isDirecteurTechnique = userRole.includes('directeur technique') || userRole.includes('dt');
+    const isConducteur = userRole.includes('conducteur');
+
+    if (!isSuperAdmin && !isDirection && !isDirecteurProjet && !isDirecteurTechnique && !isConducteur) {
+      alert(`⛔ HABILITATION INSUFFISANTE\n\nVotre compte (${currentUser?.name || 'Utilisateur'}, Rôle: "${currentUser?.role || 'Non spécifié'}") n'est pas habilité à VALIDER ce rapport.\n\nSeuls les comptes habilités suivants disposent des droits de validation :\n• Conducteur de Travaux\n• Directeur de Projet (DP)\n• Directeur Technique (DT)\n• Direction Générale (DG)\n• Super Administrateur`);
+      return;
+    }
+
+    const saved = await persistReportItems('Validé');
+    if (saved) {
+      alert('✅ Rapport de production enregistré, validé et comptabilisé avec succès !\n\n• Statut passé à VALIDÉ\n• Sorties de stock décrémentées\n• Métrés et coûts WBS imputés\n• Avancement physique du projet recalculé.');
     }
   };
 
@@ -1540,6 +1564,12 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 flex items-center gap-2 cursor-pointer"
                 >
                   <Send size={14} /> Soumettre pour Validation
+                </button>
+                <button
+                  onClick={() => { handleDirectValidate(); setShowActionsDropdown(false); }}
+                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer border-t border-slate-100"
+                >
+                  <CheckCircle2 size={14} className="text-emerald-600" /> Valider & Comptabiliser
                 </button>
               </div>
             )}
@@ -3205,9 +3235,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           </button>
           <button
             onClick={handleSubmitValidation}
-            className="bg-[#11192e] hover:bg-slate-800 text-white font-black px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md cursor-pointer transition"
+            className="bg-[#11192e] hover:bg-slate-800 text-white font-black px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md cursor-pointer transition"
           >
             <span>🚀 Soumettre pour validation</span>
+          </button>
+          <button
+            onClick={handleDirectValidate}
+            className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md cursor-pointer transition"
+          >
+            <CheckCircle2 size={16} />
+            <span>✅ Valider & Comptabiliser</span>
           </button>
         </div>
       </div>
