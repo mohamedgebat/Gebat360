@@ -141,78 +141,41 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
         </div>
       </div>
 
-      {/* 3. REPARTITION GÉOGRAPHIQUE & PAR CATEGORIE (ANALYSE DE PORTEFEUILLE) */}
+      {/* 3. REPARTITION GÉOGRAPHIQUE & PAR CATEGORIE (ANALYSE DE PORTEFEUILLE RÉEL) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Ventilation par Région (7/12) */}
         <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              RÉPARTITION DU PORTEFEUILLE PAR DISTRICT EN CÔTE D'IVOIRE
+              RÉPARTITION DU PORTEFEUILLE PAR SITE GEBAT SA (CÔTE D'IVOIRE)
             </h3>
-            <span className="text-[10px] font-mono text-slate-400">Total : 24 Chantiers</span>
+            <span className="text-[10px] font-mono text-slate-400">Total : {projects.length} Chantiers Officiels</span>
           </div>
 
-          <div className="space-y-3 text-xs">
-            {/* District 1: Abidjan */}
-            <div>
-              <div className="flex justify-between font-bold mb-1">
-                <span className="text-slate-900">📍 District Autonome d'Abidjan (Plateau, Cocody, Songon, Bingerville)</span>
-                <span className="font-mono text-blue-600">54,5 Mds FCFA (42,3%)</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: '42.3%' }}></div>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
-                <span>10 Projets actifs</span>
-                <span>Avancement moyen : 72%</span>
-              </div>
-            </div>
+          <div className="space-y-4 text-xs">
+            {projects.map((proj, idx) => {
+              const weight = totalMarket > 0 ? ((proj.contractAmount / totalMarket) * 100).toFixed(1) : '50.0';
+              const isSongon = proj.code.includes('SON') || proj.name.includes('Songon');
+              const badgeColor = isSongon ? 'bg-blue-600' : 'bg-emerald-600';
+              const textColor = isSongon ? 'text-blue-600' : 'text-emerald-600';
 
-            {/* District 2: Bouaké */}
-            <div>
-              <div className="flex justify-between font-bold mb-1">
-                <span className="text-slate-900">📍 Region du Gbêkê (Bouaké & Alentours)</span>
-                <span className="font-mono text-purple-600">32,8 Mds FCFA (25,5%)</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: '25.5%' }}></div>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
-                <span>6 Projets actifs</span>
-                <span>Avancement moyen : 58%</span>
-              </div>
-            </div>
-
-            {/* District 3: Yamoussoukro */}
-            <div>
-              <div className="flex justify-between font-bold mb-1">
-                <span className="text-slate-900">📍 District de Yamoussoukro & Tiassalé</span>
-                <span className="font-mono text-emerald-600">28,9 Mds FCFA (22,4%)</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-emerald-600 h-2.5 rounded-full" style={{ width: '22.4%' }}></div>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
-                <span>5 Projets actifs</span>
-                <span>Avancement moyen : 45%</span>
-              </div>
-            </div>
-
-            {/* District 4: San Pédro & Korhogo */}
-            <div>
-              <div className="flex justify-between font-bold mb-1">
-                <span className="text-slate-900">📍 Korhogo & San-Pédro</span>
-                <span className="font-mono text-amber-600">12,4 Mds FCFA (9,8%)</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: '9.8%' }}></div>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
-                <span>3 Projets actifs</span>
-                <span>Avancement moyen : 80%</span>
-              </div>
-            </div>
+              return (
+                <div key={proj.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex justify-between font-extrabold">
+                    <span className="text-slate-900">📍 {proj.name}</span>
+                    <span className={`font-mono ${textColor}`}>{formatFCFA(proj.contractAmount)} ({weight}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div className={`${badgeColor} h-2.5 rounded-full`} style={{ width: `${weight}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-500 font-medium">
+                    <span>Directeur de Projet : {proj.manager} · Réf. {proj.code}</span>
+                    <span>Avancement physique DQE : <strong className={textColor}>{proj.progress}%</strong></span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -220,41 +183,25 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              STRUCTURE PAR SECTEUR D'ACTIVITÉ
+              STRUCTURE PAR DOMAINE D'ACTIVITÉ CONTRACTUEL
             </h3>
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
               <div>
-                <span className="font-bold text-slate-900 block">🏫 Bâtiments Scolaires & Hospitaliers</span>
-                <span className="text-[10px] text-slate-500">8 Projets (ex: Lycée Technique Bouaké)</span>
+                <span className="font-bold text-slate-900 block">🚰 Assainissement & Traitement des Boues</span>
+                <span className="text-[10px] text-slate-500">2 Stations Principales (Songon & Bingerville)</span>
               </div>
-              <span className="font-mono font-extrabold text-blue-600 text-sm">42,5 Mds</span>
+              <span className="font-mono font-extrabold text-blue-600 text-sm">{formatFCFA(totalMarket)}</span>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
               <div>
-                <span className="font-bold text-slate-900 block">🏢 Bâtiments Tertiaires & Bureaux</span>
-                <span className="text-[10px] text-slate-500">6 Projets (ex: Tours Plateau Abidjan)</span>
+                <span className="font-bold text-slate-900 block">🏛️ Maître d'Ouvrage Officiel</span>
+                <span className="text-[10px] text-slate-500">Ministère de l'Hydraulique & Assainissement / ONEP</span>
               </div>
-              <span className="font-mono font-extrabold text-purple-600 text-sm">48,2 Mds</span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
-              <div>
-                <span className="font-bold text-slate-900 block">🛣️ Infrastructures Routières & Ouvrages</span>
-                <span className="text-[10px] text-slate-500">5 Projets (ex: Express Yamoussoukro)</span>
-              </div>
-              <span className="font-mono font-extrabold text-emerald-600 text-sm">28,9 Mds</span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
-              <div>
-                <span className="font-bold text-slate-900 block">🚰 Hydraulique & Génie Civil</span>
-                <span className="text-[10px] text-slate-500">5 Projets (ex: Station Bingerville)</span>
-              </div>
-              <span className="font-mono font-extrabold text-amber-600 text-sm">9,0 Mds</span>
+              <span className="font-mono font-extrabold text-emerald-600 text-sm">Contrat Marché</span>
             </div>
           </div>
         </div>

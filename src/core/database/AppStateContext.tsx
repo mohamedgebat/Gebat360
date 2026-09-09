@@ -509,12 +509,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('gebat_active_site_id', String(activeSiteId));
   }, [activeSiteId]);
 
+  // Nettoyage strict et exclusif : Seuls les 2 sites officiels Songon et Bingerville sont conservés
+  const sanitizeOfficialProjectsOnly = (projList: Project[]): Project[] => {
+    if (!Array.isArray(projList) || projList.length === 0) return INITIAL_PROJECTS;
+    const filtered = projList.filter(p => {
+      if (!p) return false;
+      const id = String(p.id || '').toUpperCase();
+      const code = String(p.code || '').toUpperCase();
+      const name = String(p.name || '').toUpperCase();
+      const loc = String(p.location || '').toUpperCase();
+
+      const isSongon = id.includes('SON') || code.includes('SON') || name.includes('SONG') || loc.includes('SONG') || loc.includes('OUEST');
+      const isBingerville = id.includes('BEN') || code.includes('BEN') || name.includes('BING') || loc.includes('BING') || loc.includes('EST');
+
+      return isSongon || isBingerville;
+    });
+
+    return filtered.length > 0 ? filtered : INITIAL_PROJECTS;
+  };
+
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('gebat_projects') : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sanitizeOfficialProjectsOnly(parsed);
+        }
       } catch (e) {}
     }
     return INITIAL_PROJECTS;
@@ -536,8 +557,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ]);
 
         if (Array.isArray(dbProjects) && dbProjects.length > 0) {
-          setProjects(dbProjects);
-          localStorage.setItem('gebat_projects', JSON.stringify(dbProjects));
+          const cleanProjects = sanitizeOfficialProjectsOnly(dbProjects);
+          setProjects(cleanProjects);
+          localStorage.setItem('gebat_projects', JSON.stringify(cleanProjects));
         }
         if (Array.isArray(dbReports) && dbReports.length > 0) {
           setDailyReports(dbReports);
