@@ -115,27 +115,44 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
 
-  // Dynamic status-matching helper : Filtrage étanche par site tout en garantissant la persistance des rapports Songon & Bingerville
+  // Dynamic status-matching helper : Isolation étanche universelle par chantier (Songon, Bingerville et tous autres chantiers)
   const isProjectReportMatch = (r: any, proj: any): boolean => {
     if (!r) return false;
     if (!proj) return true;
     const pId = String(proj.id || '').toUpperCase().trim();
     const pCode = String(proj.code || '').toUpperCase().trim();
     const pName = String(proj.name || '').toUpperCase().trim();
-    const rProjId = String(r.projectId || r.project_id || r.projectName || '').toUpperCase().trim();
 
-    if (!rProjId) return true;
-    if (rProjId === pId || rProjId === pCode) return true;
+    const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
+    const rProjName = String(r.projectName || r.project_name || '').toUpperCase().trim();
 
-    // Isolation étanche entre sites avec support des alias Songon / Bingerville
+    // 1. Correspondance exacte directe par ID ou Code
+    if (rProjId && (rProjId === pId || rProjId === pCode)) return true;
+
+    // 2. Correspondance directe par Nom de Projet
+    if (rProjName && pName && (rProjName === pName || rProjName.includes(pName) || pName.includes(rProjName))) return true;
+
+    // 3. Alias spécifique : Site de Songon
     const isSongonProject = pId.includes('SON') || pCode.includes('SON') || pName.includes('SONG') || pName.includes('OUEST');
+    const isReportSongon = rProjId.includes('SON') || rProjId.includes('OUEST') || rProjName.includes('SONG') || rProjName.includes('OUEST');
+    if (isSongonProject && isReportSongon) return true;
+
+    // 4. Alias spécifique : Site de Bingerville
     const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || pName.includes('BING') || pName.includes('EST');
+    const isReportBingerville = rProjId.includes('BEN') || rProjId.includes('BING') || rProjId.includes('EST') || rProjName.includes('BING') || rProjName.includes('EST');
+    if (isBingervilleProject && isReportBingerville) return true;
 
-    const isReportSongon = rProjId.includes('SON') || rProjId.includes('OUEST');
-    const isReportBingerville = rProjId.includes('BEN') || rProjId.includes('BING') || rProjId.includes('EST');
+    // 5. Protection anti-pollution inter-sites
+    if (isSongonProject && isReportBingerville) return false;
+    if (isBingervilleProject && isReportSongon) return false;
 
-    if (isSongonProject && isReportBingerville && !isReportSongon) return false;
-    if (isBingervilleProject && isReportSongon && !isReportBingerville) return false;
+    // 6. Correspondance générique pour tout autre chantier (ex: Bouaké, Korhogo, etc.)
+    if (rProjId) {
+      return (
+        (pId !== '' && (rProjId.includes(pId) || pId.includes(rProjId))) ||
+        (pCode !== '' && (rProjId.includes(pCode) || pCode.includes(rProjId)))
+      );
+    }
 
     return true;
   };

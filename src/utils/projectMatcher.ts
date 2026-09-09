@@ -20,7 +20,8 @@ export const isProjectMatch = (idOrCode1?: string, idOrCode2?: string): boolean 
 };
 
 export const isReportForProject = (report: any, project: any): boolean => {
-  if (!report || !project) return false;
+  if (!report) return false;
+  if (!project) return true;
 
   const targetId = typeof project === 'string' ? project : (project.id || project.code || '');
   const targetCode = typeof project === 'object' ? (project.code || project.id || '') : project;
@@ -28,11 +29,33 @@ export const isReportForProject = (report: any, project: any): boolean => {
 
   const rProjId = report.projectId || report.project_id || '';
   const rWbs = report.wbsCode || report.wbsId || '';
-  const rName = report.projectName || '';
+  const rName = report.projectName || report.project_name || '';
 
-  if (isProjectMatch(rProjId, targetId) || isProjectMatch(rProjId, targetCode)) return true;
-  if (isProjectMatch(rWbs, targetId) || isProjectMatch(rWbs, targetCode)) return true;
-  if (targetName && rName && isProjectMatch(rName, targetName)) return true;
+  if (rProjId && (isProjectMatch(rProjId, targetId) || isProjectMatch(rProjId, targetCode))) return true;
+  if (rWbs && (isProjectMatch(rWbs, targetId) || isProjectMatch(rWbs, targetCode))) return true;
+  if (targetName && rName && (isProjectMatch(rName, targetName) || rName.toUpperCase().includes(targetName.toUpperCase()) || targetName.toUpperCase().includes(rName.toUpperCase()))) return true;
 
-  return false;
+  // Check alias for Songon & Bingerville
+  const pStr = `${targetId} ${targetCode} ${targetName}`.toUpperCase();
+  const rStr = `${rProjId} ${rWbs} ${rName}`.toUpperCase();
+
+  const isSongonProject = pStr.includes('SON') || pStr.includes('OUEST');
+  const isReportSongon = rStr.includes('SON') || rStr.includes('OUEST');
+  if (isSongonProject && isReportSongon) return true;
+
+  const isBingervilleProject = pStr.includes('BEN') || pStr.includes('BING') || pStr.includes('EST');
+  const isReportBingerville = rStr.includes('BEN') || rStr.includes('BING') || rStr.includes('EST');
+  if (isBingervilleProject && isReportBingerville) return true;
+
+  if (isSongonProject && isReportBingerville) return false;
+  if (isBingervilleProject && isReportSongon) return false;
+
+  if (rProjId) {
+    return (
+      (targetId !== '' && (rProjId.toUpperCase().includes(targetId.toUpperCase()) || targetId.toUpperCase().includes(rProjId.toUpperCase()))) ||
+      (targetCode !== '' && (rProjId.toUpperCase().includes(targetCode.toUpperCase()) || targetCode.toUpperCase().includes(rProjId.toUpperCase())))
+    );
+  }
+
+  return true;
 };
