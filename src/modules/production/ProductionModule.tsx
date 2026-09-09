@@ -3,7 +3,7 @@ import { useAppState, isDemoReportObj } from '../../core/database/AppStateContex
 import * as XLSX from 'xlsx';
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus,
-  FileText, Clock, Lock,
+  FileText, Clock, Lock, Unlock,
   X, FileSpreadsheet, Eye, Upload, Download,
   ChevronRight, ArrowLeft, ChevronDown, Layers, Building2,
   Send, HelpCircle, Printer, Trash2
@@ -1800,11 +1800,28 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         )}
 
         {reportStatus === 'Verrouillé' && (
-          <div className="p-3 bg-purple-50/90 border border-purple-300 rounded-xl text-xs font-medium text-purple-950 flex items-center gap-2">
-            <Lock size={16} className="text-purple-700 shrink-0" />
-            <span>
-              <strong>🔒 Rapport Verrouillé & Certifié :</strong> Données consolidées définitivement pour l'audit et le Cost Control. Aucune modification terrain possible.
-            </span>
+          <div className="p-3 bg-purple-50/90 border border-purple-300 rounded-xl text-xs font-medium text-purple-950 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Lock size={16} className="text-purple-700 shrink-0" />
+              <span>
+                <strong>🔒 Étape 4 — Rapports Verrouillés :</strong> Données consolidées pour l'audit et le Cost Control. Les déverrouillages sont tracés pour ré-édition.
+              </span>
+            </div>
+            {isValidatorRole && (
+              <button
+                onClick={() => {
+                  const reason = prompt('🔓 Motif / Justification du déverrouillage global pour correction :') || 'Demande de déverrouillage pour ajustements terrain';
+                  if (!reason.trim()) return;
+                  setReportStatus('Validé');
+                  setMasterStatusFilter('Validé');
+                  alert(`🔓 Réorientation vers l'Étape 3. Validé avec le motif : "${reason}". Vous pouvez désormais déverrouiller et ajuster les rapports ciblés.`);
+                }}
+                className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-lg text-xs transition shadow-2xs shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                <Unlock size={14} />
+                <span>🔓 Déverrouiller (Mode Correction)</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -2083,13 +2100,50 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                               );
                             }
 
-                            if (isLocked) {
-                              return (
-                                <span className="px-3 py-1 bg-purple-100 text-purple-900 font-black rounded-lg text-[11px] border border-purple-200">
-                                  🔒 Certifié & Conduite
-                                </span>
-                              );
-                            }
+                             if (isLocked) {
+                               return (
+                                 <div className="flex items-center justify-end gap-1.5">
+                                   <span className="px-3 py-1 bg-purple-100 text-purple-900 font-black rounded-lg text-[11px] border border-purple-200">
+                                     🔒 Verrouillé
+                                   </span>
+                                   {isValidatorRole && (
+                                     <button
+                                       disabled={isValidating}
+                                       onClick={async () => {
+                                         const reason = prompt('🔓 Motif / Justification du déverrouillage pour correction :') || 'Demande de déverrouillage pour ajustements terrain';
+                                         if (!reason.trim()) return;
+                                         const targetId = rep.id;
+                                         const targetCode = rep.code || rep.reportCode;
+                                         setIsValidating(true);
+                                         try {
+                                           if (updateDailyReportStatus) {
+                                             await updateDailyReportStatus(targetId, 'Validé', `Déverrouillé pour correction : ${reason}`);
+                                             if (targetCode && targetCode !== targetId) {
+                                               await updateDailyReportStatus(targetCode, 'Validé', `Déverrouillé pour correction : ${reason}`);
+                                             }
+                                           }
+                                           if (updateValidationTaskStatus) {
+                                             await updateValidationTaskStatus(targetId, 'APPROVED', `Déverrouillé : ${reason}`);
+                                           }
+                                           setReportStatus('Validé');
+                                           setMasterStatusFilter('Validé');
+                                           alert(`🔓 Rapport ${targetCode || targetId} déverrouillé avec succès !\n\n• Statut repassé en Validé (Étape 3)\n• Redirection vers l'Étape 3. Validé\n• Corrections et ajustements désormais autorisés.`);
+                                         } catch (err: any) {
+                                           alert(`❌ Échec du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
+                                         } finally {
+                                           setIsValidating(false);
+                                         }
+                                       }}
+                                       className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs cursor-pointer transition flex items-center gap-1 shadow-2xs"
+                                       title="Déverrouiller ce rapport pour effectuer des corrections"
+                                     >
+                                       <Unlock size={13} />
+                                       <span>🔓 Déverrouiller</span>
+                                     </button>
+                                   )}
+                                 </div>
+                               );
+                             }
 
                             return (
                               <div className="flex items-center justify-end gap-1.5">
