@@ -2982,18 +2982,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setDailyReports(prev => [...formattedReports, ...prev]);
 
-    // Synchronisation découplée de l'avancement global du projet
+    // Synchronisation universelle SSOT de l'avancement global du projet
     const projectId = newReports[0]?.projectId || newReports[0]?.project_id;
     if (projectId) {
       const targetProject = projects.find(p => p.id === projectId || p.code === projectId);
       if (targetProject) {
         const allReports = [...formattedReports, ...dailyReports];
-        const projectReports = allReports.filter(r => r.projectId === projectId || r.projectId === targetProject.code);
-        const totalValueProduced = projectReports.reduce((s, r) => s + ((r.realizedQty || 0) * (r.pu || 0) || (r.totalCost || 0)), 0);
-        const contractAmount = targetProject.contractAmount || targetProject.revisedBudget || 0;
-        const calcProgress = contractAmount > 0 ? Math.min(100, parseFloat(((totalValueProduced / contractAmount) * 100).toFixed(1))) : 0;
-
-        setProjects(pList => pList.map(p => p.id === targetProject.id ? { ...p, progress: calcProgress } : p));
+        const projTree = wbsMap[targetProject.id] || wbsMap[targetProject.code] || [];
+        const summary = calculateProjectOverallProgress(targetProject, projTree, allReports);
+        setProjects(pList => pList.map(p => p.id === targetProject.id ? { ...p, progress: summary.overallPhysicalProgress, physicalProgress: summary.overallPhysicalProgress } : p));
       }
     }
 

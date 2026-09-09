@@ -84,8 +84,7 @@ export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | an
 
   return (
     (rWbsCode !== '' && (rWbsCode === nCode || rWbsCode === nPriceNo)) ||
-    (rWbsId !== '' && rWbsId === nId) ||
-    (rWbsCode !== '' && nCode !== '' && (rWbsCode.endsWith(`.${nCode}`) || nCode.endsWith(`.${rWbsCode}`)))
+    (rWbsId !== '' && (rWbsId === nId || rWbsId === nCode || rWbsId === nPriceNo))
   );
 };
 
