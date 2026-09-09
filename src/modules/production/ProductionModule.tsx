@@ -115,23 +115,27 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
 
-  // Dynamic status-matching helper : Filtrage étanche par site tout en garantissant la persistance des rapports
+  // Dynamic status-matching helper : Filtrage étanche par site tout en garantissant la persistance des rapports Songon & Bingerville
   const isProjectReportMatch = (r: any, proj: any): boolean => {
     if (!r) return false;
     if (!proj) return true;
     const pId = String(proj.id || '').toUpperCase().trim();
     const pCode = String(proj.code || '').toUpperCase().trim();
-    const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
+    const pName = String(proj.name || '').toUpperCase().trim();
+    const rProjId = String(r.projectId || r.project_id || r.projectName || '').toUpperCase().trim();
 
     if (!rProjId) return true;
     if (rProjId === pId || rProjId === pCode) return true;
 
-    // Isolation étanche entre sites uniquement en cas d'appartenance explicite opposée
-    const isSongonProject = pId.includes('SON') || pCode.includes('SON');
-    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN');
+    // Isolation étanche entre sites avec support des alias Songon / Bingerville
+    const isSongonProject = pId.includes('SON') || pCode.includes('SON') || pName.includes('SONG') || pName.includes('OUEST');
+    const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || pName.includes('BING') || pName.includes('EST');
 
-    if (isSongonProject && rProjId.includes('BEN')) return false;
-    if (isBingervilleProject && rProjId.includes('SON')) return false;
+    const isReportSongon = rProjId.includes('SON') || rProjId.includes('OUEST');
+    const isReportBingerville = rProjId.includes('BEN') || rProjId.includes('BING') || rProjId.includes('EST');
+
+    if (isSongonProject && isReportBingerville && !isReportSongon) return false;
+    if (isBingervilleProject && isReportSongon && !isReportBingerville) return false;
 
     return true;
   };
