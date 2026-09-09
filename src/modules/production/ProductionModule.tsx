@@ -115,15 +115,19 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
 
-  // Dynamic status-matching helper : Filtrage strict et étanche par site / projet
+  // Dynamic status-matching helper : Filtrage étanche par site tout en garantissant la persistance des rapports
   const isProjectReportMatch = (r: any, proj: any): boolean => {
-    if (!r || !proj) return false;
+    if (!r) return false;
+    if (!proj) return true;
     const pId = String(proj.id || '').toUpperCase().trim();
     const pCode = String(proj.code || '').toUpperCase().trim();
 
     const rProjId = String(r.projectId || r.project_id || '').toUpperCase().trim();
     const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase().trim();
     const rText = `${rProjId} ${rCode} ${String(r.wbsCode || '')} ${String(r.activityName || '')}`.toUpperCase();
+
+    if (!rProjId) return true;
+    if (rProjId === pId || rProjId === pCode) return true;
 
     const isSongonProject = pId.includes('SON') || pCode.includes('SON') || (proj.name && proj.name.toUpperCase().includes('SONGON'));
     const isBingervilleProject = pId.includes('BEN') || pCode.includes('BEN') || (proj.name && proj.name.toUpperCase().includes('BINGERVILLE'));
@@ -132,17 +136,17 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       if (rCode.startsWith('REP-BEN-') || rText.includes('BEN-002') || rText.includes('BINGERVILLE')) {
         return false;
       }
-      return rProjId.includes('SON') || rCode.includes('SON') || rText.includes('SONGON') || rProjId === pId || rProjId === pCode;
+      return true;
     }
 
     if (isBingervilleProject) {
       if (rCode.startsWith('REP-SON-') || rText.includes('SON-001') || rText.includes('SONGON')) {
         return false;
       }
-      return rProjId.includes('BEN') || rCode.includes('BEN') || rText.includes('BINGERVILLE') || rProjId === pId || rProjId === pCode;
+      return true;
     }
 
-    return rProjId === pId || rProjId === pCode;
+    return true;
   };
 
   // Filtre de statut maître pour le tableau (Défaut: 'ALL' pour afficher TOUS les rapports sans disparition)

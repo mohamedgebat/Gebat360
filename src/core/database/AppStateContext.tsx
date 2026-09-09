@@ -134,25 +134,17 @@ export const isTestAlert = (a: any): boolean => {
 
 export const isDemoReportObj = (r: any): boolean => {
   if (!r) return false;
+  // Seuls les anciens objets de démo strictement identifiés sont filtrés
   const strId = String(r.id || '').trim();
   const strCode = String(r.code || '').trim();
-  const strRepCode = String(r.reportCode || '').trim();
 
-  const isDemoStr = (s: string) =>
-    s === 'CR-2026-08-31-86' ||
-    s === 'CR-2026-08-31-87' ||
-    s === 'CR-2026-08-29-86' ||
-    s === 'CR-2026-08-29-87' ||
-    s === 'CR-2026-08-17-01' ||
-    s === 'CR-2026-09-03-13-292' ||
-    s === 'RJC-2026-00009' ||
-    s === 'CR-2026-08-01-07-549' ||
-    s.includes('1788439695094') ||
-    s.includes('1788439156385') ||
-    s.startsWith('VAL-RPT-') ||
-    s.startsWith('CR-REAL-');
-
-  return isDemoStr(strId) || isDemoStr(strCode) || isDemoStr(strRepCode);
+  return (
+    strId === 'CR-2026-08-31-86' ||
+    strId === 'CR-2026-08-31-87' ||
+    strId === 'CR-2026-08-29-86' ||
+    strId === 'RJC-2026-00009' ||
+    strCode === 'RJC-2026-00009'
+  );
 };
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
