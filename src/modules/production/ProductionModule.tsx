@@ -265,28 +265,55 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     });
   }, [projectWbsNodes, recordedActivities]);
 
-  // Fonction de résolution SSOT universelle pour garantir l'affichage permanent et complet de l'Activité WBS
+  // Fonction de résolution SSOT universelle pour garantir l'affichage permanent et conforme de l'Activité WBS
   const resolveReportWbsActivity = (rep: DailyReport | any) => {
     if (!rep) return { code: '', name: 'Activité Chantier', display: 'Activité Chantier' };
 
-    // 1. Si des activités multiples sont enregistrées dans le rapport
-    if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
-      const firstAct = rep.recordedActivities[0];
-      const code = firstAct.wbsCode || firstAct.code || firstAct.id || '';
-      const name = firstAct.activityName || firstAct.name || firstAct.description || '';
-      const extra = rep.recordedActivities.length > 1 ? ` (+${rep.recordedActivities.length - 1} autre(s))` : '';
-      return {
-        code,
-        name: (name || 'Activité de Chantier') + extra,
-        display: code ? `[${code}] ${(name || 'Activité de Chantier') + extra}` : (name || 'Activité de Chantier')
-      };
+    const repWbs = String(rep.wbsCode || rep.wbsId || rep.activityCode || rep.codeWbs || '').trim().toUpperCase();
+
+    // 1. Si l'enregistrement est rattaché à un code WBS précis et que recordedActivities est présent
+    if (repWbs && Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+      const matchedAct = rep.recordedActivities.find((a: any) => {
+        const aCode = String(a.wbsCode || a.code || a.id || '').trim().toUpperCase();
+        return aCode === repWbs;
+      });
+      if (matchedAct) {
+        const code = matchedAct.wbsCode || matchedAct.code || repWbs;
+        const name = matchedAct.activityName || matchedAct.name || matchedAct.description || rep.activityName || '';
+        return {
+          code,
+          name: name || 'Activité de Chantier',
+          display: code ? `[${code}] ${name || 'Activité de Chantier'}` : (name || 'Activité de Chantier')
+        };
+      }
     }
 
-    // 2. Récupération des propriétés directes
+    // 2. Si un nom et un code direct existent sur la ligne de rapport
     let code = String(rep.wbsCode || rep.wbsId || rep.activityCode || rep.codeWbs || '').trim();
     let name = String(rep.activityName || rep.taskName || rep.activity || rep.wbsName || rep.name || rep.description || rep.designation || '').trim();
 
-    // 3. Recherche dans le référentiel des activités aplaties du projet actif
+    if (code && name && name !== 'Activité' && name !== code) {
+      return {
+        code,
+        name,
+        display: `[${code}] ${name}`
+      };
+    }
+
+    // 3. Fallback sur recordedActivities si aucun code spécifique sur la ligne
+    if (!code && Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+      const firstAct = rep.recordedActivities[0];
+      const recCode = firstAct.wbsCode || firstAct.code || firstAct.id || '';
+      const recName = firstAct.activityName || firstAct.name || firstAct.description || '';
+      const extra = rep.recordedActivities.length > 1 ? ` (+${rep.recordedActivities.length - 1} autre(s))` : '';
+      return {
+        code: recCode,
+        name: (recName || 'Activité de Chantier') + extra,
+        display: recCode ? `[${recCode}] ${(recName || 'Activité de Chantier') + extra}` : (recName || 'Activité de Chantier')
+      };
+    }
+
+    // 4. Recherche dans le référentiel des activités aplaties du projet actif
     if (!name || name === code || name === 'Activité' || name === '') {
       const matchInWbs = projectWbsNodes.find(n => 
         (code && (n.wbsCode === code || n.priceNo === code || n.id === code)) ||
@@ -298,7 +325,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       }
     }
 
-    // 4. Recherche dans les dictionnaires réels Bingerville et Songon (priorité site sélectionné)
+    // 5. Recherche dans les dictionnaires réels Bingerville et Songon (priorité site sélectionné)
     if (!name || name === code || name === 'Activité' || name === '') {
       const currentSiteDs = realActivitiesSource;
       const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
@@ -313,7 +340,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       }
     }
 
-    // 5. Recherche dans tout l'arbre wbsMap
+    // 6. Recherche dans tout l'arbre wbsMap
     if (!name || name === code || name === 'Activité' || name === '') {
       const allTreeNodes = Object.values(wbsMap || {}).flat();
       const matchInTree = allTreeNodes.find((n: any) => 
@@ -326,7 +353,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       }
     }
 
-    // 6. Si toujours pas de code ni nom, déduire selon l'unité et le contexte du rapport
+    // 7. Si toujours pas de code ni nom, déduire selon l'unité et le contexte du rapport
     if (!name || name === '' || name === 'Activité') {
       const unit = String(rep.unit || '').toLowerCase();
       if (unit.includes('m3') || unit.includes('m³')) {
