@@ -482,19 +482,37 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   // Helper pour dériver l'effectif réel d'un rapport de production
   const getReportRealEffectif = (rep: any) => {
     if (!rep) return 6;
-    let workers = Number(rep.workersCount || rep.workforceCount || 0);
-    if (workers > 0) return workers;
 
+    // 1. Somme explicite de l'effectif renseigné dans la grille du personnel
     if (Array.isArray(rep.personnel) && rep.personnel.length > 0) {
       const sum = rep.personnel.reduce((acc: number, p: any) => acc + Number(p.effectif || 0), 0);
-      if (sum > 0) return sum;
+      if (sum > 0 && sum <= 45) return sum;
     }
 
-    const name = String(rep.activityName || '').toLowerCase();
-    if (name.includes('béton') || name.includes('coulage')) return 10;
-    if (name.includes('ferraillage') || name.includes('armature')) return 8;
-    if (name.includes('terrassement') || name.includes('démolition')) return 7;
-    if (name.includes('assainissement') || name.includes('tuyau')) return 6;
+    // 2. Champ workersCount si raisonnable (<= 45 ouvriers)
+    let workers = Number(rep.workersCount || rep.workforceCount || 0);
+    if (workers > 0 && workers <= 45) return workers;
+
+    // 3. Dérivation déterministe de l'effectif réel par type d'ouvrage/activité BTP
+    const code = String(rep.wbsCode || rep.wbsId || '').toUpperCase().trim();
+    const name = String(rep.activityName || rep.taskName || '').toLowerCase().trim();
+
+    if (name.includes('débroussement') || name.includes('decapage')) return 5;
+    if (name.includes('démolition') || name.includes('demolition')) return 7;
+    if (name.includes('béton') || name.includes('coulage') || name.includes('radier') || name.includes('voile') || name.includes('poteau')) return 10;
+    if (name.includes('ferraillage') || name.includes('armature') || name.includes('acier')) return 8;
+    if (name.includes('aire de dépotage') || name.includes('muret')) return 9;
+    if (name.includes('assainissement') || name.includes('tuyau') || name.includes('canalis')) return 6;
+    if (name.includes('coffrage') || name.includes('boiseur')) return 8;
+    if (name.includes('terrassement') || name.includes('fouille') || name.includes('remblai')) return 7;
+    if (name.includes('clôture') || name.includes('installation')) return 5;
+
+    // Si code WBS spécifique
+    if (code === '100.1' || code === '100.1.1') return 5;
+    if (code === '100.2' || code === '100.2.1') return 7;
+    if (code === '100.2.2') return 8;
+    if (code === '200.1') return 9;
+
     return 6;
   };
 
