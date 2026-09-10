@@ -647,17 +647,25 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     }
   };
 
-  // Répartition budgétaire réelle par nature de coût
+  // Répartition budgétaire réelle par nature de coût (calibrée exactement sur le budget révisé DS)
   const natureBreakdown = useMemo(() => {
-    const tot = realDsTotalFromResources > 0 ? realDsTotalFromResources : 1;
+    const tot = revisedBudget > 0 ? revisedBudget : (realDsTotalFromResources > 0 ? realDsTotalFromResources : 1);
+    const sumNats = (realNatureTotals.MO + realNatureTotals.MAT + realNatureTotals.MTL + realNatureTotals.ST + realNatureTotals.FGC) || 1;
+
+    const moAmt = Math.round(tot * (realNatureTotals.MO / sumNats));
+    const matAmt = Math.round(tot * (realNatureTotals.MAT / sumNats));
+    const mtlAmt = Math.round(tot * (realNatureTotals.MTL / sumNats));
+    const stAmt = Math.round(tot * (realNatureTotals.ST / sumNats));
+    const fgcAmt = Math.max(0, tot - (moAmt + matAmt + mtlAmt + stAmt));
+
     return [
-      { label: "Main-d'œuvre", code: 'MO', color: '#2563eb', bg: 'bg-blue-600', pct: ((realNatureTotals.MO / tot) * 100).toFixed(1), amount: realNatureTotals.MO },
-      { label: 'Matériaux', code: 'MAT', color: '#10b981', bg: 'bg-emerald-500', pct: ((realNatureTotals.MAT / tot) * 100).toFixed(1), amount: realNatureTotals.MAT },
-      { label: 'Matériel', code: 'MTL', color: '#f59e0b', bg: 'bg-amber-500', pct: ((realNatureTotals.MTL / tot) * 100).toFixed(1), amount: realNatureTotals.MTL },
-      { label: 'Sous-traitance', code: 'ST', color: '#8b5cf6', bg: 'bg-purple-500', pct: ((realNatureTotals.ST / tot) * 100).toFixed(1), amount: realNatureTotals.ST },
-      { label: 'Autres frais', code: 'FGC', color: '#f97316', bg: 'bg-orange-500', pct: ((realNatureTotals.FGC / tot) * 100).toFixed(1), amount: realNatureTotals.FGC },
+      { label: "Main-d'œuvre", code: 'MO', color: '#2563eb', bg: 'bg-blue-600', pct: ((moAmt / tot) * 100).toFixed(1), amount: moAmt },
+      { label: 'Matériaux', code: 'MAT', color: '#10b981', bg: 'bg-emerald-500', pct: ((matAmt / tot) * 100).toFixed(1), amount: matAmt },
+      { label: 'Matériel', code: 'MTL', color: '#f59e0b', bg: 'bg-amber-500', pct: ((mtlAmt / tot) * 100).toFixed(1), amount: mtlAmt },
+      { label: 'Sous-traitance', code: 'ST', color: '#8b5cf6', bg: 'bg-purple-500', pct: ((stAmt / tot) * 100).toFixed(1), amount: stAmt },
+      { label: 'Autres frais', code: 'FGC', color: '#f97316', bg: 'bg-orange-500', pct: ((fgcAmt / tot) * 100).toFixed(1), amount: fgcAmt },
     ];
-  }, [realNatureTotals, realDsTotalFromResources]);
+  }, [realNatureTotals, revisedBudget, realDsTotalFromResources]);
 
   // Facturation / Encaissements : absence de table dédiée en BDD MySQL
   // On ne calcule PAS de valeurs fictives (ni contractAmount*progress, ni 90% du facturé)
@@ -876,37 +884,55 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
   // Top 5 Lots réels par écart budgétaire EAC issus de la base
   const topLotsEac = useMemo(() => {
-    const sectionMap: Record<string, { label: string; budget: number; eac: number }> = {};
+    const sectionMap: Record<string, { label: string; budget: number; actualCost: number; progress: number }> = {};
 
     projectWbsNodes.forEach((act: any, idx: number) => {
-      const secNameRaw = act.section || act.description || act.name || `Lot ${idx + 1}`;
+      let secNameRaw = String(act.section || act.category || act.wbsName || act.name || `Lot ${idx + 1}`).trim();
+      if (secNameRaw.toUpperCase().startsWith('SECTION')) {
+        secNameRaw = secNameRaw.replace(/^SECTION\s*\d*\s*-?\s*/i, '').trim();
+      }
       const secName = secNameRaw.length > 28 ? secNameRaw.substring(0, 28) + '...' : secNameRaw;
-      const budget = Number(act.marketAmount || act.revisedBudget || act.initialBudget || 0);
-      const eac = Number(act.calculatedDsAmount || act.importedDsAmount || act.eac || budget);
+
+      const budget = Number(act.revisedBudget || act.calculatedDsAmount || act.importedDsAmount || act.initialBudget || 0);
+      const actualCost = Number(act.actualCost || 0);
+      const progress = Number(act.progress || 0);
 
       if (!sectionMap[secName]) {
-        sectionMap[secName] = { label: secName, budget: 0, eac: 0 };
+        sectionMap[secName] = { label: secName, budget: 0, actualCost: 0, progress: 0 };
       }
       sectionMap[secName].budget += budget;
-      sectionMap[secName].eac += eac;
+      sectionMap[secName].actualCost += actualCost;
+      sectionMap[secName].progress = Math.max(sectionMap[secName].progress, progress);
     });
 
+    const totalRawLotsBudget = Object.values(sectionMap).reduce((sum, s) => sum + s.budget, 0);
+    const targetTotalBudget = revisedBudget > 0 ? revisedBudget : totalRawLotsBudget;
+    const scaleFactor = (totalRawLotsBudget > 0 && targetTotalBudget > 0) ? (targetTotalBudget / totalRawLotsBudget) : 1;
+
     const list = Object.values(sectionMap).map((sec, i) => {
-      const ecartNum = sec.eac - sec.budget;
+      const lotBudget = Math.round(sec.budget * scaleFactor);
+      const lotActual = sec.actualCost;
+      const lotProg = sec.progress || Number(progressPct) || 0;
+      
+      const remainingCost = Math.round(lotBudget * Math.max(0, (100 - lotProg) / 100));
+      const lotEac = lotActual > 0 ? (lotActual + remainingCost) : lotBudget;
+
+      const ecartNum = lotEac - lotBudget;
       const ecartStr = ecartNum > 0 ? `+${fmtShort(ecartNum)}` : ecartNum < 0 ? `-${fmtShort(Math.abs(ecartNum))}` : '0 FCFA';
-      const status = ecartNum > 50000000 ? 'red' : ecartNum > 10000000 ? 'orange' : 'green';
+      const status = ecartNum > 10000000 ? 'red' : ecartNum > 0 ? 'orange' : 'green';
+
       return {
         wbs: String(i + 1).padStart(2, '0'),
         label: sec.label,
-        budget: sec.budget,
-        eac: sec.eac,
+        budget: lotBudget,
+        eac: lotEac,
         ecart: ecartStr,
         status
       };
     });
 
     return list.sort((a, b) => Math.abs(b.eac - b.budget) - Math.abs(a.eac - a.budget)).slice(0, 5);
-  }, [projectWbsNodes]);
+  }, [projectWbsNodes, revisedBudget, progressPct]);
 
   // Générateur dynamique de l'échéancier propre du projet (startDate -> endDate)
   const projectTimeline = useMemo(() => {
