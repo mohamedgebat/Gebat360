@@ -1262,7 +1262,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     setReportStatus('Brouillon');
     setMasterStatusFilter('Brouillon');
     setViewingReportDetail(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Redirection visuelle fluide vers le formulaire de modification en mode Brouillon
+    setTimeout(() => {
+      const topEl = document.getElementById('production-form-top');
+      if (topEl) {
+        topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   // SYNCHRONISATION MULTI-SECTIONS 100% LIÉE À L'ACTIVITÉ WBS SÉLECTIONNÉE
@@ -1816,7 +1825,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   }
 
   return (
-    <div className="space-y-4 text-xs font-sans text-slate-800 pb-16 max-w-[1700px] mx-auto bg-slate-50/50 p-2 md:p-4 rounded-3xl">
+    <div id="production-form-top" className="space-y-4 text-xs font-sans text-slate-800 pb-16 max-w-[1700px] mx-auto bg-slate-50/50 p-2 md:p-4 rounded-3xl">
       {/* 1. TOP HEADER NAVIGATION & ACTION BAR (EXACT MEDIA_1787755381495.PNG) */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -2517,7 +2526,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                         await updateDailyReportStatus(rep.code, 'Soumis', 'Soumis depuis le registre');
                                       }
                                     }
-                                    alert(`🚀 Rapport ${rep.code || rep.id} soumis pour validation.`);
+                                    setReportStatus('Soumis');
+                                    setMasterStatusFilter('Soumis');
+                                    alert(`🚀 Rapport ${rep.code || rep.id} soumis avec succès pour validation !\n\n• Statut mis à jour à Soumis (Étape 2)\n• Redirection vers les rapports soumis en attente de revue.`);
                                   }}
                                   className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
                                   title="Soumettre ce brouillon pour validation par le DP"
