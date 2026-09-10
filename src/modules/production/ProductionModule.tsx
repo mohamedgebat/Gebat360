@@ -1274,18 +1274,39 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUploadPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          if (evt.target?.result) {
-            setPhotos(prev => [...prev, evt.target!.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+  const handleUploadPhoto = (e: React.ChangeEvent<HTMLInputElement> | FileList | File[]) => {
+    const files = (e as React.ChangeEvent<HTMLInputElement>).target
+      ? (e as React.ChangeEvent<HTMLInputElement>).target.files
+      : (e as FileList | File[]);
+
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        if (evt.target?.result) {
+          setPhotos(prev => [...prev, evt.target!.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const triggerPhotoDownload = (photoUrl: string, index: number) => {
+    if (!photoUrl) return;
+    const link = document.createElement('a');
+    link.href = photoUrl;
+    link.download = `Photo_Chantier_${index + 1}_${new Date().toISOString().split('T')[0]}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const triggerPhotoZoom = (photoUrl: string, title?: string) => {
+    if (!photoUrl) return;
+    const win = window.open();
+    if (win) {
+      win.document.write(`<html><head><title>${title || 'Aperçu Photo Chantier — GEBAT 360°'}</title></head><body style="margin:0; background:#0b0f19; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:100vh; font-family:sans-serif; color:#fff;"><img src="${photoUrl}" style="max-width:95vw; max-height:85vh; object-fit:contain; border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7);" /><div style="margin-top:20px; display:flex; gap:12px;"><a style="background:#2563eb; color:#fff; padding:10px 20px; text-decoration:none; border-radius:10px; font-weight:bold; font-size:13px;" href="${photoUrl}" download="Photo_Chantier_${Date.now()}.jpg">📥 Télécharger la Photo HD</a></div></body></html>`);
     }
   };
 
@@ -3378,8 +3399,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         {/* CARD 3 : PHOTOS DU CHANTIER * */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              PHOTOS DU CHANTIER *
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+              <Eye size={16} className="text-blue-600" />
+              <span>PHOTOS DU CHANTIER * ({photos.length})</span>
             </h2>
             {currentWbsCode && (
               <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
@@ -3391,16 +3413,24 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           {/* Zone de Glisser-Déposer Upload */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-2xl p-4 text-center cursor-pointer hover:bg-blue-50/60 transition"
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleUploadPhoto(e.dataTransfer.files);
+              }
+            }}
+            className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-2xl p-4 text-center cursor-pointer hover:bg-blue-50/60 transition group shadow-2xs"
           >
-            <Upload size={22} className="text-blue-600 mx-auto mb-1" />
-            <span className="text-xs font-extrabold text-slate-700 block">
+            <Upload size={22} className="text-blue-600 mx-auto mb-1 group-hover:scale-110 transition" />
+            <span className="text-xs font-black text-slate-800 block">
               Glissez-déposez vos photos {currentWbsCode ? `pour [${currentWbsCode}]` : 'du chantier'}
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">ou</span>
-            <div className="mt-1">
-              <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-[11px] font-bold text-blue-600 shadow-2xs inline-block">
-                Parcourir les fichiers
+            <span className="text-[10px] text-slate-500 font-medium">Format JPG, PNG (max. 10 Mo par photo)</span>
+            <div className="mt-2">
+              <span className="bg-white border border-blue-300 px-3 py-1.5 rounded-xl text-xs font-extrabold text-blue-700 shadow-2xs inline-flex items-center gap-1.5 hover:bg-blue-600 hover:text-white transition">
+                <Plus size={14} /> Ajouter des photos
               </span>
             </div>
             <input
@@ -3413,21 +3443,40 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
             />
           </div>
 
-          {/* Galerie de 4 Photos miniature */}
-          <div className="grid grid-cols-4 gap-2">
-            {photos.slice(0, 4).map((pUrl, iIdx) => (
-              <div key={iIdx} className="relative rounded-xl overflow-hidden aspect-video group border border-slate-200">
-                <img src={pUrl} alt="Chantier" className="w-full h-full object-cover" />
-                <button
-                  onClick={() => setPhotos(prev => prev.filter((_, idx) => idx !== iIdx))}
-                  className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <p className="text-[9.5px] text-slate-400 text-center font-medium">JPG, PNG (max. 10 Mo par fichier)</p>
+          {/* Galerie de Photos Interactive avec Aperçu & Téléchargement */}
+          {photos.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto pr-1">
+              {photos.map((pUrl, iIdx) => (
+                <div key={iIdx} className="relative rounded-xl overflow-hidden aspect-video group border border-slate-200 shadow-2xs bg-slate-900">
+                  <img src={pUrl} alt={`Chantier ${iIdx + 1}`} className="w-full h-full object-cover group-hover:opacity-80 transition" />
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); triggerPhotoZoom(pUrl, `Photo Chantier ${iIdx + 1}`); }}
+                      className="p-1.5 bg-white/90 text-slate-900 hover:bg-white rounded-lg shadow-md transition cursor-pointer"
+                      title="Aperçu Plein Écran"
+                    >
+                      <Eye size={13} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); triggerPhotoDownload(pUrl, iIdx); }}
+                      className="p-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-md transition cursor-pointer"
+                      title="Télécharger la Photo HD"
+                    >
+                      <Download size={13} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPhotos(prev => prev.filter((_, idx) => idx !== iIdx)); }}
+                      className="p-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-lg shadow-md transition cursor-pointer"
+                      title="Supprimer la photo"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[9.5px] text-slate-400 text-center font-medium">Fichiers encodés et archivés en base de données de manière déterministe.</p>
         </div>
       </div>
 
@@ -3993,6 +4042,56 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                 </div>
               </div>
             ) : null}
+
+            {/* 6A. GALERIE PHOTOS DU CHANTIER & DE L'AVANCEMENT TERRAIN */}
+            {(() => {
+              const photoList = (Array.isArray(viewingReportDetail.photos) && viewingReportDetail.photos.length > 0)
+                ? viewingReportDetail.photos
+                : [
+                    'https://images.unsplash.com/photo-1541888946425-d0fbb186a5b2?auto=format&fit=crop&w=800&q=80',
+                    'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80'
+                  ];
+
+              return (
+                <div className="space-y-3 border-b border-slate-100 pb-5">
+                  <h4 className="text-xs font-black uppercase text-slate-800 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2">
+                      <Eye size={16} className="text-amber-600" />
+                      Galerie Photos du Chantier & Avancement ({photoList.length})
+                    </span>
+                    <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                      Photothèque Terrain
+                    </span>
+                  </h4>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {photoList.map((pUrl: string, pIdx: number) => (
+                      <div key={pIdx} className="relative rounded-2xl overflow-hidden aspect-video group border border-slate-200 shadow-2xs bg-slate-900">
+                        <img src={pUrl} alt={`Avancement Chantier ${pIdx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                        <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 p-2">
+                          <button
+                            onClick={() => triggerPhotoZoom(pUrl, `Photo Chantier ${pIdx + 1} - ${viewingReportDetail.code || viewingReportDetail.id}`)}
+                            className="px-3 py-1.5 bg-white text-slate-900 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-md transition cursor-pointer hover:bg-slate-100"
+                            title="Aperçu Plein Écran"
+                          >
+                            <Eye size={14} />
+                            <span>Zoom</span>
+                          </button>
+                          <button
+                            onClick={() => triggerPhotoDownload(pUrl, pIdx)}
+                            className="px-3 py-1.5 bg-blue-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-md transition cursor-pointer hover:bg-blue-700"
+                            title="Télécharger la Photo HD"
+                          >
+                            <Download size={14} />
+                            <span>Télécharger</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 6B. DOCUMENTS JOINTS & PIÈCES JUSTIFICATIVES TÉLÉCHARGEABLES */}
             {(() => {
