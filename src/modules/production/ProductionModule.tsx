@@ -1212,8 +1212,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     if (rep.createdBy || rep.teamLeader) setTeamLeader(rep.createdBy || rep.teamLeader);
 
     // Charger les activités enregistrées
+    let loadedActivities: RecordedActivityItem[] = [];
     if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
-      setRecordedActivities(rep.recordedActivities.map((act: any, idx: number) => ({
+      loadedActivities = rep.recordedActivities.map((act: any, idx: number) => ({
         id: act.id || `rec-edit-${idx}-${Date.now()}`,
         wbsCode: act.wbsCode || act.code || act.id || '',
         activityName: act.activityName || act.name || act.description || 'Activité',
@@ -1222,10 +1223,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         realizedQty: Number(act.realizedQty || rep.realizedQty || 0),
         totalPlanned: Number(act.totalPlanned || rep.totalPlanned || 0),
         cumulDate: Number(act.cumulDate || rep.cumulDate || 0)
-      })));
+      }));
     } else if (rep.wbsCode || rep.wbsId) {
       const wbsInfo = resolveReportWbsActivity(rep);
-      setRecordedActivities([{
+      loadedActivities = [{
         id: `rec-edit-single-${Date.now()}`,
         wbsCode: wbsInfo.code || rep.wbsCode || '',
         activityName: wbsInfo.name || rep.activityName || 'Activité',
@@ -1234,28 +1235,29 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         realizedQty: Number(rep.realizedQty || 0),
         totalPlanned: Number(rep.totalPlanned || 0),
         cumulDate: Number(rep.cumulDate || 0)
-      }]);
+      }];
+    }
+    setRecordedActivities(loadedActivities);
+
+    // Pré-remplir l'activité courante dans le formulaire supérieur pour édition directe
+    if (loadedActivities.length > 0) {
+      const first = loadedActivities[0];
+      setCurrentWbsCode(first.wbsCode);
+      setCurrentTargetQty(first.targetQty);
+      setCurrentRealizedQty(first.realizedQty !== undefined ? String(first.realizedQty) : '');
     }
 
-    if (Array.isArray(rep.personnel) && rep.personnel.length > 0) {
-      setPersonnelRows(rep.personnel);
-    }
-    if (Array.isArray(rep.materiel) && rep.materiel.length > 0) {
-      setMaterielRows(rep.materiel);
-    }
-    if (Array.isArray(rep.consummations) && rep.consummations.length > 0) {
-      setConsommationsRows(rep.consummations);
-    }
-    if (Array.isArray(rep.attachedDocuments) && rep.attachedDocuments.length > 0) {
-      setAttachedDocuments(rep.attachedDocuments);
-    } else {
-      setAttachedDocuments([]);
-    }
-    if (Array.isArray(rep.photos) && rep.photos.length > 0) {
-      setPhotos(rep.photos);
-    } else {
-      setPhotos([]);
-    }
+    // Chargement STRICT des éléments réels enregistrés (pas d'injection de lignes factices ou par défaut lors du déverrouillage)
+    setPersonnelRows(Array.isArray(rep.personnel) ? rep.personnel : []);
+    setMaterielRows(Array.isArray(rep.materiel) ? rep.materiel : []);
+    setConsommationsRows(Array.isArray(rep.consummations) ? rep.consummations : []);
+    setSoustraitantRows(Array.isArray((rep as any).soustraitants) ? (rep as any).soustraitants : []);
+    setLivraisonsRows(Array.isArray((rep as any).livraisons) ? (rep as any).livraisons : []);
+    setProblems(Array.isArray(rep.problems) ? rep.problems : []);
+    setObservations(Array.isArray(rep.observations) ? rep.observations : []);
+
+    setAttachedDocuments(Array.isArray(rep.attachedDocuments) ? rep.attachedDocuments : []);
+    setPhotos(Array.isArray(rep.photos) ? rep.photos : []);
 
     setReportStatus('Brouillon');
     setMasterStatusFilter('Brouillon');
