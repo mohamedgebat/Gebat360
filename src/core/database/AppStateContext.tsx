@@ -856,9 +856,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return proj;
       });
+      if (changed) {
+        safeSaveToStorage('gebat_projects', updated);
+      }
       return changed ? updated : prevProjects;
     });
-  }, [dailyReports.length, projects.length]);
+  }, [dailyReports, projects.length]);
 
   const [validationTasks, setValidationTasks] = useState<ValidationTask[]>(() => {
     if (typeof window !== 'undefined') {
