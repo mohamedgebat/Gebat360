@@ -2733,13 +2733,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase().trim();
                 const nCode = String(node.code || node.id || '').toUpperCase().trim();
                 const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
-                return rWbs === nCode || (nPriceNo !== '' && rWbs === nPriceNo);
+
+                let matchActivity = rWbs === nCode || (nPriceNo !== '' && rWbs === nPriceNo);
+                if (!matchActivity && Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
+                  matchActivity = r.recordedActivities.some((act: any) => {
+                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
+                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
+                  });
+                }
+                return matchActivity;
               });
 
-              const totalRealizedQty = nodeReports.reduce((sum, r) => sum + Number(r.realizedQty || 0), 0);
+              const totalRealizedQty = nodeReports.reduce((sum, r) => {
+                if (Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
+                  const nCode = String(node.code || node.id || '').toUpperCase().trim();
+                  const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
+                  const actMatch = r.recordedActivities.find((act: any) => {
+                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
+                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
+                  });
+                  if (actMatch) {
+                    return sum + Number(actMatch.realizedQty || 0);
+                  }
+                }
+                return sum + Number(r.realizedQty || 0);
+              }, 0);
+
               const totalRealizedCost = nodeReports.reduce((sum, r) => {
+                let qte = Number(r.realizedQty || 0);
+                if (Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
+                  const nCode = String(node.code || node.id || '').toUpperCase().trim();
+                  const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
+                  const actMatch = r.recordedActivities.find((act: any) => {
+                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
+                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
+                  });
+                  if (actMatch) qte = Number(actMatch.realizedQty || 0);
+                }
                 let cost = Number(r.totalCost);
-                const qte = Number(r.realizedQty || 0);
                 const pu = Number(r.pu || node.pu || (Number(node.revisedBudget || 0) / Number(node.plannedQty || 1)) || 0);
                 if (isNaN(cost) || cost <= 0) cost = qte * pu;
                 return sum + (cost || 0);
