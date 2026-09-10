@@ -76,16 +76,30 @@ export const isReportSubmitted = (report: DailyReport | any): boolean => {
  */
 export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | any): boolean => {
   if (!report || !node) return false;
-  const rWbsCode = String(report.wbsCode || '').trim();
-  const rWbsId = String(report.wbsId || '').trim();
-  const nCode = String(node.code || '').trim();
-  const nId = String(node.id || '').trim();
-  const nPriceNo = String(node.priceNo || '').trim();
+  const norm = (s: any) => String(s || '').trim().toUpperCase();
+  const nWbsCode = norm(node.wbsCode);
+  const nCode = norm(node.code);
+  const nId = norm(node.id);
+  const nPriceNo = norm(node.priceNo);
 
-  return (
-    (rWbsCode !== '' && (rWbsCode === nCode || rWbsCode === nPriceNo)) ||
-    (rWbsId !== '' && (rWbsId === nId || rWbsId === nCode || rWbsId === nPriceNo))
-  );
+  const nodeCodes = new Set([nWbsCode, nCode, nId, nPriceNo].filter(Boolean));
+
+  const rWbsCode = norm(report.wbsCode);
+  const rWbsId = norm(report.wbsId);
+  const rActivityCode = norm(report.activityCode);
+
+  if (nodeCodes.has(rWbsCode) || nodeCodes.has(rWbsId) || nodeCodes.has(rActivityCode)) {
+    return true;
+  }
+
+  if (Array.isArray(report.recordedActivities) && report.recordedActivities.length > 0) {
+    return report.recordedActivities.some((act: any) => {
+      const actWbs = norm(act.wbsCode || act.code || act.id);
+      return nodeCodes.has(actWbs);
+    });
+  }
+
+  return false;
 };
 
 /**
@@ -96,12 +110,12 @@ export const calculateActivityProgress = (
   node: WBSNode | any,
   allReports: (DailyReport | any)[]
 ): ActivityProgressMetrics => {
-  const nodeCode = node.code || node.priceNo || '';
+  const nodeCode = node.wbsCode || node.code || node.priceNo || '';
   const nodeId = node.id || '';
   const unit = node.unit || 'm3';
 
   // DQE : Source de vérité pour la quantité et valeur contractuelles
-  const contractQty = Math.max(0, Number(node.contractQty || node.plannedQty || node.quantity || 0));
+  const contractQty = Math.max(0, Number(node.contractQty || node.plannedQty || node.quantity || node.targetQty || 0));
   const contractUnitPrice = Math.max(0, Number(node.contractUnitPrice || node.priceNoUnit || node.unitCost || node.pu || 0));
   
   let contractAmount = Number(node.contractAmount || 0);
@@ -121,6 +135,9 @@ export const calculateActivityProgress = (
   let validatedRealizedQty = 0;
   let pendingRealizedQty = 0;
 
+  const norm = (s: any) => String(s || '').trim().toUpperCase();
+  const nodeCodes = new Set([norm(node.wbsCode), norm(node.code), norm(node.id), norm(node.priceNo)].filter(Boolean));
+
   (allReports || []).forEach(rep => {
     if (!rep) return;
     const repId = String(rep.id || rep.code || '').trim();
@@ -128,7 +145,14 @@ export const calculateActivityProgress = (
 
     if (isReportForWbsNode(rep, node)) {
       processedReportIds.add(repId);
-      const qty = Math.max(0, Number(rep.realizedQty || 0));
+      let qty = Math.max(0, Number(rep.realizedQty || 0));
+
+      if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+        const matched = rep.recordedActivities.find((act: any) => nodeCodes.has(norm(act.wbsCode || act.code || act.id)));
+        if (matched && matched.realizedQty !== undefined && !isNaN(Number(matched.realizedQty))) {
+          qty = Math.max(0, Number(matched.realizedQty));
+        }
+      }
 
       if (isReportValidatedOrLocked(rep)) {
         validatedRealizedQty += qty;
@@ -138,25 +162,27 @@ export const calculateActivityProgress = (
     }
   });
 
-  // Calcul du % d'avancement réel (plafonné à 100% pour le calcul officiel)
+  // Calcul du % d'avancement réel
   let realizedProgress = 0;
   if (contractQty > 0) {
-    realizedProgress = Math.min(100, (validatedRealizedQty / contractQty) * 100);
-  } else if (node.progress !== undefined) {
+    realizedProgress = Math.min(100, Number(((validatedRealizedQty / contractQty) * 100).toFixed(1)));
+  } else if (validatedRealizedQty > 0) {
+    realizedProgress = 100;
+  } else if (node.progress !== undefined && !isNaN(Number(node.progress))) {
     realizedProgress = Math.min(100, Math.max(0, Number(node.progress)));
   }
 
   // Avancement planifié
   let plannedProgress = 0;
   if (contractQty > 0) {
-    plannedProgress = Math.min(100, (plannedQty / contractQty) * 100);
+    plannedProgress = Math.min(100, Number(((plannedQty / contractQty) * 100).toFixed(1)));
   } else {
     plannedProgress = realizedProgress;
   }
 
   // Surproduction (Non plafonnée sur les quantitatifs)
-  const overproductionQty = validatedRealizedQty > contractQty ? validatedRealizedQty - contractQty : 0;
-  const hasOverproductionAlert = validatedRealizedQty > contractQty;
+  const overproductionQty = validatedRealizedQty > contractQty && contractQty > 0 ? validatedRealizedQty - contractQty : 0;
+  const hasOverproductionAlert = contractQty > 0 && validatedRealizedQty > contractQty;
 
   return {
     wbsId: nodeId,
@@ -170,8 +196,8 @@ export const calculateActivityProgress = (
     contractUnitPrice,
     contractAmount,
     debourseBudget,
-    plannedProgress: Number(plannedProgress.toFixed(1)),
-    realizedProgress: Number(realizedProgress.toFixed(1)),
+    plannedProgress,
+    realizedProgress,
     overproductionQty,
     hasOverproductionAlert
   };
@@ -194,7 +220,7 @@ export const getLeavesWBS = (nodes: (WBSNode | any)[]): (WBSNode | any)[] => {
 };
 
 /**
- * 3. AVANCEMENT PROJET GLOBAL (PONDÉRÉ PAR LE MARCHÉ CONTRACTUEL DQE)
+ * 2. CUMUL ET AVANCEMENT GLOBAL DU PROJET
  */
 export const calculateProjectOverallProgress = (
   project: Project | any,
@@ -205,6 +231,32 @@ export const calculateProjectOverallProgress = (
   const leaves = getLeavesWBS(wbsNodes || []);
 
   if (leaves.length === 0) {
+    const pId = String(project?.id || '').toUpperCase().trim();
+    const pCode = String(project?.code || '').toUpperCase().trim();
+    const projectValidReports = (allReports || []).filter(r => {
+      if (!isReportValidatedOrLocked(r)) return false;
+      const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
+      return rProj === pId || rProj === pCode || (pId && rProj.includes(pId));
+    });
+
+    if (projectValidReports.length > 0) {
+      const totalRealizedCost = projectValidReports.reduce((s, r) => s + (Number(r.realizedQty || 0) * Number(r.pu || 1000)), 0);
+      const projBudget = Number(project?.revisedBudget || project?.initialBudget || project?.contractAmount || 1000000);
+      const calculatedProg = Math.min(100, Number(((totalRealizedCost / projBudget) * 100).toFixed(1)));
+      return {
+        projectId,
+        totalContractAmount: projBudget,
+        totalEarnedAmount: totalRealizedCost,
+        totalPlannedAmount: projBudget,
+        overallPhysicalProgress: calculatedProg,
+        overallPlannedProgress: calculatedProg,
+        progressGap: 0,
+        isBehindSchedule: false,
+        isAheadOfSchedule: false,
+        totalOverproductionAmount: 0
+      };
+    }
+
     const fallbackProg = Number(project?.progress || project?.physicalProgress || 0);
     return {
       projectId,
@@ -227,7 +279,7 @@ export const calculateProjectOverallProgress = (
 
   leaves.forEach(leaf => {
     const metrics = calculateActivityProgress(leaf, allReports);
-    const weight = metrics.contractAmount;
+    const weight = metrics.contractAmount || Number(leaf.revisedBudget || leaf.initialBudget || 1000);
 
     totalContractAmount += weight;
     totalEarnedAmount += weight * (metrics.realizedProgress / 100);
@@ -239,11 +291,11 @@ export const calculateProjectOverallProgress = (
   });
 
   const overallPhysicalProgress = totalContractAmount > 0
-    ? Math.min(100, Math.max(0, (totalEarnedAmount / totalContractAmount) * 100))
+    ? Math.min(100, Math.max(0, Number(((totalEarnedAmount / totalContractAmount) * 100).toFixed(1))))
     : Number(project?.progress || 0);
 
   const overallPlannedProgress = totalContractAmount > 0
-    ? Math.min(100, Math.max(0, (totalPlannedAmount / totalContractAmount) * 100))
+    ? Math.min(100, Math.max(0, Number(((totalPlannedAmount / totalContractAmount) * 100).toFixed(1))))
     : overallPhysicalProgress;
 
   const progressGap = Number((overallPhysicalProgress - overallPlannedProgress).toFixed(1));
