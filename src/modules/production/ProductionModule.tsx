@@ -197,9 +197,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
   // Source d'activités réelles selon le projet sélectionné
   const realActivitiesSource = useMemo(() => {
-    const code = (selectedProject?.code || '').toUpperCase();
-    const name = (selectedProject?.name || '').toUpperCase();
-    if (code.includes('SON') || name.includes('SONGON')) {
+    if (!selectedProject) return REAL_DS_SONGON_ACTIVITIES;
+    const pStr = `${selectedProject.id || ''} ${selectedProject.code || ''} ${selectedProject.name || ''} ${selectedProject.location || ''}`.toUpperCase();
+    if (pStr.includes('SONG') || pStr.includes('SON-001') || pStr.includes('SON') || pStr.includes('ABIDJAN OUEST')) {
       return REAL_DS_SONGON_ACTIVITIES;
     }
     return REAL_DS_BINGERVILLE_ACTIVITIES;
@@ -280,9 +280,11 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       }
     }
 
-    // 4. Recherche dans les dictionnaires réels Bingerville et Songon
+    // 4. Recherche dans les dictionnaires réels Bingerville et Songon (priorité site sélectionné)
     if (!name || name === code || name === 'Activité' || name === '') {
-      const allDs = [...REAL_DS_BINGERVILLE_ACTIVITIES, ...REAL_DS_SONGON_ACTIVITIES];
+      const currentSiteDs = realActivitiesSource;
+      const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+      const allDs = [...currentSiteDs, ...otherSiteDs];
       const matchInDs = allDs.find(d => 
         (code && (d.wbsCode === code || d.priceNo === code || d.id === code)) ||
         (rep.wbsId && (d.id === rep.wbsId || d.wbsCode === rep.wbsId))
@@ -518,7 +520,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     ];
 
     const normCode = String(wbsCode).toUpperCase().trim();
-    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const currentSiteDs = realActivitiesSource;
+    const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+    const allActivities = [...currentSiteDs, ...otherSiteDs];
     const matchedDs = allActivities.find(act => 
       String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
       normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
@@ -628,7 +632,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     ];
 
     const normCode = String(wbsCode).toUpperCase().trim();
-    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const currentSiteDs = realActivitiesSource;
+    const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+    const allActivities = [...currentSiteDs, ...otherSiteDs];
     const matchedDs = allActivities.find(act => 
       String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
       normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
@@ -956,7 +962,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     const normCode = String(wbsCode).toUpperCase().trim();
     
     // 1. Recherche dans les activités DS réelles du projet (qui contiennent le détail exact des sous-ressources MAT)
-    const allActivities = [...REAL_DS_SONGON_ACTIVITIES, ...REAL_DS_BINGERVILLE_ACTIVITIES];
+    const currentSiteDs = realActivitiesSource;
+    const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+    const allActivities = [...currentSiteDs, ...otherSiteDs];
     const matchedDs = allActivities.find(act => 
       String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
       normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())

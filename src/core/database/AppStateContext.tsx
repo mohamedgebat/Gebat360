@@ -989,8 +989,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const newWbsMap: Record<string, WBSNode[]> = {};
         for (const p of normalizedProjects) {
           try {
-            const isBingerville = p.code?.includes('BEN') || p.id?.includes('BEN');
-            const isSongon = p.code?.includes('SON') || p.id?.includes('SON');
+            const pStr = `${p.id || ''} ${p.code || ''} ${p.name || ''} ${p.location || ''}`.toUpperCase();
+            const isSongon = pStr.includes('SONG') || pStr.includes('SON-001') || pStr.includes('SON') || pStr.includes('ABIDJAN OUEST');
+            const isBingerville = pStr.includes('BING') || pStr.includes('BEN') || pStr.includes('BEN-002') || pStr.includes('ABIDJAN EST');
             const fallbackRealActivities = isBingerville ? REAL_DS_BINGERVILLE_ACTIVITIES : isSongon ? REAL_DS_SONGON_ACTIVITIES : [];
 
             // Priorité 1 Absolue: Activités DS réelles (LocalStorage ou Jeux de Données Métier Réels)
