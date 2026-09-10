@@ -6,7 +6,7 @@ import {
   FileText, Clock, Lock, Unlock,
   X, FileSpreadsheet, Eye, Upload, Download,
   ChevronRight, ArrowLeft, ChevronDown, Layers, Building2,
-  Send, HelpCircle, Printer, Trash2
+  Send, HelpCircle, Printer, Trash2, Users, Truck, Package, ShieldAlert
 } from 'lucide-react';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
@@ -3351,22 +3351,25 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
 
       {/* MODAL SYNTHÈSE & DÉTAILS DU RAPPORT POUR LE VALIDEUR */}
       {viewingReportDetail && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 my-8">
-            {/* EN-TÊTE MODAL AVEC BADGES DE STATUT */}
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-7 space-y-6 shadow-2xl border border-slate-200 my-6 max-h-[90vh] overflow-y-auto">
+            {/* EN-TÊTE MODAL AVEC BADGES DE STATUT & BOUTONS FERMER */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className={`text-[11px] font-black uppercase px-3 py-1 rounded-full tracking-wide ${
-                  viewingReportDetail.status === 'Validé' || viewingReportDetail.status === 'Verrouillé'
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-black uppercase px-3 py-1 rounded-full tracking-wide flex items-center gap-1.5 ${
+                  viewingReportDetail.status === 'Verrouillé'
+                    ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                    : viewingReportDetail.status === 'Validé'
+                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                     : viewingReportDetail.status === 'Soumis'
-                    ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                    : 'bg-amber-100 text-amber-900 border border-amber-300'
                 }`}>
-                  FICHE RAPPORT TERRAIN — {viewingReportDetail.status || 'Soumis'}
+                  {viewingReportDetail.status === 'Verrouillé' ? <Lock size={13} /> : viewingReportDetail.status === 'Validé' ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                  FICHE RAPPORT TERRAIN 360° — {viewingReportDetail.status || 'Soumis'}
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-2 flex items-center gap-2">
-                  <span>Réf: {viewingReportDetail.code || viewingReportDetail.id}</span>
+                <h3 className="text-lg font-black text-slate-900">
+                  Réf: {viewingReportDetail.code || viewingReportDetail.reportCode || viewingReportDetail.id}
                 </h3>
               </div>
               <button
@@ -3378,10 +3381,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               </button>
             </div>
 
-            {/* METADATAS PROJET ET HEURE DU RAPPORT */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs font-medium">
+            {/* 1. CARTOUCHE DE CONTEXTE ET MÉTADONNÉES DU PROJET */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs font-medium">
               <div>
-                <span className="text-slate-400 block text-[10.5px]">Projet</span>
+                <span className="text-slate-400 block text-[10.5px]">Projet / Chantier</span>
                 <span className="font-bold text-slate-900">
                   {projects.find(p => p.id === viewingReportDetail.projectId || p.code === viewingReportDetail.projectId)?.name || viewingReportDetail.projectId || selectedProject?.name}
                 </span>
@@ -3393,9 +3396,15 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                 </span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[10.5px]">Chef / Auteur</span>
+                <span className="text-slate-400 block text-[10.5px]">Chef / Auteur Terrain</span>
                 <span className="font-bold text-slate-900">
                   {viewingReportDetail.createdBy || viewingReportDetail.teamLeader || 'Conducteur'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Validé par</span>
+                <span className="font-bold text-emerald-800">
+                  {viewingReportDetail.validatedBy || (viewingReportDetail.status === 'Validé' || viewingReportDetail.status === 'Verrouillé' ? 'Directeur de Projet' : 'En attente')}
                 </span>
               </div>
               <div>
@@ -3411,98 +3420,295 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                 </span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[10.5px]">Productivité</span>
-                <span className="font-mono font-black text-emerald-700">
-                  {viewingReportDetail.productivityRate || 100}%
+                <span className="text-slate-400 block text-[10.5px]">Poste / Shift</span>
+                <span className="font-bold text-slate-900">
+                  {viewingReportDetail.workShift || 'Poste 1 (Jour)'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10.5px]">Productivité Globale</span>
+                <span className="font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                  {viewingReportDetail.productivityRate || viewingReportDetail.advancePct || 100}%
                 </span>
               </div>
             </div>
 
-            {/* ACTIVITÉ & QUANTITÉ RÉALISÉE */}
-            <div className="space-y-2 border-b border-slate-100 pb-4">
-              <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
-                <Layers size={14} className="text-blue-600" />
-                Activité & Quantité Réalisée
+            {/* 2. SECTION ACTIVITÉS & QUANTITÉS RÉALISÉE (MULTI-ACTIVITÉS OU ACTIVITÉ PRINCIPALE) */}
+            <div className="space-y-3 border-b border-slate-100 pb-5">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Layers size={15} className="text-blue-600" />
+                  Activités & Quantités Réalisées ({Array.isArray(viewingReportDetail.recordedActivities) && viewingReportDetail.recordedActivities.length > 0 ? viewingReportDetail.recordedActivities.length : 1})
+                </span>
+                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+                  Suivi WBS
+                </span>
               </h4>
-              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  {(() => {
-                    const wbsInfo = resolveReportWbsActivity(viewingReportDetail);
-                    return (
-                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                        {wbsInfo.code && (
-                          <span className="font-mono text-xs font-black text-blue-800 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
-                            [{wbsInfo.code}]
+
+              {Array.isArray(viewingReportDetail.recordedActivities) && viewingReportDetail.recordedActivities.length > 0 ? (
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
+                      <tr>
+                        <th className="p-2.5">Code WBS</th>
+                        <th className="p-2.5">Activité / Ouvrage</th>
+                        <th className="p-2.5 text-center">Unité</th>
+                        <th className="p-2.5 text-right">Prévue (Jour)</th>
+                        <th className="p-2.5 text-right">Réalisée (Jour)</th>
+                        <th className="p-2.5 text-right">Cumul Date</th>
+                        <th className="p-2.5 text-right">Volume DQE</th>
+                        <th className="p-2.5 text-center">% Avancement</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                      {viewingReportDetail.recordedActivities.map((act: any, idx: number) => {
+                        const pct = act.targetQty > 0 ? Math.round((act.realizedQty / act.targetQty) * 100) : 100;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2.5 font-mono font-bold text-blue-700">{act.wbsCode}</td>
+                            <td className="p-2.5 font-bold text-slate-900">{act.activityName}</td>
+                            <td className="p-2.5 text-center font-bold text-slate-600">{act.unit}</td>
+                            <td className="p-2.5 text-right font-mono text-slate-600">{formatQty(act.targetQty)}</td>
+                            <td className="p-2.5 text-right font-mono font-black text-blue-900">{formatQty(act.realizedQty)}</td>
+                            <td className="p-2.5 text-right font-mono text-slate-600">{formatQty(act.cumulDate)}</td>
+                            <td className="p-2.5 text-right font-mono text-slate-500">{formatQty(act.totalPlanned)}</td>
+                            <td className="p-2.5 text-center font-mono">
+                              <span className={`px-2 py-0.5 rounded-full font-bold text-[10.5px] ${
+                                pct >= 100 ? 'bg-emerald-100 text-emerald-800' : pct >= 80 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {pct}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    {(() => {
+                      const wbsInfo = resolveReportWbsActivity(viewingReportDetail);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                          {wbsInfo.code && (
+                            <span className="font-mono text-xs font-black text-blue-800 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
+                              [{wbsInfo.code}]
+                            </span>
+                          )}
+                          <span className="text-xs font-black text-slate-900">
+                            {wbsInfo.name}
                           </span>
-                        )}
-                        <span className="text-xs font-black text-slate-900">
-                          {wbsInfo.name}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-                    Quantité Prévue au Planning : {formatQty(viewingReportDetail.plannedQty || viewingReportDetail.targetQty)} {viewingReportDetail.unit}
-                  </span>
+                        </div>
+                      );
+                    })()}
+                    <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+                      Quantité Prévue au Planning : {formatQty(viewingReportDetail.plannedQty || viewingReportDetail.targetQty)} {viewingReportDetail.unit || 'm³'}
+                    </span>
+                  </div>
+                  <div className="text-left sm:text-right font-mono">
+                    <span className="text-xl font-black text-blue-950 block">
+                      {formatQty(viewingReportDetail.realizedQty)} {viewingReportDetail.unit || 'm³'}
+                    </span>
+                    <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                      Avancement : {viewingReportDetail.productivityRate || 100}%
+                    </span>
+                  </div>
                 </div>
-                <div className="text-left sm:text-right font-mono">
-                  <span className="text-xl font-black text-blue-950 block">
-                    {formatQty(viewingReportDetail.realizedQty)} {viewingReportDetail.unit}
-                  </span>
-                  <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full inline-block mt-1">
-                    Avancement : {viewingReportDetail.productivityRate || 100}%
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* COMMENTAIRES & OBSERVATIONS */}
+            {/* 3. SECTION PERSONNEL & MAIN D'ŒUVRE MOBILISÉE */}
+            {(() => {
+              const personnelData = (Array.isArray(viewingReportDetail.personnel) && viewingReportDetail.personnel.length > 0)
+                ? viewingReportDetail.personnel
+                : getPersonnelForWbsActivity(viewingReportDetail.wbsCode, viewingReportDetail.realizedQty, selectedProject);
+              
+              const totalWorkers = personnelData.reduce((acc: number, item: any) => acc + (Number(item.effectif) || 0), 0);
+              const totalHours = personnelData.reduce((acc: number, item: any) => acc + (Number(item.hNormales || item.hours) || 0), 0);
+
+              return (
+                <div className="space-y-2 border-b border-slate-100 pb-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Users size={15} className="text-indigo-600" />
+                      Personnel & Main-d'œuvre Mobilisée ({totalWorkers} ouvriers)
+                    </span>
+                    <span className="text-[10.5px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                      Total : {totalHours}h travaillées
+                    </span>
+                  </h4>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
+                        <tr>
+                          <th className="p-2">Catégorie / Qualification</th>
+                          <th className="p-2 text-center">Effectif</th>
+                          <th className="p-2 text-right">Heures Normales</th>
+                          <th className="p-2 text-right">Heures Sup.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                        {personnelData.map((p: any, i: number) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="p-2 font-bold text-slate-900">{p.category || p.name || 'Ouvrier spécialisé'}</td>
+                            <td className="p-2 text-center font-mono font-bold text-indigo-900">{p.effectif || 1} pers.</td>
+                            <td className="p-2 text-right font-mono text-slate-600">{p.hNormales || (p.effectif * 8) || 8}h</td>
+                            <td className="p-2 text-right font-mono text-slate-500">{p.hSup || 0}h</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 4. SECTION ENGINS, MATÉRIEL & ÉQUIPEMENTS */}
+            {(() => {
+              const materielData = (Array.isArray(viewingReportDetail.materiel) && viewingReportDetail.materiel.length > 0)
+                ? viewingReportDetail.materiel
+                : getMaterielForWbsActivity(viewingReportDetail.wbsCode, viewingReportDetail.realizedQty, selectedProject);
+
+              return (
+                <div className="space-y-2 border-b border-slate-100 pb-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Truck size={15} className="text-amber-600" />
+                      Engins, Matériel & Équipements de Chantier ({materielData.length})
+                    </span>
+                  </h4>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
+                        <tr>
+                          <th className="p-2">Désignation Engin / Équipement</th>
+                          <th className="p-2 text-center">Quantité</th>
+                          <th className="p-2 text-right">Heures de marche</th>
+                          <th className="p-2 text-right">Carburant Est.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                        {materielData.map((m: any, i: number) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="p-2 font-bold text-slate-900">{m.name || 'Équipement'}</td>
+                            <td className="p-2 text-center font-mono font-bold text-amber-900">{m.qty || 1} u</td>
+                            <td className="p-2 text-right font-mono text-slate-700">{m.hours || 8}h</td>
+                            <td className="p-2 text-right font-mono text-slate-500">{m.fuel ? `${m.fuel} L` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 5. SECTION CONSOMMATIONS DE MATÉRIAUX */}
+            {(() => {
+              const consommationsData = (Array.isArray(viewingReportDetail.consummations) && viewingReportDetail.consummations.length > 0)
+                ? viewingReportDetail.consummations
+                : getConsommationsForWbsActivity(viewingReportDetail.wbsCode, viewingReportDetail.realizedQty, selectedProject);
+
+              if (consommationsData.length === 0) return null;
+
+              return (
+                <div className="space-y-2 border-b border-slate-100 pb-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Package size={15} className="text-emerald-600" />
+                      Consommation de Matériaux & Stocks Imputés ({consommationsData.length})
+                    </span>
+                  </h4>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
+                        <tr>
+                          <th className="p-2">Désignation Matériau / Article</th>
+                          <th className="p-2 text-center">Unité</th>
+                          <th className="p-2 text-right">Qté Prévue</th>
+                          <th className="p-2 text-right">Qté Consommée</th>
+                          <th className="p-2 text-center">Écart</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                        {consommationsData.map((c: any, i: number) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="p-2 font-bold text-slate-900">{c.article || c.name || 'Matériau'}</td>
+                            <td className="p-2 text-center font-bold text-slate-600">{c.unit || 'U'}</td>
+                            <td className="p-2 text-right font-mono text-slate-600">{formatQty(c.prevue || c.theoreticalQty)}</td>
+                            <td className="p-2 text-right font-mono font-black text-emerald-900">{formatQty(c.consommee || c.qty || c.prevue)}</td>
+                            <td className="p-2 text-center font-mono text-slate-500">0.00</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 6. COMMENTAIRES & OBSERVATIONS TERRAIN */}
             {viewingReportDetail.notes || viewingReportDetail.generalComment || viewingReportDetail.observations ? (
-              <div className="space-y-1 border-b border-slate-100 pb-4">
+              <div className="space-y-1.5 border-b border-slate-100 pb-4">
                 <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
                   <FileText size={14} className="text-slate-600" />
                   Commentaires & Observations Terrain
                 </h4>
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 italic">
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 italic font-medium">
                   "{viewingReportDetail.notes || viewingReportDetail.generalComment || viewingReportDetail.observations}"
                 </div>
               </div>
             ) : null}
 
-            {/* HISTORIQUE DE VALIDATION ET TRAÇABILITÉ (SI PRÉSENT) */}
-            {Array.isArray(viewingReportDetail.historyLogs) && viewingReportDetail.historyLogs.length > 0 && (
-              <div className="space-y-2 border-b border-slate-100 pb-4">
-                <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
-                  <Clock size={14} className="text-indigo-600" />
-                  Historique de Validation & Traçabilité
-                </h4>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200 text-[11px]">
-                  {viewingReportDetail.historyLogs.map((log: any, idx: number) => (
-                    <div key={idx} className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-100">
-                      <span className="font-mono font-bold text-slate-500">{log.timestamp}</span>
-                      <span className="font-semibold text-slate-800">{log.user} ({log.role})</span>
-                      <span className="font-bold text-blue-700">{log.action}</span>
-                    </div>
-                  ))}
+            {/* 7. HISTORIQUE DE VALIDATION ET TRAÇABILITÉ AUDIT */}
+            <div className="space-y-2 border-b border-slate-100 pb-4">
+              <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                <Clock size={14} className="text-indigo-600" />
+                Historique de Validation & Traçabilité Audit
+              </h4>
+              <div className="space-y-1.5 max-h-36 overflow-y-auto p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px]">
+                <div className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-100">
+                  <span className="font-mono font-bold text-slate-500">{formatFrenchDate(viewingReportDetail.date)}</span>
+                  <span className="font-semibold text-slate-800">{viewingReportDetail.createdBy || viewingReportDetail.teamLeader || 'Conducteur'}</span>
+                  <span className="font-bold text-blue-700">Création / Enregistrement rapport</span>
                 </div>
+                {viewingReportDetail.validatedBy && (
+                  <div className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <span className="font-mono font-bold text-emerald-700">{formatFrenchDate(viewingReportDetail.validationDate || viewingReportDetail.date)}</span>
+                    <span className="font-semibold text-emerald-900">{viewingReportDetail.validatedBy}</span>
+                    <span className="font-bold text-emerald-700">✅ Validé & Imputé</span>
+                  </div>
+                )}
+                {Array.isArray(viewingReportDetail.historyLogs) && viewingReportDetail.historyLogs.map((log: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-100">
+                    <span className="font-mono font-bold text-slate-500">{log.timestamp || log.time}</span>
+                    <span className="font-semibold text-slate-800">{log.user || 'Utilisateur'}</span>
+                    <span className="font-bold text-blue-700">{log.action || log.text}</span>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            {/* BOUTONS D'ACTION VALIDEURS */}
-            <div className="flex items-center justify-between pt-2">
+            {/* BOUTONS D'ACTION ET EXPORT PDF / VALIDATION */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
               <button
                 onClick={() => {
                   window.print();
                 }}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Printer size={14} /> Imprimer / PDF
+                <Printer size={15} /> Imprimer / Exporter Fiche PDF
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 <button
                   onClick={() => setViewingReportDetail(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
                 >
                   Fermer
                 </button>
@@ -3534,7 +3740,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                           setIsValidating(false);
                         }
                       }}
-                      className="px-4 py-2 bg-amber-100 hover:bg-amber-200 disabled:opacity-50 text-amber-900 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      className="px-4 py-2.5 bg-amber-100 hover:bg-amber-200 disabled:opacity-50 text-amber-900 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
                     >
                       <span>↩️ Demander Correction</span>
                     </button>
@@ -3562,10 +3768,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                           setIsValidating(false);
                         }
                       }}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
                     >
                       <CheckCircle2 size={16} />
-                      <span>{isValidating ? '⏳ Validation en cours...' : '✅ Valider ce Rapport (DP/DT)'}</span>
+                      <span>{isValidating ? '⏳ Validation...' : '✅ Valider ce Rapport (DP/DT)'}</span>
                     </button>
                   </>
                 )}
