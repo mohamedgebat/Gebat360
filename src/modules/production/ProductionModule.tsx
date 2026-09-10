@@ -916,6 +916,51 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     return 'Zone A - Côté Nord';
   };
 
+  // Helper pour dériver les Observations & Remarques selon l'activité WBS
+  const getObservationsForWbsActivity = (wbsCode: string) => {
+    if (!wbsCode) return "Travaux exécutés conformément aux instructions de la maîtrise d'œuvre et au planning général du chantier.";
+    const normCode = String(wbsCode).toUpperCase().trim();
+    const currentSiteDs = realActivitiesSource;
+    const otherSiteDs = realActivitiesSource === REAL_DS_SONGON_ACTIVITIES ? REAL_DS_BINGERVILLE_ACTIVITIES : REAL_DS_SONGON_ACTIVITIES;
+    const allActivities = [...currentSiteDs, ...otherSiteDs];
+    const matchedDs = allActivities.find(act => 
+      String(act.wbsCode || act.priceNo || act.id || '').toUpperCase().trim() === normCode ||
+      normCode.includes(String(act.wbsCode || act.priceNo || '').toUpperCase().trim())
+    );
+
+    const actObj = projectWbsNodes.find(a => 
+      String(a.wbsCode || a.priceNo || a.id || '').toUpperCase().trim() === normCode
+    );
+    const desc = String(actObj?.description || actObj?.name || matchedDs?.description || '').toLowerCase();
+    const actName = actObj?.description || actObj?.name || matchedDs?.description || wbsCode;
+
+    if (desc.includes('béton') || desc.includes('radier') || desc.includes('voile') || desc.includes('poteau') || desc.includes('dalle') || desc.includes('fondation') || desc.includes('coulage')) {
+      return `Exécution des travaux de coulage béton conforme aux spécifications CCTP pour l'activité [${normCode} - ${actName}]. Slump test et prélèvement d'éprouvettes effectués. Temps d'ensoleillement favorable et vibration soignée.`;
+    }
+
+    if (desc.includes('ferraillage') || desc.includes('armature') || desc.includes('acier') || desc.includes('fer ') || desc.includes('ha ')) {
+      return `Pose et ligaturage des armatures en cours pour l'activité [${normCode} - ${actName}]. Respect strict du plan de ferraillage validé par le bureau d'études et vérification des cales d'enrobage avant coulage.`;
+    }
+
+    if (desc.includes('tuyau') || desc.includes('canalis') || desc.includes('assainissement') || desc.includes('collecteur') || desc.includes('drain') || desc.includes('pvc') || desc.includes('pehd')) {
+      return `Pose et emboîtement des tuyaux d'assainissement pour l'activité [${normCode} - ${actName}]. Contrôle laser des pentes de fil d'eau et remblaiement par couches successives compactées.`;
+    }
+
+    if (desc.includes('terrassement') || desc.includes('décapage') || desc.includes('fouille') || desc.includes('remblai') || desc.includes('compactage')) {
+      return `Travaux de terrassement et préparation de plateforme pour l'activité [${normCode} - ${actName}]. Évacuation continue des déblais et compactage contrôlé de la plateforme.`;
+    }
+
+    if (desc.includes('coffrage') || desc.includes('boiseur') || desc.includes('étayage') || desc.includes('panneau')) {
+      return `Montage des panneaux et banches de coffrage pour l'activité [${normCode} - ${actName}]. Traitement à l'huile de décoffrage, vérification du plombage et de la stabilité du contreventement.`;
+    }
+
+    if (desc.includes('clôture') || desc.includes('installation') || desc.includes('sécuris') || desc.includes('magasin') || desc.includes('bureau')) {
+      return `Installation et sécurisation de périmètre pour l'activité [${normCode} - ${actName}]. Ancrage et scellement béton des poteaux effectués dans les délais requis.`;
+    }
+
+    return `Exécution conforme aux règles de l'art pour l'activité [${normCode} - ${actName}]. Mobilisation des équipes et outillages selon la cadence requise au planning.`;
+  };
+
   const [personnelRows, setPersonnelRows] = useState<Array<{ category: string; effectif: number; hNormales: number; hSup: number }>>([]);
   const [materielRows, setMaterielRows] = useState<Array<{ name: string; qty: number; hours: number; fuel: number }>>([]);
   const [soustraitantRows, setSoustraitantRows] = useState<Array<{ company: string; task: string; effectif: number; status: string }>>([]);
@@ -1202,7 +1247,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       const actObj = projectWbsNodes.find(a => (a.wbsCode || a.priceNo || a.id) === code);
       const actName = actObj?.description || actObj?.name || 'Chantier';
       setGeneralComment(`Travaux de ${actName} (WBS: ${code}) en cours conformément au planning journalier.`);
-      setObservations(`Exécution conforme aux règles de l'art pour l'activité [${code} - ${actName}]. Mobilisation des équipes et outillages selon la cadence requise.`);
+      
+      const derivedObs = getObservationsForWbsActivity(code);
+      setObservations(derivedObs);
     }
   }, [currentWbsCode, currentTargetQty, selectedProject?.id]);
 
