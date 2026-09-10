@@ -793,7 +793,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!dailyReports || dailyReports.length === 0 || !projects || projects.length === 0) return;
 
-    let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
+    let nextWbsMap: Record<string, WBSNode[]> = {};
 
     setWbsMap(prevMap => {
       const nextMap = { ...prevMap };
@@ -835,24 +835,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         nextMap[pKey] = updateNodeDeterministic(tree);
       });
 
-      calculatedNextWbsMap = nextMap;
+      nextWbsMap = nextMap;
       return nextMap;
     });
 
     setProjects(prevProjects => {
       let changed = false;
       const updated = prevProjects.map(proj => {
-        const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
-        if (projTree.length > 0) {
-          const summary = calculateProjectOverallProgress(proj, projTree, dailyReports);
-          if (proj.progress !== summary.overallPhysicalProgress || proj.physicalProgress !== summary.overallPhysicalProgress) {
-            changed = true;
-            return {
-              ...proj,
-              progress: summary.overallPhysicalProgress,
-              physicalProgress: summary.overallPhysicalProgress
-            };
-          }
+        const projTree = nextWbsMap[proj.id] || nextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const summary = calculateProjectOverallProgress(proj, projTree, dailyReports);
+        const targetProg = summary.overallPhysicalProgress;
+
+        if (proj.progress !== targetProg || proj.physicalProgress !== targetProg) {
+          changed = true;
+          return {
+            ...proj,
+            progress: targetProg,
+            physicalProgress: targetProg
+          };
         }
         return proj;
       });

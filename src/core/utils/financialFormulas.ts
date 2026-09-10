@@ -204,33 +204,35 @@ export const getProjectFinancialSummary = (
   // 4. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
   let progressPct = 0;
 
-  // Priorité 1 : Avancement physique explicitement renseigné sur le projet
-  if (project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) >= 0) {
-    progressPct = Number(project.progress);
-  }
-
-  // Priorité 2 : Avancement physique réel calculé à partir des rapports de production validés (si 0)
-  if (progressPct === 0 && Array.isArray(dailyReports) && dailyReports.length > 0) {
+  // Priorité 1 : Avancement physique réel calculé à partir des rapports de production validés
+  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
     const validReports = dailyReports.filter(r => {
+      if (!r) return false;
       const rProj = String(r.projectId || r.project_id || '').toUpperCase();
       const s = (r.status || '').toUpperCase();
       const isValid = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      return isValid && (rProj === pId || rProj === pCode || rProj.includes(pId) || pId.includes(rProj));
+      return isValid && (rProj === pId || rProj === pCode || (pId && rProj.includes(pId)) || (pCode && rProj.includes(pCode)));
     });
 
     if (validReports.length > 0 && revisedBudget > 0) {
       const totalReportCost = validReports.reduce((sum, r) => {
         let cost = Number(r.totalCost);
         const qte = Number(r.realizedQty || 0);
-        const pu = Number(r.pu || 0);
+        let pu = Number(r.pu || r.unitCost || r.contractUnitPrice || 0);
+        if (!pu || pu === 0) pu = 1000;
         if (isNaN(cost) || cost <= 0) cost = qte * pu;
         return sum + (cost || 0);
       }, 0);
 
-      if (totalReportCost > 0 && totalReportCost <= revisedBudget) {
-        progressPct = Number(((totalReportCost / revisedBudget) * 100).toFixed(1));
+      if (totalReportCost > 0) {
+        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
       }
     }
+  }
+
+  // Priorité 2 : Avancement physique explicitement renseigné sur le projet (si pas de rapport validé)
+  if (progressPct === 0 && project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) > 0) {
+    progressPct = Number(project.progress);
   }
 
   // Priorité 3 : Avancement physique pondéré des nœuds WBS (si 0)
