@@ -300,7 +300,11 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
         }
         return sum + (cost || 0);
       }, 0);
-      const actualCostVal = Number(n.actualCost || 0) > 0 ? Number(n.actualCost) : repActualCostVal;
+      const rawExplicitActualCost = Number(n.actualCost || 0);
+      const maxAcceptableNodeCost = revisedBudgetVal > 0 ? revisedBudgetVal * 1.5 : 500000000;
+      const actualCostVal = (rawExplicitActualCost > 0 && rawExplicitActualCost <= maxAcceptableNodeCost)
+        ? rawExplicitActualCost
+        : repActualCostVal;
 
       // 4. Avancement physique réel
       let calcProgress = 0;
@@ -319,8 +323,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
       }
 
       // 5. EAC Prévisionnel
-      const explicitEac = Number(n.eac || 0);
-      const eacVal = explicitEac > 0 ? explicitEac : Math.max(revisedBudgetVal, actualCostVal);
+      const rawExplicitEac = Number(n.eac || 0);
+      const eacVal = (rawExplicitEac > 0 && rawExplicitEac <= maxAcceptableNodeCost * 1.5)
+        ? rawExplicitEac
+        : Math.max(revisedBudgetVal, actualCostVal);
 
       // Recherche correspondante dans les tâches du planning réel
       const matchedPlanningTask = planningTasksList.find(pt => {

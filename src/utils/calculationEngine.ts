@@ -50,8 +50,11 @@ export const calculateActualCost = (
     .filter(m => m.type === 'Sortie' && (isProjectMatch(m.projectId, project.id) || isProjectMatch(m.projectId, project.code)))
     .reduce((sum, m) => sum + (Number(m.totalCost) || ((Number(m.quantity) || 0) * (Number(m.unitPrice) || 0)) || 0), 0);
 
-  // C. Coût depuis les nœuds WBS
-  const wbsCost = wbsNodes.reduce((sum, n) => sum + Number(n.actualCost || 0), 0);
+  // C. Coût depuis les nœuds WBS (filtrage des valeurs résiduelles non-assainies > 500M FCFA)
+  const wbsCost = wbsNodes.reduce((sum, n) => {
+    const c = Number(n.actualCost || 0);
+    return sum + (c > 0 && c <= 500000000 ? c : 0);
+  }, 0);
 
   return Math.max(reportsCost, stockCost, wbsCost);
 };
