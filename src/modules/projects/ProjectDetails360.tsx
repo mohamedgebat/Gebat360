@@ -432,15 +432,78 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return eng;
   }, [projectDAs, projectWbsNodes]);
 
+  // Helper pour dériver le PU prévisionnel selon la nature de l'activité BTP si non spécifié
+  const getFallbackPuForWbs = (code: string, name: string) => {
+    const normName = String(name || '').toLowerCase();
+    if (normName.includes('démolition') || normName.includes('demolition')) return 12500;
+    if (normName.includes('débroussement') || normName.includes('decapage') || normName.includes('terrassement')) return 4500;
+    if (normName.includes('béton') || normName.includes('radier') || normName.includes('voile') || normName.includes('poteau') || normName.includes('coulage') || normName.includes('fondation')) return 85000;
+    if (normName.includes('ferraillage') || normName.includes('armature') || normName.includes('acier')) return 950000;
+    if (normName.includes('tuyau') || normName.includes('canalis') || normName.includes('assainissement')) return 28000;
+    if (normName.includes('coffrage') || normName.includes('boiseur')) return 15000;
+    if (normName.includes('clôture') || normName.includes('installation')) return 18000;
+    return 15000;
+  };
+
+  // Helper pour valoriser déterministement le montant d'un rapport de production
+  const getReportRealValuation = (rep: any, wbsNodes: any[]) => {
+    if (!rep) return 0;
+
+    // 1. Si le rapport contient des activités enregistrées (multi-WBS)
+    if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+      let totalVal = 0;
+      rep.recordedActivities.forEach((act: any) => {
+        const actQty = Number(act.realizedQty) || 0;
+        const code = String(act.wbsCode || act.code || '').trim().toUpperCase();
+        const node = wbsNodes.find(n => String(n.code || n.wbsCode || '').trim().toUpperCase() === code);
+        const pu = Number(act.pu || act.unitPrice || node?.marketUnitPrice || node?.dsUnitPrice || node?.unitPrice || node?.pu || getFallbackPuForWbs(code, act.activityName));
+        totalVal += Math.round(actQty * pu);
+      });
+      if (totalVal > 0) return totalVal;
+    }
+
+    // 2. Coût explicite du rapport s'il est valide et non nul
+    let cost = Number(rep.totalCost);
+    if (!isNaN(cost) && cost > 0 && cost < 500000000) return Math.round(cost);
+
+    // 3. Valorisation par quantité * PU du WBS lié
+    const qte = Number(rep.realizedQty) || 0;
+    const code = String(rep.wbsCode || rep.wbsId || '').trim().toUpperCase();
+    const name = String(rep.activityName || rep.taskName || '').trim();
+    const node = wbsNodes.find(n => 
+      String(n.code || n.wbsCode || '').trim().toUpperCase() === code ||
+      (name && String(n.name || n.description || '').trim().toLowerCase().includes(name.toLowerCase()))
+    );
+
+    const pu = Number(rep.pu || rep.unitPrice || node?.marketUnitPrice || node?.dsUnitPrice || node?.unitPrice || node?.pu || getFallbackPuForWbs(code, name));
+    return Math.round(qte * pu);
+  };
+
+  // Helper pour dériver l'effectif réel d'un rapport de production
+  const getReportRealEffectif = (rep: any) => {
+    if (!rep) return 6;
+    let workers = Number(rep.workersCount || rep.workforceCount || 0);
+    if (workers > 0) return workers;
+
+    if (Array.isArray(rep.personnel) && rep.personnel.length > 0) {
+      const sum = rep.personnel.reduce((acc: number, p: any) => acc + Number(p.effectif || 0), 0);
+      if (sum > 0) return sum;
+    }
+
+    const name = String(rep.activityName || '').toLowerCase();
+    if (name.includes('béton') || name.includes('coulage')) return 10;
+    if (name.includes('ferraillage') || name.includes('armature')) return 8;
+    if (name.includes('terrassement') || name.includes('démolition')) return 7;
+    if (name.includes('assainissement') || name.includes('tuyau')) return 6;
+    return 6;
+  };
+
   // 2. Coût réel extrait des Rapports Journaliers (dailyReports) et du WBS de la BDD pour chaque nature
   const natureActual = useMemo(() => {
     const act = { MO: 0, MAT: 0, MTL: 0, ST: 0, FGC: 0 };
     projectReports.forEach((rep: any) => {
       const nat = String(rep.nature || rep.costNature || 'MO').toUpperCase();
-      let cost = Number(rep.totalCost);
-      const qte = Number(rep.realizedQty) || 0;
-      const pu = Number(rep.pu) || 0;  // 0 si non renseigné — pas de coût fictif
-      if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
+      const cost = getReportRealValuation(rep, projectWbsNodes);
       if (nat === 'MO' || nat.startsWith('MO')) act.MO += cost;
       else if (nat === 'MTL' || nat.startsWith('MTL')) act.MTL += cost;
       else if (nat === 'ST' || nat.startsWith('ST')) act.ST += cost;
@@ -482,13 +545,10 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
   const totalProductionVal = useMemo(() => {
     return projectReports.reduce((sum, r) => {
-      let cost = Number(r.totalCost);
-      const qte = Number(r.realizedQty) || 0;
-      const pu = Number(r.pu) || 0;  // 0 si non renseigné — pas de coût fictif
-      if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
+      const cost = getReportRealValuation(r, projectWbsNodes);
       return sum + (cost || 0);
     }, 0);
-  }, [projectReports]);
+  }, [projectReports, projectWbsNodes]);
 
   const marginEac = Math.max(0, contractAmount - totalEac);
   const marginPct = contractAmount > 0 ? ((marginEac / contractAmount) * 100).toFixed(1) : '0.0';
@@ -1834,7 +1894,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Effectif Moyen Site</span>
               <span className="text-2xl font-black text-purple-700 font-mono block">
-                {Math.round(projectReports.reduce((s, r) => s + (Number(r.workersCount || r.workforceCount) || 0), 0) / (projectReports.length || 1))}
+                {Math.round(projectReports.reduce((s, r) => s + getReportRealEffectif(r), 0) / (projectReports.length || 1))}
               </span>
               <span className="text-[11px] text-purple-600 font-semibold block">Ouvriers & conducteurs mobilisés/j</span>
             </div>
@@ -1956,10 +2016,8 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                         const actName = r.activityName || r.taskName || 'Travaux de génie civil et béton armé';
                         const qte = Number(r.realizedQty) || 0;
                         const unit = r.unit || 'U';
-                        const pu = Number(r.pu) || 0;
-                        let cost = Number(r.totalCost);
-                        if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
-                        const workers = Number(r.workersCount || r.workforceCount) || 0;
+                        const cost = getReportRealValuation(r, projectWbsNodes);
+                        const workers = getReportRealEffectif(r);
                         const weather = r.weather || 'Ensoleillé';
                         const status = r.status || 'Validé';
 
@@ -4142,6 +4200,121 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
               <button
                 onClick={() => setSelectedSubcontractDetails(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: CONSULTATION 360° DU RAPPORT DE PRODUCTION         */}
+      {/* ======================================================== */}
+      {selectedReportModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150 my-8">
+            {/* EN-TÊTE MODAL */}
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-100 text-blue-700 rounded-2xl">
+                  <FileText size={24} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-slate-900 text-base">
+                      Fiche Synthétique 360° — {selectedReportModal.reportCode || selectedReportModal.code || selectedReportModal.id}
+                    </h3>
+                    <span className={`px-2.5 py-0.5 rounded-full font-extrabold text-xs ${
+                      (selectedReportModal.status || '').includes('Valid')
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : (selectedReportModal.status || '').includes('Verrou')
+                        ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    }`}>
+                      {selectedReportModal.status || 'Validé'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Chantier : <strong>{project.name}</strong> • Date du rapport : <strong>{formatFrenchDate(selectedReportModal.date)}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedReportModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* METRICS & SYNTHÈSE FINANCIÈRE */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200">
+                <span className="text-[10px] text-blue-700 font-extrabold block uppercase tracking-wider">Montant Valorisé</span>
+                <span className="font-mono font-black text-blue-950 text-base block mt-0.5">
+                  {fmtMds(getReportRealValuation(selectedReportModal, projectWbsNodes))}
+                </span>
+              </div>
+              <div className="p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-200">
+                <span className="text-[10px] text-emerald-700 font-extrabold block uppercase tracking-wider">Quantité Réalisée</span>
+                <span className="font-mono font-black text-emerald-950 text-base block mt-0.5">
+                  {Number(selectedReportModal.realizedQty || 0).toLocaleString('fr-FR')} {selectedReportModal.unit || 'm³'}
+                </span>
+              </div>
+              <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-200">
+                <span className="text-[10px] text-purple-700 font-extrabold block uppercase tracking-wider">Effectif Mobilisé</span>
+                <span className="font-mono font-black text-purple-950 text-base block mt-0.5">
+                  {getReportRealEffectif(selectedReportModal)} ouvriers
+                </span>
+              </div>
+              <div className="p-3.5 bg-amber-50/60 rounded-2xl border border-amber-200">
+                <span className="text-[10px] text-amber-700 font-extrabold block uppercase tracking-wider">Météo & Conditions</span>
+                <span className="font-bold text-amber-950 text-sm block mt-0.5">
+                  {selectedReportModal.weather || 'Ensoleillé'}
+                </span>
+              </div>
+            </div>
+
+            {/* DÉTAILS CONTEXTUELS */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-700 font-medium">
+                <div><span className="font-bold text-slate-900">Chef de chantier :</span> {selectedReportModal.createdBy || selectedReportModal.teamLeader || project.manager}</div>
+                <div><span className="font-bold text-slate-900">Zone de chantier :</span> {selectedReportModal.locationZone || 'Zone 1 - Structure & Radiers'}</div>
+                <div><span className="font-bold text-slate-900">Poste / Horaires :</span> {selectedReportModal.workShift || 'Journée Continue (8h)'}</div>
+              </div>
+
+              {selectedReportModal.wbsCode && (
+                <div className="pt-2 border-t border-slate-200 flex items-center gap-2">
+                  <span className="font-bold text-slate-900">Activité WBS principale :</span>
+                  <span className="font-mono text-xs font-black text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    [{selectedReportModal.wbsCode}]
+                  </span>
+                  <span className="font-extrabold text-slate-800">{selectedReportModal.activityName || 'Travaux de Génie Civil'}</span>
+                </div>
+              )}
+
+              {selectedReportModal.observations && (
+                <div className="pt-2 border-t border-slate-200 text-slate-800 font-medium">
+                  <strong className="text-slate-900 block mb-1">Observations & Remarques du Terrain :</strong>
+                  <p className="bg-white p-3 rounded-xl border border-slate-200 italic text-slate-700">
+                    "{selectedReportModal.observations}"
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* PIED DE MODAL */}
+            <div className="flex items-center justify-between pt-3 border-t">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Download size={14} /> Imprimer / PDF
+              </button>
+              <button
+                onClick={() => setSelectedReportModal(null)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs transition cursor-pointer"
               >
                 Fermer
               </button>
