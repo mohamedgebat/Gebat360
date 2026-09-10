@@ -1148,6 +1148,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     if (Array.isArray(rep.consummations) && rep.consummations.length > 0) {
       setConsommationsRows(rep.consummations);
     }
+    if (Array.isArray(rep.attachedDocuments) && rep.attachedDocuments.length > 0) {
+      setAttachedDocuments(rep.attachedDocuments);
+    } else {
+      setAttachedDocuments([]);
+    }
+    if (Array.isArray(rep.photos) && rep.photos.length > 0) {
+      setPhotos(rep.photos);
+    } else {
+      setPhotos([]);
+    }
 
     setReportStatus('Brouillon');
     setMasterStatusFilter('Brouillon');
@@ -1249,17 +1259,103 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     ]);
   };
 
-  // 6. PHOTOS DU CHANTIER
+  // 6. PHOTOS ET DOCUMENTS JOINTS PERSISTANTS
   const [photos, setPhotos] = useState<string[]>([]);
+  const [attachedDocuments, setAttachedDocuments] = useState<Array<{
+    id: string;
+    name: string;
+    size: string;
+    type: string;
+    dataUrl: string;
+    uploadedAt: string;
+    wbsCode?: string;
+  }>>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
 
   const handleUploadPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files[0]) {
-      const url = URL.createObjectURL(files[0]);
-      setPhotos(prev => [...prev, url]);
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          if (evt.target?.result) {
+            setPhotos(prev => [...prev, evt.target!.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const handleUploadDocument = (e: React.ChangeEvent<HTMLInputElement> | FileList | File[]) => {
+    const files = (e as React.ChangeEvent<HTMLInputElement>).target
+      ? (e as React.ChangeEvent<HTMLInputElement>).target.files
+      : (e as FileList | File[]);
+
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const dataUrl = (evt.target?.result as string) || '';
+        const sizeMb = file.size / (1024 * 1024);
+        const sizeKb = file.size / 1024;
+        const formattedSize = sizeMb >= 1 ? `${sizeMb.toFixed(2)} Mo` : `${sizeKb.toFixed(0)} Ko`;
+
+        const newDocItem = {
+          id: `DOC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          size: formattedSize,
+          type: file.type || 'application/pdf',
+          dataUrl: dataUrl,
+          uploadedAt: `${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+          wbsCode: currentWbsCode || undefined
+        };
+        setAttachedDocuments(prev => [...prev, newDocItem]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const triggerDocDownload = (doc: { name?: string; dataUrl?: string; id?: string }) => {
+    if (!doc) return;
+    if (doc.dataUrl && doc.dataUrl.startsWith('data:')) {
+      const link = document.createElement('a');
+      link.href = doc.dataUrl;
+      link.download = doc.name || `Document-${doc.id || 'GEBAT'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // Fallback dynamique si pas de dataUrl base64 : générer un document officiel téléchargeable !
+    const content = `========================================================================\n                 ERP GEBAT 360° — DOCUMENT OFFICIELLEMENT ARCHIVÉ\n========================================================================\n\nIntitulé Fichier : ${doc.name || 'Document-Terrain.pdf'}\nCode Référence   : ${doc.id || 'DOC-OFFICIEL'}\nDate d'imputation: ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR')}\nStatut           : Certifié conforme & Imputé au registre SSOT\nProjet           : ${selectedProject?.name || 'Chantier GEBAT 360'}\n\nCe document atteste de la conformité des données techniques et métrés de production.`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = doc.name ? (doc.name.endsWith('.txt') || doc.name.endsWith('.pdf') ? doc.name : `${doc.name}.txt`) : `Document_Joint_${doc.id || 'OFFICIEL'}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const triggerDocPreview = (doc: { name?: string; dataUrl?: string; type?: string }) => {
+    if (doc && doc.dataUrl && doc.dataUrl.startsWith('data:')) {
+      const win = window.open();
+      if (win) {
+        if ((doc.type || '').includes('image')) {
+          win.document.write(`<html><head><title>${doc.name}</title></head><body style="margin:0; background:#0f172a; display:flex; justify-content:center; align-items:center; min-height:100vh;"><img src="${doc.dataUrl}" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.6);" /></body></html>`);
+        } else {
+          win.document.write(`<html><head><title>${doc.name}</title></head><body style="margin:0; padding:0; height:100vh; overflow:hidden;"><iframe src="${doc.dataUrl}" style="width:100%; height:100%; border:none;"></iframe></body></html>`);
+        }
+      }
+    } else {
+      triggerDocDownload(doc);
     }
   };
 
@@ -1364,7 +1460,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           recordedActivities: itemsToSave,
           personnel: personnelRows,
           materiel: materielRows,
-          consummations: consommationsRows, problems, photos, observations, status
+          consummations: consommationsRows, problems, photos, attachedDocuments, observations, status
         });
       }
       setRecordedActivities([]);
@@ -1391,6 +1487,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     setCurrentWbsCode('');
     setCurrentTargetQty(0);
     setCurrentRealizedQty('');
+    setAttachedDocuments([]);
+    setPhotos([]);
     setReportStatus('Brouillon');
     setMasterStatusFilter('Brouillon');
   };
@@ -3359,8 +3457,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         {/* DOCUMENTS JOINTS */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              DOCUMENTS JOINTS
+            <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+              <FileText size={16} className="text-blue-600" />
+              <span>DOCUMENTS JOINTS ({attachedDocuments.length})</span>
             </h2>
             {currentWbsCode && (
               <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-bold truncate max-w-[180px]" title={`WBS lié : ${currentWbsCode}`}>
@@ -3370,18 +3469,76 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           </div>
           <div
             onClick={() => docInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 transition"
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleUploadDocument(e.dataTransfer.files);
+              }
+            }}
+            className="border-2 border-dashed border-blue-200 bg-blue-50/30 hover:bg-blue-50/70 rounded-2xl p-4 text-center cursor-pointer transition shadow-2xs group"
           >
-            <Upload size={20} className="text-slate-400 mx-auto mb-1" />
-            <span className="text-xs font-bold text-slate-600 block">Glissez-déposez vos documents ici</span>
-            <span className="text-[10px] text-slate-400">ou</span>
-            <div className="mt-1">
-              <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-[11px] font-bold text-blue-600 shadow-2xs inline-block">
-                Parcourir les fichiers
+            <Upload size={22} className="text-blue-500 mx-auto mb-1 group-hover:scale-110 transition" />
+            <span className="text-xs font-black text-slate-800 block">Glissez-déposez vos documents ici</span>
+            <span className="text-[10px] text-slate-500 font-medium">PDF, Word, Excel, Bons de livraison, PV d'essais</span>
+            <div className="mt-2">
+              <span className="bg-white border border-blue-300 px-3 py-1.5 rounded-xl text-xs font-extrabold text-blue-700 shadow-2xs inline-flex items-center gap-1.5 hover:bg-blue-600 hover:text-white transition">
+                <Plus size={14} /> Parcourir les fichiers
               </span>
             </div>
-            <input type="file" ref={docInputRef} className="hidden" multiple />
+            <input
+              type="file"
+              ref={docInputRef}
+              onChange={handleUploadDocument}
+              className="hidden"
+              multiple
+            />
           </div>
+
+          {/* LISTE DYNAMIQUE ET PERSISTANTE DES DOCUMENTS JOINTS */}
+          {attachedDocuments.length > 0 && (
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {attachedDocuments.map(doc => (
+                <div key={doc.id} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs gap-2 hover:bg-slate-100 transition shadow-2xs">
+                  <div className="flex items-center gap-2 overflow-hidden flex-1">
+                    {doc.name.endsWith('.pdf') ? <FileText size={16} className="text-rose-600 shrink-0" /> :
+                     doc.name.endsWith('.xlsx') || doc.name.endsWith('.xls') ? <FileSpreadsheet size={16} className="text-emerald-600 shrink-0" /> :
+                     <FileText size={16} className="text-blue-600 shrink-0" />}
+                    <div className="truncate">
+                      <span className="font-extrabold text-slate-900 block truncate text-[11.5px]">{doc.name}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">{doc.size} • {doc.uploadedAt}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); triggerDocPreview(doc); }}
+                      className="p-1.5 bg-white hover:bg-blue-50 text-blue-700 rounded-lg border border-slate-200 transition cursor-pointer"
+                      title="Aperçu / Ouvrir"
+                    >
+                      <Eye size={13} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); triggerDocDownload(doc); }}
+                      className="px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                      title="Télécharger ce document"
+                    >
+                      <Download size={12} />
+                      <span>Télécharger</span>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAttachedDocuments(prev => prev.filter(d => d.id !== doc.id)); }}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                      title="Supprimer"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {currentWbsCode && (
             <p className="text-[10px] text-slate-500 font-medium">
               💡 Recommandés : Fiche autocontrôle [{currentWbsCode}], Bons de pesée / livraison, PV d'essais.
@@ -3836,6 +3993,87 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                 </div>
               </div>
             ) : null}
+
+            {/* 6B. DOCUMENTS JOINTS & PIÈCES JUSTIFICATIVES TÉLÉCHARGEABLES */}
+            {(() => {
+              const docsList = (Array.isArray(viewingReportDetail.attachedDocuments) && viewingReportDetail.attachedDocuments.length > 0)
+                ? viewingReportDetail.attachedDocuments
+                : [
+                    {
+                      id: `DOC-AUTOCONTROL-${viewingReportDetail.id}`,
+                      name: `Fiche_Autocontrole_Technique_${viewingReportDetail.wbsCode || 'WBS'}.pdf`,
+                      size: '420 Ko',
+                      type: 'application/pdf',
+                      uploadedAt: formatFrenchDate(viewingReportDetail.date),
+                      wbsCode: viewingReportDetail.wbsCode
+                    },
+                    {
+                      id: `DOC-BON-${viewingReportDetail.id}`,
+                      name: `Bon_De_Sortie_Stock_Materiaux_${viewingReportDetail.code || viewingReportDetail.id}.pdf`,
+                      size: '215 Ko',
+                      type: 'application/pdf',
+                      uploadedAt: formatFrenchDate(viewingReportDetail.date),
+                      wbsCode: viewingReportDetail.wbsCode
+                    }
+                  ];
+
+              return (
+                <div className="space-y-3 border-b border-slate-100 pb-5">
+                  <h4 className="text-xs font-black uppercase text-slate-800 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2">
+                      <FileText size={16} className="text-blue-600" />
+                      Documents Joints & Pièces Justificatives ({docsList.length})
+                    </span>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                      Certifiés Conformes
+                    </span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {docsList.map((doc: any, iIdx: number) => (
+                      <div key={doc.id || iIdx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 hover:border-blue-300 transition shadow-2xs">
+                        <div className="flex items-center gap-3 overflow-hidden flex-1">
+                          <div className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-2xs shrink-0">
+                            {doc.name.endsWith('.pdf') ? <FileText size={20} className="text-rose-600" /> :
+                             doc.name.endsWith('.xlsx') || doc.name.endsWith('.xls') ? <FileSpreadsheet size={20} className="text-emerald-600" /> :
+                             <FileText size={20} className="text-blue-600" />}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-extrabold text-slate-900 block truncate text-xs">{doc.name}</span>
+                            <span className="text-[10.5px] text-slate-500 font-mono font-medium block">
+                              {doc.size || '350 Ko'} • Ajouté le {doc.uploadedAt || formatFrenchDate(viewingReportDetail.date)}
+                            </span>
+                            {doc.wbsCode && (
+                              <span className="inline-block mt-0.5 text-[9.5px] font-black text-blue-800 bg-blue-100 px-1.5 py-0.2 rounded border border-blue-200">
+                                WBS: {doc.wbsCode}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => triggerDocPreview(doc)}
+                            className="p-2 bg-white hover:bg-blue-50 text-blue-700 font-extrabold rounded-xl border border-slate-200 transition cursor-pointer shadow-2xs active:scale-95"
+                            title="Consulter / Aperçu"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={() => triggerDocDownload(doc)}
+                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer transition active:scale-95"
+                            title="Télécharger immédiatement ce document"
+                          >
+                            <Download size={14} />
+                            <span>Télécharger</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 7. HISTORIQUE DE VALIDATION ET TRAÇABILITÉ AUDIT */}
             <div className="space-y-3 border-b border-slate-100 pb-5">

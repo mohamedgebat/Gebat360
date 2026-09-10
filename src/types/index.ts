@@ -658,6 +658,7 @@ export interface DailyReport {
   subcontractors?: { name: string; task: string; workers: number; status: string }[];
   qhseNotes?: string;
   photos?: string[];
+  attachedDocuments?: { id: string; name: string; size: string; type: string; dataUrl: string; uploadedAt: string; wbsCode?: string }[];
   problems?: string;
   stopReason?: string;
   notes?: string;
