@@ -3331,8 +3331,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-slate-500 font-extrabold border-b border-slate-200 text-[10.5px]">
-                    <th className="py-2">Type de problème / Incident</th>
-                    <th className="py-2 text-right">Impact</th>
+                    <th className="py-2">Description du problème / Incident de chantier</th>
                     <th className="py-2 text-right"></th>
                   </tr>
                 </thead>
@@ -3350,27 +3349,6 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                           }}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
                         />
-                      </td>
-                      <td className="py-1.5 text-right pl-1 shrink-0">
-                        <select
-                          value={p.impact}
-                          onChange={e => {
-                            const val = e.target.value as any;
-                            setProblems(prev => prev.map((item, i) => i === idx ? { ...item, impact: val } : item));
-                          }}
-                          className={`px-2 py-1 rounded font-bold text-xs focus:outline-none cursor-pointer ${
-                            p.impact === 'Moyen'
-                              ? 'bg-amber-50 text-amber-800 border border-amber-300'
-                              : p.impact === 'Fort' || p.impact === 'Critique'
-                              ? 'bg-rose-50 text-rose-800 border border-rose-300'
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-300'
-                          }`}
-                        >
-                          <option value="Faible">Faible</option>
-                          <option value="Moyen">Moyen</option>
-                          <option value="Fort">Fort</option>
-                          <option value="Critique">Critique</option>
-                        </select>
                       </td>
                       <td className="py-1.5 text-right pl-1">
                         <button
