@@ -44,11 +44,11 @@ export const ProcurementValidationModule: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('En attente');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // ALIMENTATION 100% DYNAMIQUE DU CENTRE DE VALIDATION CENTRALISÉ
+  // ALIMENTATION 100% DYNAMIQUE DU CENTRE DE VALIDATION CENTRALISÉ (STRICTEMENT DÉDIÉ AUX DEMANDES D'ACHAT - DA)
   const allValidationItems = useMemo<ValidationItem[]>(() => {
     const list: ValidationItem[] = [];
 
-    // 1. DEMANDES D'ACHAT RÉELLES DU CONTEXTE GLOBAL
+    // DEMANDES D'ACHAT (DA) RÉELLES DU CONTEXTE GLOBAL
     if (purchaseRequests && purchaseRequests.length > 0) {
       purchaseRequests.forEach(da => {
         const isOverBudget = Boolean(da.budgetCheck?.isOverBudget || (da as any).is_over_budget);
@@ -72,36 +72,8 @@ export const ProcurementValidationModule: React.FC = () => {
       });
     }
 
-    // 2. RAPPORTS JOURNALIERS DE PRODUCTION
-    if (dailyReports && dailyReports.length > 0) {
-      dailyReports.forEach(rep => {
-        if (isDemoReportObj(rep)) return;
-
-        const isApproved = rep.status === 'Validé' || rep.status === 'VALIDEE';
-        const isRejected = rep.status === 'Refusé' || rep.status === 'REFUSEE';
-        const isReturned = rep.status === 'Brouillon' || rep.status === 'RETOUR_CORRECTION';
-        const isPending = rep.status === 'Soumis' || rep.status === 'En attente' || rep.status === 'EN_VALIDATION';
-
-        list.push({
-          id: `VAL-RPT-${rep.id || rep.code}`,
-          category: 'Rapport Journalier',
-          object: `Rapport Journalier ${rep.code || (rep as any).reportCode || ''} — ${rep.activityName || 'Rapport terrain'} (${rep.realizedQty || 0} ${rep.unit || ''})`,
-          amount: 0,
-          projectId: rep.projectId,
-          projectName: rep.projectName || projects.find(p => p.id === rep.projectId)?.name || rep.projectId || '',
-          wbsCode: rep.wbsCode || '',
-          initiator: rep.createdBy || '',
-          date: rep.date || new Date().toISOString().substring(0, 10),
-          urgency: 'Normale',
-          budgetImpact: 'Dans le budget',
-          attachments: (rep as any).attachments || [],
-          status: isApproved ? 'Validé' : isRejected ? 'Refusé' : isReturned ? 'Retour correction' : isPending ? 'En attente' : 'En attente'
-        });
-      });
-    }
-
     return list;
-  }, [purchaseRequests, dailyReports, alerts, projects]);
+  }, [purchaseRequests, projects]);
 
   const [items, setItems] = useState<ValidationItem[]>(allValidationItems);
 
@@ -517,11 +489,10 @@ export const ProcurementValidationModule: React.FC = () => {
                   onChange={e => setCategoryFilter(e.target.value)}
                   className="p-1 bg-white border border-slate-200 rounded-lg font-bold text-xs"
                 >
-                  <option value="TOUS">Tous les types (DA, BC, Rapports, Engagements...)</option>
+                  <option value="TOUS">Toutes les Demandes d'Achat (DA)</option>
                   <option value="DA">Demande d'Achat (DA)</option>
-                  <option value="Rapport Journalier">Rapports Journaliers de Production</option>
                   <option value="BC">Bon de Commande (BC)</option>
-                  <option value="Dépassement">Dépassement Budgétaire</option>
+                  <option value="Dépassement">Dépassement Budgétaire DA</option>
                 </select>
               </div>
 
