@@ -250,6 +250,21 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     return realActivitiesSource;
   }, [selectedProject, wbsMap, realActivitiesSource]);
 
+  // 2. OBJECTIFS & RÉALISATIONS (SAISIE PROGRESSIVE MULTI-ACTIVITÉS)
+  interface RecordedActivityItem {
+    id: string;
+    wbsCode: string;
+    activityName: string;
+    unit: string;
+    targetQty: number;
+    realizedQty: number;
+    totalPlanned: number;
+    cumulDate: number;
+  }
+
+  // Liste des activités progressivement enregistrées sur le rapport (Bas)
+  const [recordedActivities, setRecordedActivities] = useState<RecordedActivityItem[]>([]);
+
   // Options de recherche rapide pour le sélecteur WBS / Activités (Recherche Instantanée avec contrôle anti-doublon)
   const wbsSelectOptions: SelectOption[] = useMemo(() => {
     const recordedSet = new Set(recordedActivities.map(r => String(r.wbsCode).toUpperCase().trim()));
@@ -389,25 +404,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const [workShift, setWorkShift] = useState<string>('');
   const [teamLeader, setTeamLeader] = useState<string>(currentUser?.name || 'Yacouba Mohamed');
 
-  // 2. OBJECTIFS & RÉALISATIONS (SAISIE PROGRESSIVE MULTI-ACTIVITÉS)
-  interface RecordedActivityItem {
-    id: string;
-    wbsCode: string;
-    activityName: string;
-    unit: string;
-    targetQty: number;
-    realizedQty: number;
-    totalPlanned: number;
-    cumulDate: number;
-  }
-
   // État de la saisie en cours (Haut)
   const [currentWbsCode, setCurrentWbsCode] = useState<string>('');
   const [currentTargetQty, setCurrentTargetQty] = useState<number>(0);
   const [currentRealizedQty, setCurrentRealizedQty] = useState<string | number>('');
-
-  // Liste des activités progressivement enregistrées sur le rapport (Bas)
-  const [recordedActivities, setRecordedActivities] = useState<RecordedActivityItem[]>([]);
 
   // Synchronisation dynamique lors du changement de site/chantier
   React.useEffect(() => {
