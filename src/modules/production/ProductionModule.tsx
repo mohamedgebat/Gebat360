@@ -3,7 +3,7 @@ import { useAppState, isDemoReportObj } from '../../core/database/AppStateContex
 import * as XLSX from 'xlsx';
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus,
-  FileText, Clock, Lock, Unlock,
+  FileText, Clock, Lock, Unlock, Edit3,
   X, FileSpreadsheet, Eye, Upload, Download,
   ChevronRight, ArrowLeft, ChevronDown, Layers, Building2,
   Send, HelpCircle, Printer, Trash2, Users, Truck, Package, ShieldAlert
@@ -113,6 +113,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   // Filtre de projet pour le tableau récapitulatif des valideurs (Défaut: 'ALL' pour ne rater aucun rapport soumis)
   const [stepProjectFilter, setStepProjectFilter] = useState<string>('ALL');
   const [viewingReportDetail, setViewingReportDetail] = useState<DailyReport | null>(null);
+  const [editingReport, setEditingReport] = useState<DailyReport | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
 
   // Dynamic status-matching helper : Isolation étanche universelle par chantier (Songon, Bingerville et tous autres chantiers)
@@ -1099,8 +1100,64 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const [livraisonsRows, setLivraisonsRows] = useState<Array<{ ref: string; supplier: string; qty: string; date: string }>>([]);
   const [problems, setProblems] = useState<Array<{ type: string; impact: 'Moyen' | 'Faible' | 'Fort' | 'Critique' }>>([]);
 
+  // FONCTION DE CHARGEMENT UNIVERSELLE POUR MODIFICATION / ÉDITION D'UN RAPPORT DÉVERROUILLÉ
+  const loadReportIntoForm = (rep: DailyReport) => {
+    setEditingReport(rep);
+    if (rep.date) setReportDate(rep.date);
+    if (rep.locationZone) setLocationZone(rep.locationZone);
+    if (rep.weather) setWeather(rep.weather);
+    if (rep.temperature) setTemperature(rep.temperature);
+    if (rep.notes || rep.generalComment || rep.observations) {
+      setGeneralComment(rep.notes || rep.generalComment || rep.observations || '');
+    }
+    if (rep.workShift) setWorkShift(rep.workShift);
+    if (rep.createdBy || rep.teamLeader) setTeamLeader(rep.createdBy || rep.teamLeader);
+
+    // Charger les activités enregistrées
+    if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
+      setRecordedActivities(rep.recordedActivities.map((act: any, idx: number) => ({
+        id: act.id || `rec-edit-${idx}-${Date.now()}`,
+        wbsCode: act.wbsCode || act.code || act.id || '',
+        activityName: act.activityName || act.name || act.description || 'Activité',
+        unit: act.unit || rep.unit || 'm²',
+        targetQty: Number(act.targetQty || act.plannedQty || rep.targetQty || 0),
+        realizedQty: Number(act.realizedQty || rep.realizedQty || 0),
+        totalPlanned: Number(act.totalPlanned || rep.totalPlanned || 0),
+        cumulDate: Number(act.cumulDate || rep.cumulDate || 0)
+      })));
+    } else if (rep.wbsCode || rep.wbsId) {
+      const wbsInfo = resolveReportWbsActivity(rep);
+      setRecordedActivities([{
+        id: `rec-edit-single-${Date.now()}`,
+        wbsCode: wbsInfo.code || rep.wbsCode || '',
+        activityName: wbsInfo.name || rep.activityName || 'Activité',
+        unit: rep.unit || 'm²',
+        targetQty: Number(rep.targetQty || rep.plannedQty || 0),
+        realizedQty: Number(rep.realizedQty || 0),
+        totalPlanned: Number(rep.totalPlanned || 0),
+        cumulDate: Number(rep.cumulDate || 0)
+      }]);
+    }
+
+    if (Array.isArray(rep.personnel) && rep.personnel.length > 0) {
+      setPersonnelRows(rep.personnel);
+    }
+    if (Array.isArray(rep.materiel) && rep.materiel.length > 0) {
+      setMaterielRows(rep.materiel);
+    }
+    if (Array.isArray(rep.consummations) && rep.consummations.length > 0) {
+      setConsommationsRows(rep.consummations);
+    }
+
+    setReportStatus('Brouillon');
+    setMasterStatusFilter('Brouillon');
+    setViewingReportDetail(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // SYNCHRONISATION MULTI-SECTIONS 100% LIÉE À L'ACTIVITÉ WBS SÉLECTIONNÉE
   React.useEffect(() => {
+    if (editingReport) return; // Ne pas écraser les données du rapport déverrouillé chargé en modification
     const code = currentWbsCode || (projectWbsNodes && projectWbsNodes.length > 0 ? (projectWbsNodes[0].wbsCode || projectWbsNodes[0].priceNo || projectWbsNodes[0].id) : '');
     if (code) {
       // 1. Consommations
@@ -1290,22 +1347,30 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
         const currentYear = new Date().getFullYear();
         const timestamp = Date.now().toString().slice(-4);
-        const rjcCode = `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}-${timestamp}`;
+        const existingId = editingReport?.id;
+        const existingCode = editingReport?.code || editingReport?.reportCode;
+        const rjcCode = (existingId && index === 0) ? (existingCode || existingId) : `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}-${timestamp}`;
         await createDailyReport({
-          id: rjcCode, code: rjcCode, reportCode: rjcCode,
+          id: (existingId && index === 0) ? existingId : rjcCode,
+          code: rjcCode,
+          reportCode: rjcCode,
           projectId: selectedProject.id,
           projectName: selectedProject.name,
           date: reportDate, wbsCode: item.wbsCode, wbsId: item.wbsCode,
           activityName: item.activityName || 'Activité', weather, temperature, workShift,
           locationZone, generalComment, teamLeader, unit: item.unit, targetQty: item.targetQty,
           plannedQty: item.targetQty, realizedQty: item.realizedQty, cumulDate: item.cumulDate,
-          totalPlanned: item.totalPlanned, advancePct: rowAdvancePct, personnel: personnelRows,
+          totalPlanned: item.totalPlanned, advancePct: rowAdvancePct,
+          recordedActivities: itemsToSave,
+          personnel: personnelRows,
+          materiel: materielRows,
           consummations: consommationsRows, problems, photos, observations, status
         });
       }
       setRecordedActivities([]);
       setCurrentRealizedQty('');
       setCurrentWbsCode('');
+      setEditingReport(null);
       setReportStatus(status);
       return true;
     } catch (error: any) {
@@ -1763,6 +1828,32 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         </div>
 
         {/* BANNIÈRE CONDITIONNELLE SELON LE STATUT DU WORKFLOW */}
+        {editingReport && (
+          <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-2xl text-xs font-medium text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs shrink-0">
+                <Edit3 size={18} />
+              </div>
+              <div>
+                <strong className="text-sm font-black text-amber-900 block">✏️ Mode Modification : Rapport {editingReport.code || editingReport.id}</strong>
+                <span className="text-amber-800 text-[11.5px]">
+                  Ce rapport déverrouillé est chargé dans le formulaire. Modifiez les volumes, le personnel ou les consommations puis cliquez sur "Enregistrer" ou "Soumettre".
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setEditingReport(null);
+                setRecordedActivities([]);
+                setCurrentRealizedQty('');
+              }}
+              className="px-3.5 py-2 bg-amber-200 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-xs transition cursor-pointer shrink-0 border border-amber-400"
+            >
+              ✖️ Annuler la modification
+            </button>
+          </div>
+        )}
+
         {reportStatus === 'Brouillon' && (
           <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs font-medium text-blue-900 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -1972,6 +2063,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                             <Eye size={13} />
                             <span>Détails</span>
                           </button>
+                          {((rep.status || '').toUpperCase().includes('BROUILLON') || (rep.status || '').toUpperCase().includes('REFUS')) && (
+                            <button
+                              onClick={() => loadReportIntoForm(rep)}
+                              className="px-2.5 py-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 font-extrabold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 border border-amber-200"
+                              title="Modifier ce rapport dans le formulaire"
+                            >
+                              <Edit3 size={13} />
+                              <span>Modifier</span>
+                            </button>
+                          )}
                           {(() => {
                             const normRepS = (rep.status || 'Soumis').toUpperCase();
                             const isSoumis = normRepS.includes('SOUMIS') || normRepS.includes('ATTENTE') || normRepS.includes('PENDING');
@@ -2139,18 +2240,17 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                          const targetCode = rep.code || rep.reportCode;
                                          setIsValidating(true);
                                          try {
-                                           if (updateDailyReportStatus) {
-                                             await updateDailyReportStatus(targetId, 'Validé', `Déverrouillé pour correction : ${reason}`);
-                                             if (targetCode && targetCode !== targetId) {
-                                               await updateDailyReportStatus(targetCode, 'Validé', `Déverrouillé pour correction : ${reason}`);
-                                             }
-                                           }
-                                           if (updateValidationTaskStatus) {
-                                             await updateValidationTaskStatus(targetId, 'APPROVED', `Déverrouillé : ${reason}`);
-                                           }
-                                           setReportStatus('Validé');
-                                           setMasterStatusFilter('Validé');
-                                           alert(`🔓 Rapport ${targetCode || targetId} déverrouillé avec succès !\n\n• Statut repassé en Validé (Étape 3)\n• Redirection vers l'Étape 3. Validé\n• Corrections et ajustements désormais autorisés.`);
+                                            if (updateDailyReportStatus) {
+                                              await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction par ${currentUser?.name || 'Valideur'} : ${reason}`);
+                                              if (targetCode && targetCode !== targetId) {
+                                                await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction par ${currentUser?.name || 'Valideur'} : ${reason}`);
+                                              }
+                                            }
+                                            if (updateValidationTaskStatus) {
+                                              await updateValidationTaskStatus(targetId, 'RETURNED', `Déverrouillé : ${reason}`);
+                                            }
+                                            loadReportIntoForm(rep);
+                                            alert(`🔓 Rapport ${targetCode || targetId} déverrouillé avec succès !\n\n• Statut passé à BROUILLON (Étape 1)\n• Chargé immédiatement dans le formulaire pour modification.`);
                                          } catch (err: any) {
                                            alert(`❌ Échec du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
                                          } finally {
@@ -3378,11 +3478,50 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
             </div>
 
             <div className="flex items-center gap-2">
+              {(viewingReportDetail.status === 'Brouillon' || viewingReportDetail.status !== 'Verrouillé') && (
+                <button
+                  onClick={() => loadReportIntoForm(viewingReportDetail)}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Edit3 size={15} />
+                  <span>✏️ Modifier ce Rapport</span>
+                </button>
+              )}
+              {isValidatorRole && viewingReportDetail.status === 'Verrouillé' && (
+                <button
+                  disabled={isValidating}
+                  onClick={async () => {
+                    const reason = prompt('🔓 Motif / Justification du déverrouillage pour correction :') || 'Déverrouillage pour modification terrain';
+                    if (!reason.trim()) return;
+                    const targetId = viewingReportDetail.id;
+                    const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
+                    setIsValidating(true);
+                    try {
+                      if (updateDailyReportStatus) {
+                        await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
+                        if (targetCode && targetCode !== targetId) {
+                          await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
+                        }
+                      }
+                      loadReportIntoForm(viewingReportDetail);
+                      alert(`🔓 Rapport ${targetCode || targetId} déverrouillé !\n\n• Repassé en statut Brouillon (Étape 1)\n• Chargé dans le formulaire pour modification immédiate.`);
+                    } catch (err: any) {
+                      alert(`❌ Erreur lors du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
+                    } finally {
+                      setIsValidating(false);
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Unlock size={15} />
+                  <span>🔓 Déverrouiller & Modifier</span>
+                </button>
+              )}
               <button
                 onClick={() => window.print()}
                 className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer"
               >
-                <Printer size={15} /> Imprimer / Exporter Fiche PDF
+                <Printer size={15} /> Imprimer / PDF
               </button>
               <button
                 onClick={() => setViewingReportDetail(null)}
@@ -3738,6 +3877,45 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               </button>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                {(viewingReportDetail.status === 'Brouillon' || viewingReportDetail.status !== 'Verrouillé') && (
+                  <button
+                    onClick={() => loadReportIntoForm(viewingReportDetail)}
+                    className="px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    <Edit3 size={15} />
+                    <span>✏️ Modifier ce Rapport</span>
+                  </button>
+                )}
+                {isValidatorRole && viewingReportDetail.status === 'Verrouillé' && (
+                  <button
+                    disabled={isValidating}
+                    onClick={async () => {
+                      const reason = prompt('🔓 Motif / Justification du déverrouillage pour correction :') || 'Déverrouillage pour modification terrain';
+                      if (!reason.trim()) return;
+                      const targetId = viewingReportDetail.id;
+                      const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
+                      setIsValidating(true);
+                      try {
+                        if (updateDailyReportStatus) {
+                          await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
+                          if (targetCode && targetCode !== targetId) {
+                            await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
+                          }
+                        }
+                        loadReportIntoForm(viewingReportDetail);
+                        alert(`🔓 Rapport ${targetCode || targetId} déverrouillé !\n\n• Repassé en statut Brouillon (Étape 1)\n• Chargé dans le formulaire pour modification immédiate.`);
+                      } catch (err: any) {
+                        alert(`❌ Erreur lors du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
+                      } finally {
+                        setIsValidating(false);
+                      }
+                    }}
+                    className="px-4 py-3 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    <Unlock size={15} />
+                    <span>🔓 Déverrouiller & Modifier</span>
+                  </button>
+                )}
                 <button
                   onClick={() => window.print()}
                   className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer"
