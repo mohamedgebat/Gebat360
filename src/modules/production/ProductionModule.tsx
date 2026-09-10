@@ -250,18 +250,20 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     return realActivitiesSource;
   }, [selectedProject, wbsMap, realActivitiesSource]);
 
-  // Options de recherche rapide pour le sélecteur WBS / Activités (Recherche Instantanée)
+  // Options de recherche rapide pour le sélecteur WBS / Activités (Recherche Instantanée avec contrôle anti-doublon)
   const wbsSelectOptions: SelectOption[] = useMemo(() => {
+    const recordedSet = new Set(recordedActivities.map(r => String(r.wbsCode).toUpperCase().trim()));
     return projectWbsNodes.map(act => {
       const code = act.wbsCode || act.priceNo || act.id;
+      const isAlreadyAdded = recordedSet.has(String(code).toUpperCase().trim());
       return {
         value: code,
-        label: act.description,
-        sublabel: `Code WBS: ${code} | Unité: ${act.unit || 'm²'} | Volume Prévu: ${Number(act.plannedQty || act.contractQty || 0).toLocaleString('fr-FR')}`,
-        badge: code
+        label: isAlreadyAdded ? `${act.description} (Déjà dans le rapport)` : act.description,
+        sublabel: `Code WBS: ${code} | Unité: ${act.unit || 'm²'} | Volume Prévu: ${Number(act.plannedQty || act.contractQty || 0).toLocaleString('fr-FR')}${isAlreadyAdded ? ' • ⚠️ Déjà enregistré (Mise à jour)' : ''}`,
+        badge: isAlreadyAdded ? `${code} (Déjà ajouté)` : code
       };
     });
-  }, [projectWbsNodes]);
+  }, [projectWbsNodes, recordedActivities]);
 
   // Fonction de résolution SSOT universelle pour garantir l'affichage permanent et complet de l'Activité WBS
   const resolveReportWbsActivity = (rep: DailyReport | any) => {
@@ -490,7 +492,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     return parseFloat(((totalToDate / currentContractVol) * 100).toFixed(1));
   }, [currentCumulDate, numCurrentRealized, currentContractVol]);
 
-  // Validation et enregistrement de l'activité courante dans la liste du bas
+  // Validation et enregistrement de l'activité courante dans la liste du bas (avec règles métier BTP anti-doublon)
   const handleAddCurrentActivity = () => {
     if (!currentWbsCode || !currentSelectedAct) {
       alert('⚠️ Veuillez sélectionner une activité WBS dans la liste.');
@@ -501,18 +503,42 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       return;
     }
 
-    const newItem: RecordedActivityItem = {
-      id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      wbsCode: currentWbsCode,
-      activityName: currentSelectedAct.description,
-      unit: currentActUnit,
-      targetQty: currentTargetQty,
-      realizedQty: Number(currentRealizedQty),
-      totalPlanned: currentContractVol,
-      cumulDate: currentCumulDate
-    };
+    const normCode = String(currentWbsCode).toUpperCase().trim();
+    const existingIndex = recordedActivities.findIndex(
+      item => String(item.wbsCode || '').toUpperCase().trim() === normCode
+    );
 
-    setRecordedActivities(prev => [...prev, newItem]);
+    if (existingIndex >= 0) {
+      // RÈGLE MÉTIER BTP : Une activité WBS ne peut figurer qu'une seule fois par rapport journalier.
+      // La nouvelle quantité saisie met à jour la ligne existante.
+      setRecordedActivities(prev => prev.map((item, idx) => {
+        if (idx === existingIndex) {
+          return {
+            ...item,
+            realizedQty: Number(currentRealizedQty),
+            targetQty: currentTargetQty || item.targetQty,
+            totalPlanned: currentContractVol || item.totalPlanned,
+            cumulDate: currentCumulDate || item.cumulDate
+          };
+        }
+        return item;
+      }));
+      alert(`ℹ️ RÈGLE MÉTIER : L'activité [${currentWbsCode} - ${currentSelectedAct.description}] figure déjà dans ce rapport.\n\nSa quantité réalisée a été mise à jour à ${Number(currentRealizedQty)} ${currentActUnit}.`);
+    } else {
+      // Nouvelle activité pour ce rapport
+      const newItem: RecordedActivityItem = {
+        id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        wbsCode: currentWbsCode,
+        activityName: currentSelectedAct.description,
+        unit: currentActUnit,
+        targetQty: currentTargetQty,
+        realizedQty: Number(currentRealizedQty),
+        totalPlanned: currentContractVol,
+        cumulDate: currentCumulDate
+      };
+      setRecordedActivities(prev => [...prev, newItem]);
+    }
+
     // Réinitialisation du formulaire du haut pour permettre la saisie progressive suivante
     setCurrentWbsCode('');
     setCurrentTargetQty(0);
@@ -1486,10 +1512,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   };
 
   const persistReportItems = async (status: 'Brouillon' | 'Soumis' | 'Validé') => {
-    const itemsToSave = [...recordedActivities];
+    const rawItemsToSave = [...recordedActivities];
     if (currentWbsCode && currentRealizedQty !== '') {
       const actDesc = currentSelectedAct?.description || currentSelectedAct?.name || `Activité ${currentWbsCode}`;
-      itemsToSave.push({
+      rawItemsToSave.push({
         id: `rec-current`,
         wbsCode: currentWbsCode,
         activityName: actDesc,
@@ -1501,10 +1527,25 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       });
     }
 
-    if (itemsToSave.length === 0) {
+    if (rawItemsToSave.length === 0) {
       alert('⚠️ Aucune activité saisie ou enregistrée sur ce rapport.');
       return false;
     }
+
+    // Consolidation/Deduplication stricte par code WBS (Règle Métier BTP)
+    const mapByWbs = new Map<string, RecordedActivityItem>();
+    for (const item of rawItemsToSave) {
+      const key = String(item.wbsCode || '').trim().toUpperCase();
+      if (!key) continue;
+      if (mapByWbs.has(key)) {
+        const existing = mapByWbs.get(key)!;
+        existing.realizedQty = item.realizedQty; // Conserve la quantité réalisée révisée
+        if (item.targetQty > 0) existing.targetQty = item.targetQty;
+      } else {
+        mapByWbs.set(key, { ...item });
+      }
+    }
+    const itemsToSave = Array.from(mapByWbs.values());
 
     try {
       for (const [index, item] of itemsToSave.entries()) {
