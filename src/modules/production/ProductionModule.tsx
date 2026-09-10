@@ -216,68 +216,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       } catch (e) {}
     }
 
-    // Génération dynamique du référentiel d'activités standard BTP pour tout nouveau projet / site
-    const pCode = selectedProject.code || selectedProject.id || 'CH';
-    const pName = selectedProject.name || 'Projet';
-    return [
-      {
-        id: `ds-${pCode}-000.1`,
-        wbsCode: '000.1',
-        priceNo: '000.1',
-        description: `Installation générale & Aménagements de chantier - ${pName}`,
-        unit: 'fft',
-        contractQty: 1,
-        plannedQty: 1,
-        marketUnitPrice: 25000000,
-        resources: [
-          { id: `res-${pCode}-1-1`, code: 'MAT-01', name: 'Clôture & Panneaux de chantier', nature: 'MAT', unit: 'ff', theoreticalQty: 1, unitCost: 2000000 },
-          { id: `res-${pCode}-1-2`, code: 'MO-01', name: 'Gardiennage & Sécurité site', nature: 'MO', unit: 'mois', theoreticalQty: 12, unitCost: 500000 }
-        ]
-      },
-      {
-        id: `ds-${pCode}-100.1`,
-        wbsCode: '100.1',
-        priceNo: '100.1',
-        description: `Terrassement général, Décapage & Plate-forme - ${pName}`,
-        unit: 'm²',
-        contractQty: 10000,
-        plannedQty: 10000,
-        marketUnitPrice: 3500,
-        resources: [
-          { id: `res-${pCode}-2-1`, code: 'MAT-01', name: 'Grave non traitée GNT 0/31.5', nature: 'MAT', unit: 'm³', theoreticalQty: 2000, unitCost: 18000 },
-          { id: `res-${pCode}-2-2`, code: 'MO-01', name: 'Conducteurs d\'engins & Manœuvres', nature: 'MO', unit: 'h', theoreticalQty: 350, unitCost: 2500 }
-        ]
-      },
-      {
-        id: `ds-${pCode}-200.1`,
-        wbsCode: '200.1',
-        priceNo: '200.1',
-        description: `Génie Civil, Fondations & Structures Béton Armé - ${pName}`,
-        unit: 'm³',
-        contractQty: 2500,
-        plannedQty: 2500,
-        marketUnitPrice: 185000,
-        resources: [
-          { id: `res-${pCode}-3-1`, code: 'MAT-01', name: 'Béton prêt à l\'emploi B25 / B30', nature: 'MAT', unit: 'm³', theoreticalQty: 2500, unitCost: 95000 },
-          { id: `res-${pCode}-3-2`, code: 'MAT-02', name: 'Aciers haute adhérence HA FE500', nature: 'MAT', unit: 'kg', theoreticalQty: 220000, unitCost: 850 },
-          { id: `res-${pCode}-3-3`, code: 'MO-01', name: 'Équipe Coffreurs & Ferrailleurs', nature: 'MO', unit: 'h', theoreticalQty: 1000, unitCost: 3000 }
-        ]
-      },
-      {
-        id: `ds-${pCode}-300.1`,
-        wbsCode: '300.1',
-        priceNo: '300.1',
-        description: `VRD, Assainissement & Réseaux divers - ${pName}`,
-        unit: 'ml',
-        contractQty: 1500,
-        plannedQty: 1500,
-        marketUnitPrice: 45000,
-        resources: [
-          { id: `res-${pCode}-4-1`, code: 'MAT-01', name: 'Tuyaux PEHD & PE100 PN16', nature: 'MAT', unit: 'ml', theoreticalQty: 1500, unitCost: 22000 },
-          { id: `res-${pCode}-4-2`, code: 'MO-01', name: 'Équipe Poseurs & Canalisateurs', nature: 'MO', unit: 'h', theoreticalQty: 300, unitCost: 2800 }
-        ]
-      }
-    ];
+    // STRICTEMENT AUCUNE DONNÉE DE DÉMO OU DE PRÉSENTATION : Retourner un tableau vide [] si aucune activité réelle n'a été importée/créée pour ce nouveau site !
+    return [];
   }, [selectedProject]);
 
   // Source dynamique de WBS / Activités pour le projet sélectionné (base de données MySQL / IndexedDB wbsMap)
@@ -2428,9 +2368,17 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   options={wbsSelectOptions}
                   value={currentWbsCode}
                   onChange={val => setCurrentWbsCode(val)}
-                  placeholder="🔍 Recherche rapide (Taper code WBS ou nom d'activité : 200.1, Coulage, Décapage)..."
-                  disabled={!isFormEditable}
+                  placeholder={wbsSelectOptions.length > 0 
+                    ? "🔍 Recherche rapide (Taper code WBS ou nom d'activité : 200.1, Coulage, Décapage)..." 
+                    : "⚠️ Aucune activité réelle enregistrée pour ce chantier"}
+                  disabled={!isFormEditable || wbsSelectOptions.length === 0}
                 />
+                {wbsSelectOptions.length === 0 && (
+                  <p className="mt-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Aucune donnée de démonstration. Veuillez importer le DQE / Déboursé Sec réel pour ce chantier.</span>
+                  </p>
+                )}
               </div>
 
               {/* Grille des quantitatifs de l'activité courante */}

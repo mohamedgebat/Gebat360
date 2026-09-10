@@ -1099,41 +1099,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   p.initialBudget = sumWbsBudget;
                 }
               } else {
-                const projectBudget = Number(p.revisedBudget || p.initialBudget || p.contractAmount || 0);
-                const defaultNodes = [
-                  {
-                    id: `WBS-${p.id}-01`,
-                    projectId: p.id,
-                    code: `${p.code} / 01`,
-                    name: '01. TRAVAUX PREPARATOIRES & BASE-VIE',
-                    initialBudget: Math.round(projectBudget * 0.2),
-                    revisedBudget: Math.round(projectBudget * 0.2),
-                    committed: 0,
-                    actualCost: 0,
-                    forecast: Math.round(projectBudget * 0.2),
-                    eac: Math.round(projectBudget * 0.2),
-                    progress: Number(p.progress || 0),
-                    nature: 'FGC',
-                    manager: p.manager || 'Conducteur de Travaux',
-                  },
-                  {
-                    id: `WBS-${p.id}-02`,
-                    projectId: p.id,
-                    code: `${p.code} / 02`,
-                    name: '02. GENIE CIVIL ET INFRASTRUCTURES PRINCIPALES',
-                    initialBudget: Math.round(projectBudget * 0.8),
-                    revisedBudget: Math.round(projectBudget * 0.8),
-                    committed: 0,
-                    actualCost: 0,
-                    forecast: Math.round(projectBudget * 0.8),
-                    eac: Math.round(projectBudget * 0.8),
-                    progress: Number(p.progress || 0),
-                    nature: 'MAT',
-                    manager: p.manager || 'Conducteur de Travaux',
-                  },
-                ];
-                newWbsMap[p.id] = defaultNodes;
-                if (p.code) newWbsMap[p.code] = defaultNodes;
+                newWbsMap[p.id] = [];
+                if (p.code) newWbsMap[p.code] = [];
               }
             }
           } catch (e) {
@@ -1327,38 +1294,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return updated;
     });
 
-    const initialNodes: WBSNode[] = (wbsNodes && wbsNodes.length > 0) ? wbsNodes : [
-      {
-        id: `WBS-${id}-01`,
-        projectId: id,
-        code: `${id} / 01`,
-        name: '01. TRAVAUX PREPARATOIRES & INSTALLATION BASE-VIE',
-        initialBudget: project.initialBudget * 0.2,
-        revisedBudget: project.initialBudget * 0.2,
-        committed: 0,
-        actualCost: 0,
-        forecast: project.initialBudget * 0.2,
-        eac: project.initialBudget * 0.2,
-        progress: 0,
-        nature: 'FGC',
-        manager: project.manager,
-      },
-      {
-        id: `WBS-${id}-02`,
-        projectId: id,
-        code: `${id} / 02`,
-        name: '02. GENIE CIVIL ET INFRASTRUCTURES PRINCIPALES',
-        initialBudget: project.initialBudget * 0.8,
-        revisedBudget: project.initialBudget * 0.8,
-        committed: 0,
-        actualCost: 0,
-        forecast: project.initialBudget * 0.8,
-        eac: project.initialBudget * 0.8,
-        progress: 0,
-        nature: 'MAT',
-        manager: project.manager,
-      },
-    ];
+    const initialNodes: WBSNode[] = (wbsNodes && wbsNodes.length > 0) ? wbsNodes : [];
 
     setWbsMap(prev => {
       const updated = {
