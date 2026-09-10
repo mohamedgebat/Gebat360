@@ -4,7 +4,7 @@ import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from '../../core/database/realBingervilleDsData';
 import { REAL_DS_SONGON_ACTIVITIES } from '../../core/database/realSongonDsData';
 import { REAL_PLANNING_DATA } from '../../data/planningRealData';
-import { generateSCurveSeries, calculateProjectOverallProgress } from '../../core/database/projectProgressEngine';
+import { generateSCurveSeries, calculateProjectOverallProgress, isReportValidatedOrLocked } from '../../core/database/projectProgressEngine';
 import {
   ArrowLeft,
   Briefcase,
@@ -268,17 +268,36 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
 
       // 3. Réalisé à date (Actual Cost) extrait des Rapports Journaliers validés
       const matchingReps = projectReports.filter(r => {
+        if (!isReportValidatedOrLocked(r)) return false;
         const rCode = String(r.wbsCode || r.wbsId || r.code || '').trim().toUpperCase();
         const rName = String(r.activityName || r.taskName || '').trim().toLowerCase();
-        return (codeUpper && (rCode === codeUpper || rCode.includes(codeUpper) || codeUpper.includes(rCode))) ||
-               (nameLower && rName && (rName.includes(nameLower) || nameLower.includes(rName)));
+        
+        // Vérification des activités enregistrées (multi-WBS)
+        const hasRecActMatch = Array.isArray(r.recordedActivities) && r.recordedActivities.some((act: any) => {
+          const actCode = String(act.wbsCode || act.code || '').trim().toUpperCase();
+          return codeUpper && actCode === codeUpper;
+        });
+
+        return hasRecActMatch || (codeUpper && rCode === codeUpper) || (nameLower && rName && nameLower === rName);
       });
 
       const repActualCostVal = matchingReps.reduce((sum, r) => {
-        let cost = Number(r.totalCost);
-        const qte = Number(r.realizedQty) || 0;
-        const pu = Number(r.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 0);
-        if (isNaN(cost) || cost > 500000000 || cost <= 0) cost = qte * pu;
+        let cost = 0;
+        if (Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
+          const matchingAct = r.recordedActivities.find((act: any) => String(act.wbsCode || act.code || '').trim().toUpperCase() === codeUpper);
+          if (matchingAct) {
+            const q = Number(matchingAct.realizedQty) || 0;
+            const p = Number(matchingAct.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 0);
+            cost = q * p;
+          }
+        }
+        if (cost === 0) {
+          let c = Number(r.totalCost);
+          const qte = Number(r.realizedQty) || 0;
+          const pu = Number(r.pu || n.calculatedDsUnitPrice || n.marketUnitPrice || n.unitPrice || 0);
+          if (isNaN(c) || c > 500000000 || c <= 0) c = qte * pu;
+          cost = c;
+        }
         return sum + (cost || 0);
       }, 0);
       const actualCostVal = Number(n.actualCost || 0) > 0 ? Number(n.actualCost) : repActualCostVal;
@@ -516,29 +535,34 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return 6;
   };
 
-  // 2. Coût réel extrait des Rapports Journaliers (dailyReports) et du WBS de la BDD pour chaque nature
+  // 2. Coût réel extrait des Rapports Journaliers (dailyReports) validés et du WBS
   const natureActual = useMemo(() => {
     const act = { MO: 0, MAT: 0, MTL: 0, ST: 0, FGC: 0 };
-    projectReports.forEach((rep: any) => {
-      const nat = String(rep.nature || rep.costNature || 'MO').toUpperCase();
-      const cost = getReportRealValuation(rep, projectWbsNodes);
-      if (nat === 'MO' || nat.startsWith('MO')) act.MO += cost;
-      else if (nat === 'MTL' || nat.startsWith('MTL')) act.MTL += cost;
-      else if (nat === 'ST' || nat.startsWith('ST')) act.ST += cost;
-      else if (nat === 'FGC' || nat.startsWith('FGC')) act.FGC += cost;
-      else act.MAT += cost;
-    });
-    projectWbsNodes.forEach((node: any) => {
-      const nat = String(node.nature || node.costNature || 'MAT').toUpperCase();
-      const cost = Number(node.actualCost || 0);
-      if (cost > 0) {
+    const validReports = projectReports.filter(r => isReportValidatedOrLocked(r));
+
+    if (validReports.length > 0) {
+      validReports.forEach((rep: any) => {
+        const nat = String(rep.nature || rep.costNature || 'MO').toUpperCase();
+        const cost = getReportRealValuation(rep, projectWbsNodes);
         if (nat === 'MO' || nat.startsWith('MO')) act.MO += cost;
         else if (nat === 'MTL' || nat.startsWith('MTL')) act.MTL += cost;
         else if (nat === 'ST' || nat.startsWith('ST')) act.ST += cost;
         else if (nat === 'FGC' || nat.startsWith('FGC')) act.FGC += cost;
         else act.MAT += cost;
-      }
-    });
+      });
+    } else {
+      projectWbsNodes.forEach((node: any) => {
+        const nat = String(node.nature || node.costNature || 'MAT').toUpperCase();
+        const cost = Number(node.actualCost || 0);
+        if (cost > 0) {
+          if (nat === 'MO' || nat.startsWith('MO')) act.MO += cost;
+          else if (nat === 'MTL' || nat.startsWith('MTL')) act.MTL += cost;
+          else if (nat === 'ST' || nat.startsWith('ST')) act.ST += cost;
+          else if (nat === 'FGC' || nat.startsWith('FGC')) act.FGC += cost;
+          else act.MAT += cost;
+        }
+      });
+    }
     return act;
   }, [projectReports, projectWbsNodes]);
 
@@ -549,24 +573,31 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
     return Math.max(fromWbs, fromDa, fromNature);
   }, [projectWbsNodes, projectDAs, natureEngaged]);
 
+  const totalProductionVal = useMemo(() => {
+    const validReports = projectReports.filter(r => isReportValidatedOrLocked(r));
+    return validReports.reduce((sum, r) => {
+      const cost = getReportRealValuation(r, projectWbsNodes);
+      return sum + (cost || 0);
+    }, 0);
+  }, [projectReports, projectWbsNodes]);
+
   const totalActualCost = useMemo(() => {
     const fromWbs = projectWbsNodes.reduce((acc, node) => acc + (Number(node.actualCost) || 0), 0);
     const fromNature = natureActual.MO + natureActual.MAT + natureActual.MTL + natureActual.ST + natureActual.FGC;
-    return Math.max(fromWbs, fromNature);
-  }, [projectWbsNodes, natureActual]);
+    const rawCost = Math.max(totalProductionVal, fromNature, fromWbs);
+
+    // Garde-fou BTP : si le coût brut dépasse 2.5x le budget révisé suite à des résidus de saisie
+    if (revisedBudget > 0 && rawCost > revisedBudget * 2.5) {
+      return Math.round(revisedBudget * (Number(project?.progress || 0) / 100));
+    }
+    return rawCost;
+  }, [projectWbsNodes, natureActual, totalProductionVal, revisedBudget, project]);
 
   const totalEac = useMemo(() => {
     const fromWbs = projectWbsNodes.reduce((acc, node) => acc + (Number(node.eac || node.calculatedDsAmount || node.revisedBudget || node.initialBudget) || 0), 0);
     const val = fromWbs > 0 ? fromWbs : revisedBudget;
     return isNaN(val) ? revisedBudget : val;
   }, [projectWbsNodes, revisedBudget]);
-
-  const totalProductionVal = useMemo(() => {
-    return projectReports.reduce((sum, r) => {
-      const cost = getReportRealValuation(r, projectWbsNodes);
-      return sum + (cost || 0);
-    }, 0);
-  }, [projectReports, projectWbsNodes]);
 
   const marginEac = Math.max(0, contractAmount - totalEac);
   const marginPct = contractAmount > 0 ? ((marginEac / contractAmount) * 100).toFixed(1) : '0.0';
@@ -1358,7 +1389,7 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-mono font-bold text-slate-800">
                             {(() => {
-                              const pNodes = wbsMap[project.id] || wbsMap[project.code] || [];
+                              const pNodes = projectWbsNodes;
                               const pReports = dailyReports.filter(r => isReportForProject(r, project));
                               const pPeriods = monthsList.map(m => ({ key: m.key, label: m.monthName, endDate: `${m.key}-31` }));
                               const series = generateSCurveSeries(project, pNodes, pReports, pPeriods);

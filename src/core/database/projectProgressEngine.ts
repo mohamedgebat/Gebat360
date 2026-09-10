@@ -362,9 +362,25 @@ export const generateSCurveSeries = (
       totalPlannedEarned += weight * (periodPlannedPct / 100);
     });
 
-    const realCumulQtyPct = totalContractAmount > 0
+    let realCumulQtyPct = totalContractAmount > 0
       ? Number(((totalRealEarned / totalContractAmount) * 100).toFixed(1))
       : 0;
+
+    // Fallback dynamique si les quantités des feuilles ne sont pas renseignées par période mais le projet a un avancement validé
+    if (realCumulQtyPct === 0 && Number(project?.progress || 0) > 0 && !isFuture) {
+      const activeMonthCutoff = todayIso.substring(0, 7);
+      const projProg = Number(project.progress);
+      if (period.key === activeMonthCutoff) {
+        realCumulQtyPct = projProg;
+      } else if (period.key < activeMonthCutoff) {
+        const activeIdx = periods.findIndex(p => p.key === activeMonthCutoff);
+        if (activeIdx > 0 && pIdx <= activeIdx) {
+          realCumulQtyPct = Number(((pIdx / activeIdx) * projProg).toFixed(1));
+        } else {
+          realCumulQtyPct = projProg;
+        }
+      }
+    }
 
     const plannedCumulQtyPct = totalContractAmount > 0
       ? Number(((totalPlannedEarned / totalContractAmount) * 100).toFixed(1))
@@ -381,7 +397,7 @@ export const generateSCurveSeries = (
       periodLabel: period.label,
       endDate: period.endDate,
       plannedCumulQtyPct,
-      realCumulQtyPct: isFuture && realCumulQtyPct === 0 ? realCumulQtyPct : realCumulQtyPct,
+      realCumulQtyPct,
       gapPoints,
       statusLabel,
       isFuture
