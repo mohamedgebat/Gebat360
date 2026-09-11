@@ -313,83 +313,21 @@ export const calculateProjectOverallProgress = (
   allReports: (DailyReport | any)[]
 ): ProjectProgressSummary => {
   const projectId = project?.id || project?.code || 'PROJ';
-  let leaves = getLeavesWBS(wbsNodes || []);
-
-  // Si aucun nœud feuille fourni, récupérer automatiquement les activités SSOT de référence du projet
-  if (leaves.length === 0 && project) {
-    const fallbackNodes = getProjectWbsNodes(project);
-    leaves = getLeavesWBS(fallbackNodes);
-  }
-
-  if (leaves.length === 0) {
-    const pId = String(project?.id || '').toUpperCase().trim();
-    const pCode = String(project?.code || '').toUpperCase().trim();
-    const isSongon = pId.includes('SON') || pCode.includes('SON');
-    const isBingerville = pId.includes('BEN') || pCode.includes('BEN');
-
-    const projectValidReports = (allReports || []).filter(r => {
-      if (!isReportValidatedOrLocked(r)) return false;
-      const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
-      const rCode = String(r.id || r.code || r.reportCode || '').toUpperCase();
-      // Exclure les rapports de l'autre chantier
-      if (isSongon && (rCode.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
-      if (isBingerville && (rCode.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
-      return rProj === pId || rProj === pCode || (pId && rProj.includes(pId)) ||
-             (isSongon && rProj.includes('SON')) || (isBingerville && rProj.includes('BEN'));
-    });
-
-    if (projectValidReports.length > 0) {
-      // Calcul 100% SSOT basé exclusivement sur les totalCost réels des rapports Excel
-      const totalRealizedCost = projectValidReports.reduce((s, r) => {
-        const cost = Number(r.totalCost || 0);
-        if (cost > 0) return s + cost;
-        // Fallback uniquement si totalCost absent : qty * pu
-        return s + (Number(r.realizedQty || 0) * Number(r.pu || 0));
-      }, 0);
-      // Budget DQE = Montant Contractuel du Marché (Source de vérité pour le % d'avancement physique marché)
-      const projBudget = Number(project?.contractAmount || project?.marketAmount || project?.revisedBudget || project?.initialBudget || 1000000);
-      const calculatedProg = projBudget > 0 ? Math.min(100, Number(((totalRealizedCost / projBudget) * 100).toFixed(1))) : 0;
-      return {
-        projectId,
-        totalContractAmount: projBudget,
-        totalEarnedAmount: totalRealizedCost,
-        totalPlannedAmount: projBudget,
-        overallPhysicalProgress: calculatedProg,
-        overallPlannedProgress: calculatedProg,
-        progressGap: 0,
-        isBehindSchedule: false,
-        isAheadOfSchedule: false,
-        totalOverproductionAmount: 0
-      };
-    }
-
-    // Aucun rapport disponible : retourner 0 (pas de fallback hardcodé)
-    return {
-      projectId,
-      totalContractAmount: Number(project?.contractAmount || project?.marketAmount || project?.revisedBudget || 0),
-      totalEarnedAmount: 0,
-      totalPlannedAmount: 0,
-      overallPhysicalProgress: 0,
-      overallPlannedProgress: 0,
-      progressGap: 0,
-      isBehindSchedule: false,
-      isAheadOfSchedule: false,
-      totalOverproductionAmount: 0
-    };
-  }
-
-  // Filtrer strictement les rapports par projectId pour éviter toute contamination inter-chantiers
   const pIdFilter = String(project?.id || '').toUpperCase().trim();
   const pCodeFilter = String(project?.code || '').toUpperCase().trim();
   const isSongonFilter = pIdFilter.includes('SON') || pCodeFilter.includes('SON');
   const isBingervilleFilter = pIdFilter.includes('BEN') || pCodeFilter.includes('BEN');
 
-  const projectFilteredReports = (allReports || []).filter(r => {
+  // 1. Filtrer les rapports de production validés/verrouillés appartenant à ce projet
+  const projectValidReports = (allReports || []).filter(r => {
+    if (!isReportValidatedOrLocked(r)) return false;
     const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
-    const rId = String(r.id || r.code || '').toUpperCase();
+    const rId = String(r.id || r.code || r.reportCode || '').toUpperCase();
+    
     // Exclusion explicite de l'autre chantier
     if (isSongonFilter && (rId.startsWith('BINGERVILLE-') || rId.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
     if (isBingervilleFilter && (rId.startsWith('SONGON-') || rId.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
+    
     // Match positif par projectId
     if (rProj === pIdFilter || rProj === pCodeFilter) return true;
     if (isSongonFilter && (rProj.includes('SON') || rId.startsWith('SONGON-'))) return true;
@@ -397,45 +335,35 @@ export const calculateProjectOverallProgress = (
     return false;
   });
 
-  let totalContractAmount = 0;
-  let totalEarnedAmount = 0;
-  let totalPlannedAmount = 0;
-  let totalOverproductionAmount = 0;
+  // 2. Budget DQE = Montant Contractuel du Marché (Source de vérité SSOT absolue)
+  const totalContractAmount = Number(project?.contractAmount || project?.marketAmount || project?.initialBudget || 1000000);
 
-  leaves.forEach(leaf => {
-    const metrics = calculateActivityProgress(leaf, projectFilteredReports);
-    const weight = metrics.contractAmount || Number(leaf.contractAmount || leaf.marketAmount || leaf.revisedBudget || leaf.initialBudget || 1000);
+  // 3. Valorisation Totale de la Production Réalisée Validée (RJC)
+  const totalEarnedAmount = projectValidReports.reduce((s, r) => {
+    const cost = Number(r.totalCost || 0);
+    if (cost > 0) return s + cost;
+    return s + (Number(r.realizedQty || 0) * Number(r.pu || 0));
+  }, 0);
 
-    totalContractAmount += weight;
-    totalEarnedAmount += weight * (metrics.realizedProgress / 100);
-    totalPlannedAmount += weight * (metrics.plannedProgress / 100);
-
-    if (metrics.overproductionQty > 0 && metrics.contractUnitPrice > 0) {
-      totalOverproductionAmount += metrics.overproductionQty * metrics.contractUnitPrice;
-    }
-  });
-
+  // 4. Avancement Physico-Financier Réel (%) = (Production Validée / Montant Marché DQE) * 100
   const overallPhysicalProgress = totalContractAmount > 0
     ? Math.min(100, Math.max(0, Number(((totalEarnedAmount / totalContractAmount) * 100).toFixed(1))))
     : 0;
 
-  const overallPlannedProgress = totalContractAmount > 0
-    ? Math.min(100, Math.max(0, Number(((totalPlannedAmount / totalContractAmount) * 100).toFixed(1))))
-    : overallPhysicalProgress;
-
+  const overallPlannedProgress = overallPhysicalProgress;
   const progressGap = Number((overallPhysicalProgress - overallPlannedProgress).toFixed(1));
 
   return {
     projectId,
     totalContractAmount,
     totalEarnedAmount,
-    totalPlannedAmount,
-    overallPhysicalProgress: Number(overallPhysicalProgress.toFixed(1)),
-    overallPlannedProgress: Number(overallPlannedProgress.toFixed(1)),
+    totalPlannedAmount: totalContractAmount,
+    overallPhysicalProgress,
+    overallPlannedProgress,
     progressGap,
-    isBehindSchedule: progressGap < 0,
-    isAheadOfSchedule: progressGap > 0,
-    totalOverproductionAmount
+    isBehindSchedule: false,
+    isAheadOfSchedule: false,
+    totalOverproductionAmount: 0
   };
 };
 
