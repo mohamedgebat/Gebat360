@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary, calculateMarginPercentage, formatFCFA, formatCompactFCFA } from '../../core/utils/financialFormulas';
-import { calculateProjectOverallProgress } from '../../core/database/projectProgressEngine';
+import { calculateProjectOverallProgress, isReportValidatedOrLocked } from '../../core/database/projectProgressEngine';
 import { isProjectMatch, isReportForProject, getProjectWbsNodes } from '../../utils/projectMatcher';
 import {
   Briefcase,
