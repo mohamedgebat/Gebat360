@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary, calculateMarginPercentage, formatFCFA, formatCompactFCFA } from '../../core/utils/financialFormulas';
+import { calculateProjectOverallProgress } from '../../core/database/projectProgressEngine';
 import { isProjectMatch, isReportForProject, getProjectWbsNodes } from '../../utils/projectMatcher';
 import {
   Briefcase,
@@ -385,7 +386,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       const sCurveTarget = Math.round((3 * Math.pow(t, 2) - 2 * Math.pow(t, 3)) * 1000) / 10;
       const targetPct = Math.min(100, Math.max(0, sCurveTarget));
 
-      // 2. AVANCEMENT RÉEL CUMULÉ
+      // 2. AVANCEMENT RÉEL CUMULÉ (100% SSOT / EVM CONFORME)
       let realPct = 0;
       if (!isFuture) {
         // Filtrage des rapports de production validés enregistrés jusqu'à ce mois (inclus)
@@ -395,52 +396,13 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         });
 
         if (reportsUpToMonth.length > 0) {
-          // Calcul exact du cumul d'avancement physique basé sur les rapports réels enregistrés
-          const wbsProgressMap: Record<string, { realized: number; planned: number; budget: number }> = {};
-          
-          reportsUpToMonth.forEach(r => {
-            const wCode = String(r.wbsCode || r.wbsId || 'GENERAL').toUpperCase().replace(/^WBS-/, '');
-            if (!wbsProgressMap[wCode]) {
-              const node = targetWbsNodes.find((n: any) => {
-                const nCode = String(n.code || n.id || '').toUpperCase().replace(/^WBS-/, '');
-                return nCode === wCode || nCode.includes(wCode) || wCode.includes(nCode);
-              });
-              const nodeBudget = Number(node?.revisedBudget || node?.contractAmount || node?.initialBudget || 0);
-              const plannedQty = Number(r.plannedQty || r.targetQty || node?.plannedQty || 0);
-              wbsProgressMap[wCode] = { realized: 0, planned: plannedQty > 0 ? plannedQty : 1, budget: nodeBudget };
-            }
-            wbsProgressMap[wCode].realized += Number(r.realizedQty || 0);
-          });
-
-          let totalWeight = 0;
-          let weightedSum = 0;
-
-          Object.values(wbsProgressMap).forEach(w => {
-            const actProg = Math.min(100, (w.realized / (w.planned > 0 ? w.planned : 1)) * 100);
-            weightedSum += actProg * w.budget;
-            totalWeight += w.budget;
-          });
-
-          if (totalWeight > 0 && weightedSum > 0) {
-            realPct = Math.min(100, Number((weightedSum / totalWeight).toFixed(1)));
-          } else {
-            const totalReportCost = reportsUpToMonth.reduce((sum, r) => sum + Number(r.totalCost || (Number(r.realizedQty || 0) * Number(r.pu || 0))), 0);
-            if (totalReportCost > 0 && totalBudgetDs > 0) {
-              realPct = Math.min(100, Number(((totalReportCost / totalBudgetDs) * 100).toFixed(1)));
-            }
-          }
+          const monthlySummary = calculateProjectOverallProgress(targetProject, targetWbsNodes, reportsUpToMonth);
+          realPct = monthlySummary.overallPhysicalProgress;
         }
 
         // Ancrage de cohérence SSOT pour le mois actif (Mois en cours)
         if (isCurrent && summary.progressPct > 0) {
-          realPct = Math.max(realPct, summary.progressPct);
-        } else if (realPct === 0 && summary.progressPct > 0 && index > 0) {
-          // Évolution fluide et réaliste des mois antérieurs écoulés vers l'avancement physique constaté
-          const elapsedIdx = elapsedMonthList.findIndex(em => em.key === m.key);
-          if (elapsedIdx >= 0) {
-            const ratio = elapsedIdx / (elapsedCount - 1 || 1);
-            realPct = Math.min(summary.progressPct, Number((summary.progressPct * Math.pow(ratio, 1.4)).toFixed(1)));
-          }
+          realPct = summary.progressPct;
         }
 
         // L'avancement cumulé ne peut pas régresser au fil des mois
