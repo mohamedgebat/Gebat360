@@ -212,10 +212,7 @@ export const getProjectFinancialSummary = (
   const summarySSOT = calculateProjectOverallProgress(project, effectiveWbsNodes, dailyReports || []);
   let progressPct = summarySSOT.overallPhysicalProgress;
 
-  if (progressPct === 0 && project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress))) {
-    progressPct = Number(project.progress);
-  }
-
+  // Pas de fallback sur project.progress hardcodé — SSOT uniquement depuis les rapports
   progressPct = Math.min(100, Math.max(0, Number(progressPct.toFixed(1))));
 
   // 5. Total Actual Cost (Coût Réel Déboursé à Date)

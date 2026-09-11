@@ -249,7 +249,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_11_ssot_sync_v562';
+      const DATA_VERSION = 'v2026_09_11_ssot_progress_fix_v563';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_subcontracts');

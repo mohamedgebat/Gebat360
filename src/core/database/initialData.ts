@@ -40,7 +40,7 @@ export const INITIAL_PROJECTS: Project[] = [
     endDate: '2027-01-31',
     initialBudget: 778028406,
     revisedBudget: 778028406,
-    progress: 12.6,
+    progress: 0,
     status: 'En cours',
     risk: 'Modéré'
   },
@@ -64,7 +64,7 @@ export const INITIAL_PROJECTS: Project[] = [
     endDate: '2027-09-01',
     initialBudget: 1890812405,
     revisedBudget: 1890812405,
-    progress: 13.3,
+    progress: 0,
     status: 'En cours',
     risk: 'Faible'
   }

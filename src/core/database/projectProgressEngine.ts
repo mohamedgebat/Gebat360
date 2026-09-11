@@ -324,16 +324,30 @@ export const calculateProjectOverallProgress = (
   if (leaves.length === 0) {
     const pId = String(project?.id || '').toUpperCase().trim();
     const pCode = String(project?.code || '').toUpperCase().trim();
+    const isSongon = pId.includes('SON') || pCode.includes('SON');
+    const isBingerville = pId.includes('BEN') || pCode.includes('BEN');
+
     const projectValidReports = (allReports || []).filter(r => {
       if (!isReportValidatedOrLocked(r)) return false;
       const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
-      return rProj === pId || rProj === pCode || (pId && rProj.includes(pId));
+      const rCode = String(r.id || r.code || r.reportCode || '').toUpperCase();
+      // Exclure les rapports de l'autre chantier
+      if (isSongon && (rCode.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
+      if (isBingerville && (rCode.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
+      return rProj === pId || rProj === pCode || (pId && rProj.includes(pId)) ||
+             (isSongon && rProj.includes('SON')) || (isBingerville && rProj.includes('BEN'));
     });
 
     if (projectValidReports.length > 0) {
-      const totalRealizedCost = projectValidReports.reduce((s, r) => s + (Number(r.realizedQty || 0) * Number(r.pu || 1000)), 0);
+      // Calcul 100% SSOT basé exclusivement sur les totalCost réels des rapports Excel
+      const totalRealizedCost = projectValidReports.reduce((s, r) => {
+        const cost = Number(r.totalCost || 0);
+        if (cost > 0) return s + cost;
+        // Fallback uniquement si totalCost absent : qty * pu
+        return s + (Number(r.realizedQty || 0) * Number(r.pu || 0));
+      }, 0);
       const projBudget = Number(project?.revisedBudget || project?.initialBudget || project?.contractAmount || 1000000);
-      const calculatedProg = Math.min(100, Number(((totalRealizedCost / projBudget) * 100).toFixed(1)));
+      const calculatedProg = projBudget > 0 ? Math.min(100, Number(((totalRealizedCost / projBudget) * 100).toFixed(1))) : 0;
       return {
         projectId,
         totalContractAmount: projBudget,
@@ -348,14 +362,14 @@ export const calculateProjectOverallProgress = (
       };
     }
 
-    const fallbackProg = Number(project?.progress || project?.physicalProgress || 0);
+    // Aucun rapport disponible : retourner 0 (pas de fallback hardcodé)
     return {
       projectId,
       totalContractAmount: Number(project?.contractAmount || project?.revisedBudget || 0),
-      totalEarnedAmount: Number((project?.contractAmount || 0) * (fallbackProg / 100)),
-      totalPlannedAmount: Number(project?.contractAmount || 0),
-      overallPhysicalProgress: Number(fallbackProg.toFixed(1)),
-      overallPlannedProgress: Number(fallbackProg.toFixed(1)),
+      totalEarnedAmount: 0,
+      totalPlannedAmount: 0,
+      overallPhysicalProgress: 0,
+      overallPlannedProgress: 0,
       progressGap: 0,
       isBehindSchedule: false,
       isAheadOfSchedule: false,
@@ -383,7 +397,7 @@ export const calculateProjectOverallProgress = (
 
   const overallPhysicalProgress = totalContractAmount > 0
     ? Math.min(100, Math.max(0, Number(((totalEarnedAmount / totalContractAmount) * 100).toFixed(1))))
-    : Number(project?.progress || 0);
+    : 0;
 
   const overallPlannedProgress = totalContractAmount > 0
     ? Math.min(100, Math.max(0, Number(((totalPlannedAmount / totalContractAmount) * 100).toFixed(1))))
