@@ -88,7 +88,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   const getNowTimeStr = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const getTodayFrDate = () => new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // Rôle de l'utilisateur connecté habilité à valider
+  // Rôle de l'utilisateur connecté habilité à valider et verrouiller (DP, DT, Conducteur, Cost Controller, DAF, DG, Admin)
   const isValidatorRole = useMemo(() => {
     const role = (currentUser?.role || '').toLowerCase();
     return (
@@ -97,14 +97,34 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       role.includes('super admin') ||
       role.includes('admin') ||
       role.includes('dp') ||
-      role.includes('dt')
+      role.includes('dt') ||
+      role.includes('cost') ||
+      role.includes('control') ||
+      role.includes('contrôleur') ||
+      role.includes('daf') ||
+      role.includes('direction') ||
+      role.includes('ceo') ||
+      role.includes('chef')
     );
   }, [currentUser]);
 
-  // État du statut du rapport : Défaut automatique à 'Soumis' pour les valideurs (Conducteur, DP, DT, Admin)
+  // État du statut du rapport : Défaut automatique à 'Soumis' pour les valideurs (Conducteur, DP, DT, Cost Control, DAF, Admin)
   const [reportStatus, setReportStatus] = useState<'Brouillon' | 'Soumis' | 'Validé' | 'Verrouillé'>(() => {
     const role = (currentUser?.role || '').toLowerCase();
-    if (role.includes('conducteur') || role.includes('directeur') || role.includes('super admin') || role.includes('admin') || role.includes('dp') || role.includes('dt')) {
+    if (
+      role.includes('conducteur') ||
+      role.includes('directeur') ||
+      role.includes('super admin') ||
+      role.includes('admin') ||
+      role.includes('dp') ||
+      role.includes('dt') ||
+      role.includes('cost') ||
+      role.includes('control') ||
+      role.includes('contrôleur') ||
+      role.includes('daf') ||
+      role.includes('direction') ||
+      role.includes('ceo')
+    ) {
       return 'Soumis';
     }
     return 'Brouillon';
@@ -4336,6 +4356,31 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                   >
                     <Unlock size={15} />
                     <span>🔓 Déverrouiller & Modifier</span>
+                  </button>
+                )}
+                {isValidatorRole && viewingReportDetail.status === 'Validé' && (
+                  <button
+                    disabled={isValidating}
+                    onClick={async () => {
+                      const targetId = viewingReportDetail.id;
+                      const targetCode = viewingReportDetail.code || viewingReportDetail.reportCode;
+                      setIsValidating(true);
+                      try {
+                        if (updateDailyReportStatus) {
+                          await updateDailyReportStatus(targetId || targetCode, 'Verrouillé', 'Verrouillé par le Cost Control / Direction');
+                        }
+                        setViewingReportDetail(null);
+                        alert(`🔒 Rapport ${targetCode || targetId} verrouillé et certifié avec succès !`);
+                      } catch (err: any) {
+                        alert(`❌ Échec du verrouillage : ${err?.message || 'Erreur serveur.'}`);
+                      } finally {
+                        setIsValidating(false);
+                      }
+                    }}
+                    className="px-4 py-3 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    <Lock size={15} />
+                    <span>🔒 Verrouiller & Certifier</span>
                   </button>
                 )}
                 <button
