@@ -249,7 +249,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_08_purge_local_presentation_v487';
+      const DATA_VERSION = 'v2026_09_11_ssot_sync_v562';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_subcontracts');
@@ -265,6 +265,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.removeItem('gebat_purchase_orders');
         localStorage.removeItem('gebat_receipts');
         localStorage.removeItem('gebat_alerts');
+        localStorage.removeItem('gebat_leaves');
+        localStorage.removeItem('gebat_personnel');
         localStorage.setItem('gebat_data_version', DATA_VERSION);
       }
 
@@ -587,22 +589,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
             
             const existingMap = new Map<string, DailyReport>();
-            cleanDbReports.forEach(r => {
+
+            // 1. Initialiser avec la source de vérité canonique (85 rapports réels SSOT)
+            REAL_ALL_DAILY_REPORTS.forEach(r => {
               const rId = r.id || r.code || r.reportCode;
               if (rId) existingMap.set(rId, r);
             });
 
-            // Garantir la persistance des 85 rapports réels Excel officiels
-            REAL_ALL_DAILY_REPORTS.forEach(r => {
+            // 2. Synchroniser les rapports de la base distante
+            cleanDbReports.forEach(r => {
               const rId = r.id || r.code || r.reportCode;
-              if (rId && !existingMap.has(rId)) {
-                existingMap.set(rId, r);
+              if (rId) {
+                if (existingMap.has(rId)) {
+                  const base = existingMap.get(rId)!;
+                  existingMap.set(rId, { ...base, ...r, productionItems: (base.productionItems && base.productionItems.length > 0) ? base.productionItems : r.productionItems });
+                } else {
+                  existingMap.set(rId, r);
+                }
               }
             });
 
+            // 3. Intégrer uniquement les nouveaux rapports créés localement par l'utilisateur (pas de vieux doublons Excel en cache)
             [...prev, ...localBackup].forEach(lr => {
               const lId = lr.id || lr.code || lr.reportCode;
-              if (lId && !isDemoReportObj(lr)) {
+              if (lId && !isDemoReportObj(lr) && !lId.startsWith('REP-EXCEL-') && !lId.startsWith('REAL-RPT-')) {
                 if (!existingMap.has(lId)) {
                   existingMap.set(lId, lr);
                 } else {
@@ -825,18 +835,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
-    const saved = localStorage.getItem('gebat_daily_reports');
-    const backupRaw = localStorage.getItem('gebat_user_created_reports_backup');
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('gebat_daily_reports') : null;
+    const backupRaw = typeof window !== 'undefined' ? localStorage.getItem('gebat_user_created_reports_backup') : null;
 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           const clean = parsed.filter((r: any) => !isDemoReportObj(r));
-          if (clean.length !== parsed.length) {
-            safeSaveToStorage('gebat_daily_reports', clean);
+          if (clean.length > 0) {
+            return clean;
           }
-          return clean;
         }
       } catch (e) {}
     }
@@ -844,14 +853,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (backupRaw) {
       try {
         const backupParsed = JSON.parse(backupRaw);
-        if (Array.isArray(backupParsed)) {
-          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r));
-          return cleanBackup;
+        if (Array.isArray(backupParsed) && backupParsed.length > 0) {
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r) && !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+          const map = new Map<string, DailyReport>();
+          REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
+          cleanBackup.forEach(r => map.set(r.id, r));
+          return Array.from(map.values());
         }
       } catch (e) {}
     }
 
-    return INITIAL_DAILY_REPORTS.filter(r => !isDemoReportObj(r));
+    return REAL_ALL_DAILY_REPORTS;
   });
 
   useEffect(() => {
