@@ -1793,10 +1793,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         const targetId = rep.id;
         const targetCode = rep.code || rep.reportCode;
         if (updateDailyReportStatus) {
-          await updateDailyReportStatus(targetId, 'Validé', `Validation groupée par ${currentUser?.name || 'Direction'}`);
-          if (targetCode && targetCode !== targetId) {
-            await updateDailyReportStatus(targetCode, 'Validé', `Validation groupée par ${currentUser?.name || 'Direction'}`);
-          }
+          await updateDailyReportStatus(targetId || targetCode, 'Validé', `Validation groupée par ${currentUser?.name || 'Direction'}`);
         }
         if (updateValidationTaskStatus) {
           await updateValidationTaskStatus(targetId, 'APPROVED', `Validation groupée par ${currentUser?.name || 'Direction'}`);
@@ -2335,10 +2332,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                       setIsValidating(true);
                                       try {
                                         if (updateDailyReportStatus) {
-                                          await updateDailyReportStatus(targetId, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                          if (targetCode && targetCode !== targetId) {
-                                            await updateDailyReportStatus(targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
-                                          }
+                                          await updateDailyReportStatus(targetId || targetCode, 'Validé', `Validé par ${currentUser?.name || 'Valideur'}`);
                                         }
                                         if (updateValidationTaskStatus) {
                                           await updateValidationTaskStatus(targetId, 'APPROVED', `Validé par ${currentUser?.name || 'Valideur'}`);
@@ -2367,10 +2361,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                       setIsValidating(true);
                                       try {
                                         if (updateDailyReportStatus) {
-                                          await updateDailyReportStatus(targetId, 'Brouillon', reason);
-                                          if (targetCode && targetCode !== targetId) {
-                                            await updateDailyReportStatus(targetCode, 'Brouillon', reason);
-                                          }
+                                          await updateDailyReportStatus(targetId || targetCode, 'Brouillon', reason);
                                         }
                                         if (updateValidationTaskStatus) {
                                           await updateValidationTaskStatus(targetId, 'RETURNED', reason);
@@ -2485,33 +2476,30 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                          const targetCode = rep.code || rep.reportCode;
                                          setIsValidating(true);
                                          try {
-                                            if (updateDailyReportStatus) {
-                                              await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction par ${currentUser?.name || 'Valideur'} : ${reason}`);
-                                              if (targetCode && targetCode !== targetId) {
-                                                await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction par ${currentUser?.name || 'Valideur'} : ${reason}`);
-                                              }
-                                            }
-                                            if (updateValidationTaskStatus) {
-                                              await updateValidationTaskStatus(targetId, 'RETURNED', `Déverrouillé : ${reason}`);
-                                            }
-                                            loadReportIntoForm(rep);
-                                            alert(`🔓 Rapport ${targetCode || targetId} déverrouillé avec succès !\n\n• Statut passé à BROUILLON (Étape 1)\n• Chargé immédiatement dans le formulaire pour modification.`);
-                                         } catch (err: any) {
-                                           alert(`❌ Échec du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
-                                         } finally {
-                                           setIsValidating(false);
-                                         }
-                                       }}
-                                       className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs cursor-pointer transition flex items-center gap-1 shadow-2xs"
-                                       title="Déverrouiller ce rapport pour effectuer des corrections"
-                                     >
-                                       <Unlock size={13} />
-                                       <span>🔓 Déverrouiller</span>
-                                     </button>
-                                   )}
-                                 </div>
-                               );
-                             }
+                                             if (updateDailyReportStatus) {
+                                               await updateDailyReportStatus(targetId || targetCode, 'Brouillon', `Déverrouillé pour correction par ${currentUser?.name || 'Valideur'} : ${reason}`);
+                                             }
+                                             if (updateValidationTaskStatus) {
+                                               await updateValidationTaskStatus(targetId, 'RETURNED', `Déverrouillé : ${reason}`);
+                                             }
+                                             loadReportIntoForm(rep);
+                                             alert(`🔓 Rapport ${targetCode || targetId} déverrouillé avec succès !\n\n• Statut passé à BROUILLON (Étape 1)\n• Chargé immédiatement dans le formulaire pour modification.`);
+                                          } catch (err: any) {
+                                            alert(`❌ Échec du déverrouillage : ${err?.message || 'Erreur serveur.'}`);
+                                          } finally {
+                                            setIsValidating(false);
+                                          }
+                                        }}
+                                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs cursor-pointer transition flex items-center gap-1 shadow-2xs"
+                                        title="Déverrouiller ce rapport pour effectuer des corrections"
+                                      >
+                                        <Unlock size={13} />
+                                        <span>🔓 Déverrouiller</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              }
 
                             return (
                               <div className="flex items-center justify-end gap-1.5">
@@ -2521,10 +2509,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                 <button
                                   onClick={async () => {
                                     if (updateDailyReportStatus) {
-                                      await updateDailyReportStatus(rep.id, 'Soumis', 'Soumis depuis le registre');
-                                      if (rep.code && rep.code !== rep.id) {
-                                        await updateDailyReportStatus(rep.code, 'Soumis', 'Soumis depuis le registre');
-                                      }
+                                      await updateDailyReportStatus(rep.id || rep.code, 'Soumis', 'Soumis depuis le registre');
                                     }
                                     setReportStatus('Soumis');
                                     setMasterStatusFilter('Soumis');
@@ -3810,10 +3795,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                     setIsValidating(true);
                     try {
                       if (updateDailyReportStatus) {
-                        await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
-                        if (targetCode && targetCode !== targetId) {
-                          await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
-                        }
+                        await updateDailyReportStatus(targetId || targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
                       }
                       loadReportIntoForm(viewingReportDetail);
                       alert(`🔓 Rapport ${targetCode || targetId} déverrouillé !\n\n• Repassé en statut Brouillon (Étape 1)\n• Chargé dans le formulaire pour modification immédiate.`);
@@ -4340,10 +4322,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                       setIsValidating(true);
                       try {
                         if (updateDailyReportStatus) {
-                          await updateDailyReportStatus(targetId, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
-                          if (targetCode && targetCode !== targetId) {
-                            await updateDailyReportStatus(targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
-                          }
+                          await updateDailyReportStatus(targetId || targetCode, 'Brouillon', `Déverrouillé pour correction : ${reason}`);
                         }
                         loadReportIntoForm(viewingReportDetail);
                         alert(`🔓 Rapport ${targetCode || targetId} déverrouillé !\n\n• Repassé en statut Brouillon (Étape 1)\n• Chargé dans le formulaire pour modification immédiate.`);
@@ -4377,10 +4356,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                         setIsValidating(true);
                         try {
                           if (updateDailyReportStatus) {
-                            await updateDailyReportStatus(targetId, 'Brouillon', reason);
-                            if (targetCode && targetCode !== targetId) {
-                              await updateDailyReportStatus(targetCode, 'Brouillon', reason);
-                            }
+                            await updateDailyReportStatus(targetId || targetCode, 'Brouillon', reason);
                           }
                           if (updateValidationTaskStatus) {
                             await updateValidationTaskStatus(targetId, 'RETURNED', reason);
@@ -4405,10 +4381,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                         setIsValidating(true);
                         try {
                           if (updateDailyReportStatus) {
-                            await updateDailyReportStatus(targetId, 'Validé', 'Validé depuis la fiche synthétique');
-                            if (targetCode && targetCode !== targetId) {
-                              await updateDailyReportStatus(targetCode, 'Validé', 'Validé depuis la fiche synthétique');
-                            }
+                            await updateDailyReportStatus(targetId || targetCode, 'Validé', 'Validé depuis la fiche synthétique');
                           }
                           if (updateValidationTaskStatus) {
                             await updateValidationTaskStatus(targetId, 'APPROVED', 'Validé depuis la fiche synthétique');
