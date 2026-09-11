@@ -346,7 +346,8 @@ export const calculateProjectOverallProgress = (
         // Fallback uniquement si totalCost absent : qty * pu
         return s + (Number(r.realizedQty || 0) * Number(r.pu || 0));
       }, 0);
-      const projBudget = Number(project?.revisedBudget || project?.initialBudget || project?.contractAmount || 1000000);
+      // Budget DQE = Montant Contractuel du Marché (Source de vérité pour le % d'avancement physique marché)
+      const projBudget = Number(project?.contractAmount || project?.marketAmount || project?.revisedBudget || project?.initialBudget || 1000000);
       const calculatedProg = projBudget > 0 ? Math.min(100, Number(((totalRealizedCost / projBudget) * 100).toFixed(1))) : 0;
       return {
         projectId,
@@ -365,7 +366,7 @@ export const calculateProjectOverallProgress = (
     // Aucun rapport disponible : retourner 0 (pas de fallback hardcodé)
     return {
       projectId,
-      totalContractAmount: Number(project?.contractAmount || project?.revisedBudget || 0),
+      totalContractAmount: Number(project?.contractAmount || project?.marketAmount || project?.revisedBudget || 0),
       totalEarnedAmount: 0,
       totalPlannedAmount: 0,
       overallPhysicalProgress: 0,
@@ -403,7 +404,7 @@ export const calculateProjectOverallProgress = (
 
   leaves.forEach(leaf => {
     const metrics = calculateActivityProgress(leaf, projectFilteredReports);
-    const weight = metrics.contractAmount || Number(leaf.revisedBudget || leaf.initialBudget || 1000);
+    const weight = metrics.contractAmount || Number(leaf.contractAmount || leaf.marketAmount || leaf.revisedBudget || leaf.initialBudget || 1000);
 
     totalContractAmount += weight;
     totalEarnedAmount += weight * (metrics.realizedProgress / 100);
