@@ -68,8 +68,27 @@ export const isReportSubmitted = (report: DailyReport | any): boolean => {
   );
 };
 
+const STOP_WORDS = new Set([
+  'DE', 'DES', 'DU', 'LA', 'LE', 'LES', 'EN', 'ET', 'A', 'AU', 'AUX', 
+  'PAR', 'POUR', 'SUR', 'DANS', 'Y', 'COMPRIS', 'D', 'L', 'UN', 'UNE', 
+  'TYPE', 'TOUS', 'TOUTE', 'TOUTES', 'AVEC', 'SANS', 'SOUS'
+]);
+
+export const normalizeBtpString = (s: any): string => {
+  return String(s || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+export const getBtpTokens = (s: any): string[] => {
+  return normalizeBtpString(s).split(' ').filter(w => w.length > 2 && !STOP_WORDS.has(w));
+};
+
 /**
- * Vérifie si un rapport correspond à une tâche WBS avec tolérance sur codes et descriptions.
+ * Vérifie si un rapport correspond à une tâche WBS avec tolérance sur codes, descriptions et sémantique BTP.
  */
 export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | any): boolean => {
   if (!report || !node) return false;
@@ -92,30 +111,62 @@ export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | an
     return true;
   }
 
-  // 2. Match code préfixe/inclusion (ex: 100.1 et 100.1.1)
+  // 2. Match code préfixe/inclusion (en évitant les marqueurs génériques 04.01.001 / 04.02.001)
+  const isGenericCode = (c: string) => c === '04.01.001' || c === '04.02.001' || c === 'PROD' || c.length < 3;
   for (const c of nodeCodes) {
-    if (rWbsCode && (c === rWbsCode || c.startsWith(rWbsCode) || rWbsCode.startsWith(c))) return true;
-    if (rWbsId && (c === rWbsId || c.startsWith(rWbsId) || rWbsId.startsWith(c))) return true;
-    if (rActivityCode && (c === rActivityCode || c.startsWith(rActivityCode) || rActivityCode.startsWith(c))) return true;
+    if (rWbsCode && !isGenericCode(rWbsCode) && (c === rWbsCode || c.startsWith(rWbsCode) || rWbsCode.startsWith(c))) return true;
+    if (rWbsId && !isGenericCode(rWbsId) && (c === rWbsId || c.startsWith(rWbsId) || rWbsId.startsWith(c))) return true;
+    if (rActivityCode && !isGenericCode(rActivityCode) && (c === rActivityCode || c.startsWith(rActivityCode) || rActivityCode.startsWith(c))) return true;
   }
 
-  // 3. Match nom / désignation d'activité
+  // 3. Match nom / désignation d'activité exacte ou sous-chaîne
   if (nName && rName && (nName === rName || nName.includes(rName) || rName.includes(nName))) {
     return true;
   }
 
-  // 4. Activités multiples enregistrées dans le rapport (recordedActivities)
-  if (Array.isArray(report.recordedActivities) && report.recordedActivities.length > 0) {
-    return report.recordedActivities.some((act: any) => {
-      const actWbs = norm(act.wbsCode || act.code || act.id);
-      const actName = norm(act.activityName || act.name || act.description || '');
-      if (nodeCodes.has(actWbs)) return true;
-      for (const c of nodeCodes) {
-        if (actWbs && (c === actWbs || c.startsWith(actWbs) || actWbs.startsWith(c))) return true;
+  // 4. Correspondance sémantique BTP par mots-clés et sections
+  const rTokens = getBtpTokens(rName);
+  const nDescTokens = getBtpTokens(node.description || node.name || '');
+  const nSecTokens = getBtpTokens(node.section || '');
+  const nAllTokens = getBtpTokens((node.section || '') + ' ' + (node.description || node.name || ''));
+
+  const parts = String(report.activityName || report.taskName || '').split('-').map(p => p.trim());
+  if (parts.length >= 2) {
+    const rSec = parts[0];
+    const rTask = parts.slice(1).join(' ');
+    const rSecToks = getBtpTokens(rSec);
+    const rTaskToks = getBtpTokens(rTask);
+
+    let secCompatible = true;
+    if (rSecToks.length > 0 && nSecTokens.length > 0) {
+      secCompatible = rSecToks.some(st => nSecTokens.some(nst => nst.includes(st) || st.includes(nst))) ||
+                      rSecToks.some(st => nDescTokens.some(ndt => ndt.includes(st) || st.includes(ndt)));
+    }
+
+    if (secCompatible && rTaskToks.length > 0) {
+      let taskScore = 0;
+      for (const tt of rTaskToks) {
+        if (nDescTokens.includes(tt)) taskScore += 2;
+        else if (nDescTokens.some(ndt => ndt.includes(tt) || tt.includes(ndt))) taskScore += 1;
       }
-      if (nName && actName && (nName === actName || nName.includes(actName) || actName.includes(nName))) return true;
-      return false;
-    });
+      if (taskScore >= 2 || (rTaskToks.length === 1 && taskScore >= 1)) {
+        return true;
+      }
+    }
+  } else {
+    let score = 0;
+    for (const rt of rTokens) {
+      if (nAllTokens.includes(rt)) score += 2;
+      else if (nAllTokens.some(nt => nt.includes(rt) || rt.includes(nt))) score += 1;
+    }
+    if (score >= 4 || (rTokens.length <= 2 && score >= 2)) {
+      return true;
+    }
+  }
+
+  // 5. Activités multiples enregistrées dans le rapport (recordedActivities)
+  if (Array.isArray(report.recordedActivities) && report.recordedActivities.length > 0) {
+    return report.recordedActivities.some((act: any) => isReportForWbsNode(act, node));
   }
 
   return false;
@@ -136,27 +187,24 @@ export const calculateActivityProgress = (
 
   // DQE : Source de vérité pour la quantité et valeur contractuelles
   const contractQty = Math.max(0, Number(node.contractQty || node.plannedQty || node.quantity || node.targetQty || 0));
-  const contractUnitPrice = Math.max(0, Number(node.contractUnitPrice || node.priceNoUnit || node.unitCost || node.pu || 0));
+  const contractUnitPrice = Math.max(0, Number(node.contractUnitPrice || node.marketUnitPrice || node.priceNoUnit || node.unitCost || node.pu || 0));
   
-  let contractAmount = Number(node.contractAmount || 0);
+  let contractAmount = Number(node.contractAmount || node.marketAmount || 0);
   if (!contractAmount || contractAmount === 0) {
     contractAmount = contractQty * contractUnitPrice;
   }
   if (!contractAmount || contractAmount === 0) {
-    contractAmount = Number(node.revisedBudget || node.initialBudget || node.totalPrice || 0);
+    contractAmount = Number(node.importedDsAmount || node.calculatedDsAmount || node.revisedBudget || node.initialBudget || node.totalPrice || 0);
   }
 
   // Budget DS (Coûts théoriques de revient)
-  const debourseBudget = Number(node.budgetDs || node.revisedBudget || node.initialBudget || 0);
+  const debourseBudget = Number(node.budgetDs || node.importedDsAmount || node.calculatedDsAmount || node.revisedBudget || node.initialBudget || 0);
   const plannedQty = Math.max(0, Number(node.plannedQty || contractQty));
 
   // Filtrage idempotant des rapports pour cette activité
   const processedReportIds = new Set<string>();
   let validatedRealizedQty = 0;
   let pendingRealizedQty = 0;
-
-  const norm = (s: any) => String(s || '').trim().toUpperCase();
-  const nodeCodes = new Set([norm(node.wbsCode), norm(node.code), norm(node.id), norm(node.priceNo)].filter(Boolean));
 
   (allReports || []).forEach(rep => {
     if (!rep) return;
@@ -168,16 +216,7 @@ export const calculateActivityProgress = (
       let qty = Math.max(0, Number(rep.realizedQty || 0));
 
       if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
-        const matched = rep.recordedActivities.find((act: any) => {
-          const actWbs = norm(act.wbsCode || act.code || act.id);
-          const actName = norm(act.activityName || act.name || act.description || '');
-          if (nodeCodes.has(actWbs)) return true;
-          for (const c of nodeCodes) {
-            if (actWbs && (c === actWbs || c.startsWith(actWbs) || actWbs.startsWith(c))) return true;
-          }
-          if (nName && actName && (nName === actName || nName.includes(actName) || actName.includes(nName))) return true;
-          return false;
-        });
+        const matched = rep.recordedActivities.find((act: any) => isReportForWbsNode(act, node));
         if (matched && matched.realizedQty !== undefined && !isNaN(Number(matched.realizedQty))) {
           qty = Math.max(0, Number(matched.realizedQty));
         }

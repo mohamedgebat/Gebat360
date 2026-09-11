@@ -365,13 +365,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
 
-    const validReports = projectReports.filter(r => {
-      const s = (r.status || '').toUpperCase();
-      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-    });
-
-    const elapsedMonthList = monthLabels.filter(m => m.key <= activeMonthCutoff);
-    const elapsedCount = Math.max(1, elapsedMonthList.length);
+    const validReports = projectReports.filter(isReportValidatedOrLocked);
 
     let cumulativeRealPct = 0;
 
@@ -396,8 +390,19 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         });
 
         if (reportsUpToMonth.length > 0) {
-          const monthlySummary = calculateProjectOverallProgress(targetProject, targetWbsNodes, reportsUpToMonth);
-          realPct = monthlySummary.overallPhysicalProgress;
+          if (selectedProjectId === 'ALL') {
+            const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
+            const weightedSum = filteredProjects.reduce((acc, proj) => {
+              const projWbs = getProjectWbsNodes(proj, wbsMap);
+              const pMonthly = calculateProjectOverallProgress(proj, projWbs, reportsUpToMonth);
+              const w = Number(proj.contractAmount || proj.revisedBudget || 1);
+              return acc + (pMonthly.overallPhysicalProgress * w);
+            }, 0);
+            realPct = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(1)) : 0;
+          } else {
+            const monthlySummary = calculateProjectOverallProgress(targetProject, targetWbsNodes, reportsUpToMonth);
+            realPct = monthlySummary.overallPhysicalProgress;
+          }
         }
 
         // Ancrage de cohérence SSOT pour le mois actif (Mois en cours)
@@ -431,7 +436,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
         isCurrent
       };
     });
-  }, [dashboardTimeline, projectReports, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct]);
+  }, [dashboardTimeline, projectReports, activeMonthCutoff, totalBudgetDs, targetWbsNodes, summary.progressPct, selectedProjectId, filteredProjects, targetProject, wbsMap]);
 
   // 2. Graphique ÉVOLUTION DES COÛTS : Données 100% réelles filtrées par projet (EVM / SSOT)
   const [hoveredCostMonth, setHoveredCostMonth] = useState<{
@@ -455,10 +460,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     const monthLabels = dashboardTimeline.months;
     const count = monthLabels.length;
 
-    const validReports = filteredDailyReports.filter(r => {
-      const s = (r.status || '').toUpperCase();
-      return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-    });
+    const validReports = filteredDailyReports.filter(isReportValidatedOrLocked);
 
     return monthLabels.map((m, index) => {
       const isFuture = m.key > activeMonthCutoff;

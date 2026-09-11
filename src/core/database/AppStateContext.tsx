@@ -26,6 +26,12 @@ import { INITIAL_USERS, PERMISSIONS_MATRIX } from '../permissions';
 import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from './realBingervilleDsData';
 import { isProjectMatch, isReportForProject, getProjectWbsNodes } from '../../utils/projectMatcher';
+import {
+  calculateActivityProgress,
+  calculateProjectOverallProgress,
+  isReportValidatedOrLocked,
+  isReportForWbsNode
+} from './projectProgressEngine';
 import { indexedDBStorage, safeSaveToStorage } from './indexedDBStorage';
 import {
   INITIAL_PROJECTS,
@@ -42,11 +48,6 @@ import {
   INITIAL_SUBCONTRACTS
 } from './initialData';
 import { ApiService } from '../../services/api';
-import {
-  calculateActivityProgress,
-  calculateProjectOverallProgress,
-  isReportValidatedOrLocked
-} from './projectProgressEngine';
 
 interface AppStateContextType {
   currentUser: User;
@@ -2709,10 +2710,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
 
-      const validReports = updatedReportsList.filter(r => {
-        const s = (r.status || '').toUpperCase();
-        return s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      });
+      const validReports = updatedReportsList.filter(isReportValidatedOrLocked);
 
       // 2. Recalcul déterministe du WBS par somme exacte des rapports validés
       let calculatedNextWbsMap: Record<string, WBSNode[]> = {};
@@ -2730,28 +2728,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
                 const pMatch = rProj.includes(pKey.toUpperCase().trim()) || pKey.toUpperCase().trim().includes(rProj) || (pKey.includes('SON') && rProj.includes('SON')) || (pKey.includes('BEN') && rProj.includes('BEN'));
                 if (!pMatch) return false;
-                const rWbs = String(r.wbsCode || r.wbsId || '').toUpperCase().trim();
-                const nCode = String(node.code || node.id || '').toUpperCase().trim();
-                const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
-
-                let matchActivity = rWbs === nCode || (nPriceNo !== '' && rWbs === nPriceNo);
-                if (!matchActivity && Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
-                  matchActivity = r.recordedActivities.some((act: any) => {
-                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
-                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
-                  });
-                }
-                return matchActivity;
+                return isReportForWbsNode(r, node);
               });
 
               const totalRealizedQty = nodeReports.reduce((sum, r) => {
                 if (Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
-                  const nCode = String(node.code || node.id || '').toUpperCase().trim();
-                  const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
-                  const actMatch = r.recordedActivities.find((act: any) => {
-                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
-                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
-                  });
+                  const actMatch = r.recordedActivities.find((act: any) => isReportForWbsNode(act, node));
                   if (actMatch) {
                     return sum + Number(actMatch.realizedQty || 0);
                   }
@@ -2762,16 +2744,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               const totalRealizedCost = nodeReports.reduce((sum, r) => {
                 let qte = Number(r.realizedQty || 0);
                 if (Array.isArray(r.recordedActivities) && r.recordedActivities.length > 0) {
-                  const nCode = String(node.code || node.id || '').toUpperCase().trim();
-                  const nPriceNo = String(node.priceNo || '').toUpperCase().trim();
-                  const actMatch = r.recordedActivities.find((act: any) => {
-                    const actCode = String(act.wbsCode || act.code || act.id || '').toUpperCase().trim();
-                    return actCode === nCode || (nPriceNo !== '' && actCode === nPriceNo);
-                  });
+                  const actMatch = r.recordedActivities.find((act: any) => isReportForWbsNode(act, node));
                   if (actMatch) qte = Number(actMatch.realizedQty || 0);
                 }
                 let cost = Number(r.totalCost);
-                const pu = Number(r.pu || node.pu || (Number(node.revisedBudget || 0) / Number(node.plannedQty || 1)) || 0);
+                const pu = Number(r.pu || node.pu || node.marketUnitPrice || (Number(node.revisedBudget || 0) / Number(node.plannedQty || 1)) || 0);
                 if (isNaN(cost) || cost <= 0) cost = qte * pu;
                 return sum + (cost || 0);
               }, 0);
@@ -2811,33 +2788,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return nextMap;
       });
 
-      // 2. Recalcul de l'Avancement Physique Global du Projet
+      // 2. Recalcul de l'Avancement Physique Global du Projet (SSOT)
       setProjects(prevProjects => {
         const updatedProjects = prevProjects.map(proj => {
           const projTree = calculatedNextWbsMap[proj.id] || calculatedNextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
           if (projTree.length > 0) {
-            const getLeaves = (arr: any[]): any[] => {
-              let res: any[] = [];
-              arr.forEach(n => {
-                if (!n.children || n.children.length === 0) {
-                  res.push(n);
-                } else {
-                  res = res.concat(getLeaves(n.children));
-                }
-              });
-              return res;
-            };
-            const leafNodes = getLeaves(projTree);
-            const totalPlanned = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
-              return acc + budget;
-            }, 0);
-            const totalDone = leafNodes.reduce((acc, n) => {
-              const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || n.totalPrice || (Number(n.plannedQty || 0) * Number(n.pu || 0)) || 0);
-              const prog = Number(n.progress || 0);
-              return acc + (budget * (prog / 100));
-            }, 0);
-            const overallPct = totalPlanned > 0 ? Number(((totalDone / totalPlanned) * 100).toFixed(1)) : proj.progress;
+            const overallSummary = calculateProjectOverallProgress(proj, projTree, validReports);
+            const overallPct = overallSummary.overallPhysicalProgress;
             return {
               ...proj,
               progress: overallPct,
