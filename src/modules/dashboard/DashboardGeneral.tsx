@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary, calculateMarginPercentage, formatFCFA, formatCompactFCFA } from '../../core/utils/financialFormulas';
-import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
+import { isProjectMatch, isReportForProject, getProjectWbsNodes } from '../../utils/projectMatcher';
 import {
   Briefcase,
   Coins,
@@ -246,7 +246,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
 
   const targetWbsNodes = useMemo(() => {
     if (selectedProjectId === 'ALL') return Object.values(wbsMap).flat();
-    return wbsMap[targetProject?.id] || wbsMap[targetProject?.code] || Object.values(wbsMap).flat();
+    return getProjectWbsNodes(targetProject, wbsMap);
   }, [wbsMap, selectedProjectId, targetProject]);
 
   const summary = useMemo(() => {
@@ -267,7 +267,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       };
       
       const consolidated = filteredProjects.reduce((acc, proj) => {
-        const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const projWbs = getProjectWbsNodes(proj, wbsMap);
         const projDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, proj.id) || isProjectMatch(da.projectId, proj.code));
         const projReports = filteredDailyReports.filter(r => isReportForProject(r, proj));
         const s = getProjectFinancialSummary(proj, projWbs, [], projDAs, projReports);
@@ -292,7 +292,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       // Avancement physique global consolidé pondéré par le montant des marchés
       const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
       const weightedSum = filteredProjects.reduce((acc, proj) => {
-        const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const projWbs = getProjectWbsNodes(proj, wbsMap);
         const projDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, proj.id) || isProjectMatch(da.projectId, proj.code));
         const projReports = filteredDailyReports.filter(r => isReportForProject(r, proj));
         const s = getProjectFinancialSummary(proj, projWbs, [], projDAs, projReports);
@@ -643,7 +643,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
   // 4. TOP PROJETS CLASSÉS PAR MARGE (EAC) RÉELLE (SSOT)
   const sortedTopProjects = useMemo(() => {
     return projects.map(p => {
-      const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+      const pNodes = getProjectWbsNodes(p, wbsMap);
       const projectDAs = filteredPurchaseRequests.filter(da => isProjectMatch(da.projectId, p.id) || isProjectMatch(da.projectId, p.code));
       const projectReports = filteredDailyReports.filter(r => isReportForProject(r, p));
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
+import { getProjectWbsNodes } from '../../utils/projectMatcher';
 import { DataInsight } from '../../shared/components/DataInsight';
 import {
   Building2, MapPin, Calendar, TrendingUp, Users, FileText, CheckCircle2, AlertTriangle, Clock, DollarSign, BarChart3,
@@ -84,7 +85,7 @@ export const VueProjet360: React.FC = () => {
 
   const projectWbs = useMemo(() => {
     if (!selected) return [];
-    return wbsMap[selected.id] || wbsMap[selected.code] || [];
+    return getProjectWbsNodes(selected, wbsMap);
   }, [wbsMap, selected]);
 
   const summary = useMemo(() => {

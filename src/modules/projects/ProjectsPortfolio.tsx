@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
+import { getProjectWbsNodes } from '../../utils/projectMatcher';
 import { Project, ProjectStatus, RiskLevel } from '../../types';
 import {
   Briefcase, Coins, TrendingUp, PieChart, Percent, AlertTriangle, Info,
@@ -725,7 +726,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredProjects.map(p => {
-                  const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+                  const pNodes = getProjectWbsNodes(p, wbsMap);
                   const pSummary = getProjectFinancialSummary(p, pNodes, [], purchaseRequests, dailyReports);
                   const budget = pSummary.revisedBudget;
                   const contract = pSummary.contractAmount;
@@ -835,7 +836,7 @@ export const ProjectsPortfolio: React.FC<PortfolioProps> = ({ onSelectProject, o
         /* VUE CARTES DU PORTEFEUILLE (CONCEPTION BTB ERGONOMIQUE, MODERNE & OPTIMISÉE) */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredProjects.map(p => {
-            const pNodes = wbsMap[p.id] || wbsMap[p.code] || [];
+            const pNodes = getProjectWbsNodes(p, wbsMap);
             const pSummary = getProjectFinancialSummary(p, pNodes, [], purchaseRequests, dailyReports);
             const contract = pSummary.contractAmount;
             const progVal = pSummary.progressPct.toFixed(1);

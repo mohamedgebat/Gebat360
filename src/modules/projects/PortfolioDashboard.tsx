@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppState } from '../../core/database/AppStateContext';
 import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
+import { getProjectWbsNodes } from '../../utils/projectMatcher';
 import {
   Briefcase,
   Coins,
@@ -34,11 +35,21 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
     return `${Math.round(val).toLocaleString('fr-FR')} FCFA`;
   };
 
+  // Synthèse financière par projet SSOT
+  const projectSummaries = useMemo(() => {
+    return projects.map(proj => {
+      const projWbs = getProjectWbsNodes(proj, wbsMap);
+      const summary = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+      return {
+        project: proj,
+        summary
+      };
+    });
+  }, [projects, wbsMap, purchaseRequests, dailyReports]);
+
   // Calculs financiers stratégiques consolidés dynamiques (SSOT)
   const portfolioSummary = useMemo(() => {
-    return projects.reduce((acc, proj) => {
-      const projWbs = wbsMap[proj.id] || wbsMap[proj.code] || [];
-      const s = getProjectFinancialSummary(proj, projWbs, [], purchaseRequests, dailyReports);
+    return projectSummaries.reduce((acc, { summary: s }) => {
       return {
         contractAmount: acc.contractAmount + s.contractAmount,
         initialBudget: acc.initialBudget + s.initialBudget,
@@ -54,7 +65,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
       contractAmount: 0, initialBudget: 0, revisedBudget: 0, committed: 0,
       actualCost: 0, resteAEngager: 0, eac: 0, initialMargin: 0, eacMargin: 0
     });
-  }, [projects, wbsMap, purchaseRequests, dailyReports]);
+  }, [projectSummaries]);
 
   const totalMarket = portfolioSummary.contractAmount;
   const totalBudgetDS = portfolioSummary.revisedBudget;
@@ -154,11 +165,12 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
           </div>
 
           <div className="space-y-4 text-xs">
-            {projects.map((proj, idx) => {
+            {projectSummaries.map(({ project: proj, summary: s }) => {
               const weight = totalMarket > 0 ? ((proj.contractAmount / totalMarket) * 100).toFixed(1) : '50.0';
               const isSongon = proj.code.includes('SON') || proj.name.includes('Songon');
               const badgeColor = isSongon ? 'bg-blue-600' : 'bg-emerald-600';
               const textColor = isSongon ? 'text-blue-600' : 'text-emerald-600';
+              const progPct = s.progressPct.toFixed(1);
 
               return (
                 <div key={proj.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
@@ -171,7 +183,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-500 font-medium">
                     <span>Directeur de Projet : {proj.manager} · Réf. {proj.code}</span>
-                    <span>Avancement physique DQE : <strong className={textColor}>{proj.progress}%</strong></span>
+                    <span>Avancement physique DQE : <strong className={textColor}>{progPct}%</strong></span>
                   </div>
                 </div>
               );
@@ -220,41 +232,44 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({ onSelect
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          {projects.map(p => (
-            <div
-              key={p.id}
-              onClick={() => onSelectProject(p.id)}
-              className="bg-slate-50 hover:bg-blue-50/50 p-4 rounded-xl border border-slate-200 transition cursor-pointer space-y-3"
-            >
-              <div className="flex justify-between items-start">
-                <span className="font-mono font-black text-blue-600 text-xs">{p.code}</span>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  🇨🇮 {p.location}
-                </span>
-              </div>
-
-              <div>
-                <h4 className="font-extrabold text-slate-900 text-sm leading-tight">{p.name}</h4>
-                <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">Client : {p.client}</span>
-              </div>
-
-              <div className="space-y-1.5 pt-1 border-t border-slate-200">
-                <div className="flex justify-between"><span className="text-slate-500">Montant du Marché :</span><span className="font-mono font-bold text-slate-900">{formatFCFA(p.contractAmount)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Budget Révisé (DS) :</span><span className="font-mono font-semibold text-slate-700">{formatFCFA(p.revisedBudget)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Directeur de projet :</span><span className="font-bold text-slate-800">👤 {p.manager}</span></div>
-              </div>
-
-              <div className="space-y-1 pt-1">
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-500 font-semibold">Avancement physique :</span>
-                  <span className="font-black text-blue-600">{p.progress}%</span>
+          {projectSummaries.map(({ project: p, summary: s }) => {
+            const progPct = s.progressPct.toFixed(1);
+            return (
+              <div
+                key={p.id}
+                onClick={() => onSelectProject(p.id)}
+                className="bg-slate-50 hover:bg-blue-50/50 p-4 rounded-xl border border-slate-200 transition cursor-pointer space-y-3"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="font-mono font-black text-blue-600 text-xs">{p.code}</span>
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    🇨🇮 {p.location}
+                  </span>
                 </div>
-                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${p.progress}%` }}></div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-900 text-sm leading-tight">{p.name}</h4>
+                  <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">Client : {p.client}</span>
+                </div>
+
+                <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                  <div className="flex justify-between"><span className="text-slate-500">Montant du Marché :</span><span className="font-mono font-bold text-slate-900">{formatFCFA(p.contractAmount)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Budget Révisé (DS) :</span><span className="font-mono font-semibold text-slate-700">{formatFCFA(p.revisedBudget)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Directeur de projet :</span><span className="font-bold text-slate-800">👤 {p.manager}</span></div>
+                </div>
+
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-500 font-semibold">Avancement physique :</span>
+                    <span className="font-black text-blue-600">{progPct}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${s.progressPct}%` }}></div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

@@ -25,7 +25,7 @@ import {
 import { INITIAL_USERS, PERMISSIONS_MATRIX } from '../permissions';
 import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
 import { REAL_DS_BINGERVILLE_ACTIVITIES } from './realBingervilleDsData';
-import { isProjectMatch, isReportForProject } from '../../utils/projectMatcher';
+import { isProjectMatch, isReportForProject, getProjectWbsNodes } from '../../utils/projectMatcher';
 import { indexedDBStorage, safeSaveToStorage } from './indexedDBStorage';
 import {
   INITIAL_PROJECTS,
@@ -842,7 +842,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setProjects(prevProjects => {
       let changed = false;
       const updated = prevProjects.map(proj => {
-        const projTree = nextWbsMap[proj.id] || nextWbsMap[proj.code] || wbsMap[proj.id] || wbsMap[proj.code] || [];
+        const projTree = getProjectWbsNodes(proj, nextWbsMap);
         const summary = calculateProjectOverallProgress(proj, projTree, dailyReports);
         const targetProg = summary.overallPhysicalProgress;
 
@@ -3010,7 +3010,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const targetProject = projects.find(p => p.id === projectId || p.code === projectId);
       if (targetProject) {
         const allReports = [...formattedReports, ...dailyReports];
-        const projTree = wbsMap[targetProject.id] || wbsMap[targetProject.code] || [];
+        const projTree = getProjectWbsNodes(targetProject, wbsMap);
         const summary = calculateProjectOverallProgress(targetProject, projTree, allReports);
         setProjects(pList => pList.map(p => p.id === targetProject.id ? { ...p, progress: summary.overallPhysicalProgress, physicalProgress: summary.overallPhysicalProgress } : p));
       }
