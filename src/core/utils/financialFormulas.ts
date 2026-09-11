@@ -2,7 +2,8 @@
  * GEBAT 360° — CENTRALIZED FINANCIAL & OPERATIONAL FORMULAS
  * Single Source of Truth for all financial and operational metric calculations.
  */
-import { calculateProjectOverallProgress } from '../database/projectProgressEngine';
+import { calculateProjectOverallProgress, isReportValidatedOrLocked } from '../database/projectProgressEngine';
+import { getProjectWbsNodes } from '../../utils/projectMatcher';
 
 /**
  * Format clean FCFA currency without floating point decimals
@@ -202,17 +203,16 @@ export const getProjectFinancialSummary = (
     committed = pDAs.reduce((s, da) => s + Number(da.estimatedTotal || da.totalAmount || da.amount || 0), 0);
   }
 
+  // Garantir que effectiveWbsNodes n'est jamais vide
+  const effectiveWbsNodes = (Array.isArray(wbsNodes) && wbsNodes.length > 0)
+    ? wbsNodes
+    : getProjectWbsNodes(project);
+
   // 4. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain Moteur Unique)
-  let progressPct = Number(project?.progress || project?.physicalProgress || 0);
+  const summarySSOT = calculateProjectOverallProgress(project, effectiveWbsNodes, dailyReports || []);
+  let progressPct = summarySSOT.overallPhysicalProgress;
 
-  // Moteur de calcul SSOT unifié (calculateProjectOverallProgress)
-  const summarySSOT = calculateProjectOverallProgress(project, wbsNodes || [], dailyReports || []);
-  if (summarySSOT && summarySSOT.overallPhysicalProgress > 0) {
-    progressPct = summarySSOT.overallPhysicalProgress;
-  }
-
-  // Priorité absolue au taux SSOT enregistré sur le projet s'il est supérieur
-  if (project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) > progressPct) {
+  if (progressPct === 0 && project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress))) {
     progressPct = Number(project.progress);
   }
 
@@ -224,9 +224,7 @@ export const getProjectFinancialSummary = (
     const validReports = dailyReports.filter(r => {
       const rProj = String(r.projectId || r.project_id || '').toUpperCase();
       const rCode = String(r.code || r.id || r.reportCode || '').toUpperCase();
-      const s = (r.status || '').toUpperCase();
-      const isValidated = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      if (!isValidated) return false;
+      if (!isReportValidatedOrLocked(r)) return false;
       const isSongon = pId.includes('SON') || pCode.includes('SON');
       const isBingerville = pId.includes('BEN') || pCode.includes('BEN');
       if (isSongon && (rCode.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;

@@ -1,4 +1,5 @@
 import { Project, WBSNode, DailyReport } from '../../types';
+import { getProjectWbsNodes } from '../../utils/projectMatcher';
 
 export interface ActivityProgressMetrics {
   wbsId: string;
@@ -43,21 +44,17 @@ export interface SCurvePeriodPoint {
 }
 
 /**
- * Normalise le statut d'un rapport journalier
+ * Normalise le statut d'un rapport journalier.
+ * Tout rapport saisi et transmis (Soumis, Validé, Verrouillé, etc.) est comptabilisé.
+ * Ne sont exclus que les rapports explicitement rejetés (Refusé) ou brouillons purs.
  */
 export const isReportValidatedOrLocked = (report: DailyReport | any): boolean => {
   if (!report) return false;
   const status = String(report.status || '').toUpperCase().trim();
-  return (
-    status === 'VALIDÉ' ||
-    status === 'VALIDE' ||
-    status === 'VALIDATED' ||
-    status === 'VERROUILLÉ' ||
-    status === 'VERROUILLE' ||
-    status === 'LOCKED' ||
-    status === 'APPROVED' ||
-    status === 'CLOSED'
-  );
+  if (status === 'REFUSÉ' || status === 'REFUSE' || status === 'REJECTED' || status === 'BROUILLON' || status === 'DRAFT') {
+    return false;
+  }
+  return true;
 };
 
 export const isReportSubmitted = (report: DailyReport | any): boolean => {
@@ -72,7 +69,7 @@ export const isReportSubmitted = (report: DailyReport | any): boolean => {
 };
 
 /**
- * Vérifie si un rapport correspond à une tâche WBS
+ * Vérifie si un rapport correspond à une tâche WBS avec tolérance sur codes et descriptions.
  */
 export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | any): boolean => {
   if (!report || !node) return false;
@@ -81,21 +78,43 @@ export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | an
   const nCode = norm(node.code);
   const nId = norm(node.id);
   const nPriceNo = norm(node.priceNo);
+  const nName = norm(node.name || node.description || '');
 
   const nodeCodes = new Set([nWbsCode, nCode, nId, nPriceNo].filter(Boolean));
 
   const rWbsCode = norm(report.wbsCode);
   const rWbsId = norm(report.wbsId);
-  const rActivityCode = norm(report.activityCode);
+  const rActivityCode = norm(report.activityCode || report.code);
+  const rName = norm(report.activityName || report.taskName || report.name || report.description || '');
 
+  // 1. Match code direct
   if (nodeCodes.has(rWbsCode) || nodeCodes.has(rWbsId) || nodeCodes.has(rActivityCode)) {
     return true;
   }
 
+  // 2. Match code préfixe/inclusion (ex: 100.1 et 100.1.1)
+  for (const c of nodeCodes) {
+    if (rWbsCode && (c === rWbsCode || c.startsWith(rWbsCode) || rWbsCode.startsWith(c))) return true;
+    if (rWbsId && (c === rWbsId || c.startsWith(rWbsId) || rWbsId.startsWith(c))) return true;
+    if (rActivityCode && (c === rActivityCode || c.startsWith(rActivityCode) || rActivityCode.startsWith(c))) return true;
+  }
+
+  // 3. Match nom / désignation d'activité
+  if (nName && rName && (nName === rName || nName.includes(rName) || rName.includes(nName))) {
+    return true;
+  }
+
+  // 4. Activités multiples enregistrées dans le rapport (recordedActivities)
   if (Array.isArray(report.recordedActivities) && report.recordedActivities.length > 0) {
     return report.recordedActivities.some((act: any) => {
       const actWbs = norm(act.wbsCode || act.code || act.id);
-      return nodeCodes.has(actWbs);
+      const actName = norm(act.activityName || act.name || act.description || '');
+      if (nodeCodes.has(actWbs)) return true;
+      for (const c of nodeCodes) {
+        if (actWbs && (c === actWbs || c.startsWith(actWbs) || actWbs.startsWith(c))) return true;
+      }
+      if (nName && actName && (nName === actName || nName.includes(actName) || actName.includes(nName))) return true;
+      return false;
     });
   }
 
@@ -104,7 +123,7 @@ export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | an
 
 /**
  * 1. AVANCEMENT ACTIVITÉ
- * Calcule l'avancement d'une activité WBS à partir des rapports validés et du DQE.
+ * Calcule l'avancement d'une activité WBS à partir des rapports et du DQE.
  */
 export const calculateActivityProgress = (
   node: WBSNode | any,
@@ -113,6 +132,7 @@ export const calculateActivityProgress = (
   const nodeCode = node.wbsCode || node.code || node.priceNo || '';
   const nodeId = node.id || '';
   const unit = node.unit || 'm3';
+  const nName = String(node.name || node.description || '').trim().toUpperCase();
 
   // DQE : Source de vérité pour la quantité et valeur contractuelles
   const contractQty = Math.max(0, Number(node.contractQty || node.plannedQty || node.quantity || node.targetQty || 0));
@@ -148,7 +168,16 @@ export const calculateActivityProgress = (
       let qty = Math.max(0, Number(rep.realizedQty || 0));
 
       if (Array.isArray(rep.recordedActivities) && rep.recordedActivities.length > 0) {
-        const matched = rep.recordedActivities.find((act: any) => nodeCodes.has(norm(act.wbsCode || act.code || act.id)));
+        const matched = rep.recordedActivities.find((act: any) => {
+          const actWbs = norm(act.wbsCode || act.code || act.id);
+          const actName = norm(act.activityName || act.name || act.description || '');
+          if (nodeCodes.has(actWbs)) return true;
+          for (const c of nodeCodes) {
+            if (actWbs && (c === actWbs || c.startsWith(actWbs) || actWbs.startsWith(c))) return true;
+          }
+          if (nName && actName && (nName === actName || nName.includes(actName) || actName.includes(nName))) return true;
+          return false;
+        });
         if (matched && matched.realizedQty !== undefined && !isNaN(Number(matched.realizedQty))) {
           qty = Math.max(0, Number(matched.realizedQty));
         }
@@ -228,7 +257,13 @@ export const calculateProjectOverallProgress = (
   allReports: (DailyReport | any)[]
 ): ProjectProgressSummary => {
   const projectId = project?.id || project?.code || 'PROJ';
-  const leaves = getLeavesWBS(wbsNodes || []);
+  let leaves = getLeavesWBS(wbsNodes || []);
+
+  // Si aucun nœud feuille fourni, récupérer automatiquement les activités SSOT de référence du projet
+  if (leaves.length === 0 && project) {
+    const fallbackNodes = getProjectWbsNodes(project);
+    leaves = getLeavesWBS(fallbackNodes);
+  }
 
   if (leaves.length === 0) {
     const pId = String(project?.id || '').toUpperCase().trim();

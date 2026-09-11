@@ -793,56 +793,53 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!dailyReports || dailyReports.length === 0 || !projects || projects.length === 0) return;
 
-    let nextWbsMap: Record<string, WBSNode[]> = {};
+    // 1. Calculer le nouvel arbre WBS de façon pure et synchrone
+    const nextMap: Record<string, WBSNode[]> = { ...wbsMap };
 
-    setWbsMap(prevMap => {
-      const nextMap = { ...prevMap };
+    Object.keys(nextMap).forEach(pKey => {
+      const tree = nextMap[pKey];
+      if (!Array.isArray(tree) || tree.length === 0) return;
 
-      Object.keys(nextMap).forEach(pKey => {
-        const tree = nextMap[pKey];
-        if (!Array.isArray(tree) || tree.length === 0) return;
+      const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
+        return nodes.map(node => {
+          let updatedChildren: WBSNode[] | undefined = undefined;
+          if (node.children && node.children.length > 0) {
+            updatedChildren = updateNodeDeterministic(node.children);
+          }
 
-        const updateNodeDeterministic = (nodes: WBSNode[]): WBSNode[] => {
-          return nodes.map(node => {
-            let updatedChildren: WBSNode[] | undefined = undefined;
-            if (node.children && node.children.length > 0) {
-              updatedChildren = updateNodeDeterministic(node.children);
-            }
+          const metrics = calculateActivityProgress(node, dailyReports);
 
-            const metrics = calculateActivityProgress(node, dailyReports);
+          let nodeProgress = metrics.realizedProgress;
+          if (updatedChildren && updatedChildren.length > 0) {
+            const totalChildAmount = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.revisedBudget || 1), 0);
+            const totalChildEarned = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.revisedBudget || 1) * ((c.progress || 0) / 100)), 0);
+            nodeProgress = totalChildAmount > 0 ? Math.min(100, Number(((totalChildEarned / totalChildAmount) * 100).toFixed(1))) : nodeProgress;
+          }
 
-            let nodeProgress = metrics.realizedProgress;
-            if (updatedChildren && updatedChildren.length > 0) {
-              const totalChildAmount = updatedChildren.reduce((acc, c) => acc + Number(c.contractAmount || c.revisedBudget || 1), 0);
-              const totalChildEarned = updatedChildren.reduce((acc, c) => acc + (Number(c.contractAmount || c.revisedBudget || 1) * ((c.progress || 0) / 100)), 0);
-              nodeProgress = totalChildAmount > 0 ? Math.min(100, Number(((totalChildEarned / totalChildAmount) * 100).toFixed(1))) : nodeProgress;
-            }
+          return {
+            ...node,
+            contractQty: metrics.contractQty,
+            plannedQty: metrics.plannedQty,
+            actualQty: metrics.validatedRealizedQty,
+            realizedQty: metrics.validatedRealizedQty,
+            pendingQty: metrics.pendingRealizedQty,
+            contractAmount: metrics.contractAmount,
+            progress: nodeProgress,
+            children: updatedChildren
+          };
+        });
+      };
 
-            return {
-              ...node,
-              contractQty: metrics.contractQty,
-              plannedQty: metrics.plannedQty,
-              actualQty: metrics.validatedRealizedQty,
-              realizedQty: metrics.validatedRealizedQty,
-              pendingQty: metrics.pendingRealizedQty,
-              contractAmount: metrics.contractAmount,
-              progress: nodeProgress,
-              children: updatedChildren
-            };
-          });
-        };
-
-        nextMap[pKey] = updateNodeDeterministic(tree);
-      });
-
-      nextWbsMap = nextMap;
-      return nextMap;
+      nextMap[pKey] = updateNodeDeterministic(tree);
     });
 
+    setWbsMap(nextMap);
+
+    // 2. Mettre à jour les projets avec la valeur calculée SSOT
     setProjects(prevProjects => {
       let changed = false;
       const updated = prevProjects.map(proj => {
-        const projTree = getProjectWbsNodes(proj, nextWbsMap);
+        const projTree = getProjectWbsNodes(proj, nextMap);
         const summary = calculateProjectOverallProgress(proj, projTree, dailyReports);
         const targetProg = summary.overallPhysicalProgress;
 
@@ -861,7 +858,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return changed ? updated : prevProjects;
     });
-  }, [dailyReports, projects.length]);
+  }, [dailyReports]);
 
   const [validationTasks, setValidationTasks] = useState<ValidationTask[]>(() => {
     if (typeof window !== 'undefined') {
