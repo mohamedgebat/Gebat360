@@ -87,11 +87,13 @@ export const getBtpTokens = (s: any): string[] => {
   return normalizeBtpString(s).split(' ').filter(w => w.length > 2 && !STOP_WORDS.has(w));
 };
 
-/**
- * Vérifie si un rapport correspond à une tâche WBS avec tolérance sur codes, descriptions et sémantique BTP.
- */
-export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | any): boolean => {
-  if (!report || !node) return false;
+const reportNodeMatchCache = new Map<string, boolean>();
+
+export const clearReportMatchCache = () => {
+  reportNodeMatchCache.clear();
+};
+
+const evaluateReportNodeMatch = (report: DailyReport | any, node: WBSNode | any): boolean => {
   const norm = (s: any) => String(s || '').trim().toUpperCase();
   const nWbsCode = norm(node.wbsCode);
   const nCode = norm(node.code);
@@ -166,10 +168,27 @@ export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | an
 
   // 5. Activités multiples enregistrées dans le rapport (recordedActivities)
   if (Array.isArray(report.recordedActivities) && report.recordedActivities.length > 0) {
-    return report.recordedActivities.some((act: any) => isReportForWbsNode(act, node));
+    return report.recordedActivities.some((act: any) => evaluateReportNodeMatch(act, node));
   }
 
   return false;
+};
+
+/**
+ * Vérifie si un rapport correspond à une tâche WBS avec mémoïsation ultra-rapide O(1).
+ */
+export const isReportForWbsNode = (report: DailyReport | any, node: WBSNode | any): boolean => {
+  if (!report || !node) return false;
+  const rKey = report.id || report.code || report.wbsCode || report.activityName || '';
+  const nKey = node.id || node.code || node.priceNo || node.name || '';
+  const cacheKey = `${rKey}:::${nKey}`;
+
+  const cached = reportNodeMatchCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const result = evaluateReportNodeMatch(report, node);
+  reportNodeMatchCache.set(cacheKey, result);
+  return result;
 };
 
 /**

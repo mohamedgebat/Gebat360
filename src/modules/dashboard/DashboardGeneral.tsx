@@ -368,6 +368,7 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
     const validReports = projectReports.filter(isReportValidatedOrLocked);
 
     let cumulativeRealPct = 0;
+    const monthlyProgressCache = new Map<string, number>();
 
     // Calcul de l'avancement physique cumulé réel pour chaque mois
     return monthLabels.map((m, index) => {
@@ -383,26 +384,31 @@ export const DashboardGeneral: React.FC<DashboardGeneralProps> = ({ onNavigate, 
       // 2. AVANCEMENT RÉEL CUMULÉ (100% SSOT / EVM CONFORME)
       let realPct = 0;
       if (!isFuture) {
-        // Filtrage des rapports de production validés enregistrés jusqu'à ce mois (inclus)
-        const reportsUpToMonth = validReports.filter(r => {
-          const ym = normalizeDateToYearMonth(r.date);
-          return ym ? ym <= m.key : false;
-        });
+        if (monthlyProgressCache.has(m.key)) {
+          realPct = monthlyProgressCache.get(m.key)!;
+        } else {
+          // Filtrage des rapports de production validés enregistrés jusqu'à ce mois (inclus)
+          const reportsUpToMonth = validReports.filter(r => {
+            const ym = normalizeDateToYearMonth(r.date);
+            return ym ? ym <= m.key : false;
+          });
 
-        if (reportsUpToMonth.length > 0) {
-          if (selectedProjectId === 'ALL') {
-            const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
-            const weightedSum = filteredProjects.reduce((acc, proj) => {
-              const projWbs = getProjectWbsNodes(proj, wbsMap);
-              const pMonthly = calculateProjectOverallProgress(proj, projWbs, reportsUpToMonth);
-              const w = Number(proj.contractAmount || proj.revisedBudget || 1);
-              return acc + (pMonthly.overallPhysicalProgress * w);
-            }, 0);
-            realPct = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(1)) : 0;
-          } else {
-            const monthlySummary = calculateProjectOverallProgress(targetProject, targetWbsNodes, reportsUpToMonth);
-            realPct = monthlySummary.overallPhysicalProgress;
+          if (reportsUpToMonth.length > 0) {
+            if (selectedProjectId === 'ALL') {
+              const totalWeight = filteredProjects.reduce((s, p) => s + Number(p.contractAmount || p.revisedBudget || 1), 0);
+              const weightedSum = filteredProjects.reduce((acc, proj) => {
+                const projWbs = getProjectWbsNodes(proj, wbsMap);
+                const pMonthly = calculateProjectOverallProgress(proj, projWbs, reportsUpToMonth);
+                const w = Number(proj.contractAmount || proj.revisedBudget || 1);
+                return acc + (pMonthly.overallPhysicalProgress * w);
+              }, 0);
+              realPct = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(1)) : 0;
+            } else {
+              const monthlySummary = calculateProjectOverallProgress(targetProject, targetWbsNodes, reportsUpToMonth);
+              realPct = monthlySummary.overallPhysicalProgress;
+            }
           }
+          monthlyProgressCache.set(m.key, realPct);
         }
 
         // Ancrage de cohérence SSOT pour le mois actif (Mois en cours)

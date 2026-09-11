@@ -555,7 +555,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     async function loadDbData() {
       try {
-        const [dbProjects, dbReports, dbDA, dbPO, dbStock, dbMovements, dbUsers, dbAlerts] = await Promise.all([
+        const [dbProjects, dbReports, dbDA, dbPO, dbStock, dbMovements, dbUsers, dbAlerts, dbAudit, dbNatures, dbST] = await Promise.all([
           ApiService.getProjects().catch(() => null),
           ApiService.getDailyReports().catch(() => null),
           ApiService.getPurchaseRequests().catch(() => null),
@@ -563,7 +563,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ApiService.getStockItems().catch(() => null),
           ApiService.getStockMovements().catch(() => null),
           ApiService.getUsers().catch(() => null),
-          ApiService.getAlerts().catch(() => null)
+          ApiService.getAlerts().catch(() => null),
+          ApiService.getAuditLogs().catch(() => null),
+          ApiService.getCostNatures().catch(() => null),
+          ApiService.getSubcontracts().catch(() => null)
         ]);
 
         if (Array.isArray(dbProjects) && dbProjects.length > 0) {
@@ -658,6 +661,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (isEqualFast(prev, clean)) return prev;
             safeSaveToStorage('gebat_alerts', clean);
             return clean;
+          });
+        }
+        if (Array.isArray(dbAudit) && dbAudit.length > 0) {
+          setAuditLogs(prev => {
+            if (isEqualFast(prev, dbAudit)) return prev;
+            safeSaveToStorage('gebat_audit_logs', dbAudit);
+            return dbAudit;
+          });
+        }
+        if (Array.isArray(dbNatures) && dbNatures.length > 0) {
+          setCostNatures(prev => {
+            if (isEqualFast(prev, dbNatures)) return prev;
+            return dbNatures;
+          });
+        }
+        if (Array.isArray(dbST) && dbST.length > 0) {
+          setSubcontracts(prev => {
+            if (isEqualFast(prev, dbST)) return prev;
+            safeSaveToStorage('gebat_subcontracts', dbST);
+            return dbST;
           });
         }
       } catch (err) {
@@ -999,292 +1022,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     safeSaveToStorage('gebat_subcontracts', subcontracts);
   }, [subcontracts]);
 
-  // Synchronisation 100% dynamique depuis la base de données MySQL via REST API
-  const loadDatabaseData = async () => {
-    try {
-      const dbProjects = await ApiService.getProjects();
-      if (Array.isArray(dbProjects)) {
-        const normalizedProjects: Project[] = dbProjects.map((p: any) => ({
-          ...p,
-          contractAmount: Number(p.contractAmount ?? p.contract_amount ?? 0),
-          contract_amount: Number(p.contract_amount ?? p.contractAmount ?? 0),
-          initialBudget: Number(p.initialBudget ?? p.initial_budget ?? 0),
-          initial_budget: Number(p.initial_budget ?? p.initialBudget ?? 0),
-          revisedBudget: Number(p.revisedBudget ?? p.revised_budget ?? 0),
-          revised_budget: Number(p.revised_budget ?? p.revisedBudget ?? 0),
-          progress: Number(p.progress ?? 0),
-          durationMonths: Number(p.durationMonths ?? p.duration_months ?? 12),
-          duration_months: Number(p.duration_months ?? p.durationMonths ?? 12),
-          contractRef: p.contractRef || p.contract_ref || '',
-          contract_ref: p.contract_ref || p.contractRef || '',
-          startDate: p.startDate || p.start_date || '',
-          start_date: p.start_date || p.startDate || '',
-          endDate: p.endDate || p.end_date || '',
-          end_date: p.end_date || p.endDate || '',
-          signatureDate: p.signatureDate || p.signature_date || '',
-          signature_date: p.signature_date || p.signatureDate || '',
-        }));
 
-        setProjects(normalizedProjects);
-
-        // Charger les nœuds WBS réels de chaque projet depuis MySQL (avec fallback localStorage)
-        const savedWbsRaw = localStorage.getItem('gebat_wbs');
-        let localWbsMap: Record<string, WBSNode[]> = {};
-        if (savedWbsRaw) {
-          try { localWbsMap = JSON.parse(savedWbsRaw); } catch (e) {}
-        }
-
-        const newWbsMap: Record<string, WBSNode[]> = {};
-        for (const p of normalizedProjects) {
-          try {
-            const pStr = `${p.id || ''} ${p.code || ''} ${p.name || ''} ${p.location || ''}`.toUpperCase();
-            const isSongon = pStr.includes('SONG') || pStr.includes('SON-001') || pStr.includes('SON') || pStr.includes('ABIDJAN OUEST');
-            const isBingerville = pStr.includes('BING') || pStr.includes('BEN') || pStr.includes('BEN-002') || pStr.includes('ABIDJAN EST');
-            const fallbackRealActivities = isBingerville ? REAL_DS_BINGERVILLE_ACTIVITIES : isSongon ? REAL_DS_SONGON_ACTIVITIES : [];
-
-            // Priorité 1 Absolue: Activités DS réelles (LocalStorage ou Jeux de Données Métier Réels)
-            const dsSavedRaw = localStorage.getItem(`gebat_debourse_sec_${p.id}`) || localStorage.getItem(`gebat_debourse_sec_${p.code}`);
-            let dsSource = fallbackRealActivities;
-            if (dsSavedRaw) {
-              try {
-                const parsedDs = JSON.parse(dsSavedRaw);
-                if (Array.isArray(parsedDs) && parsedDs.length > 0) {
-                  dsSource = parsedDs;
-                }
-              } catch (e) {}
-            }
-
-            let importedDsNodes: WBSNode[] = [];
-            if (dsSource && dsSource.length > 0) {
-              importedDsNodes = dsSource.filter((act: any) => {
-                const title = String(act.description || act.priceNo || '').toLowerCase().trim();
-                const isHeader = title.includes('désignation') || title.includes('unités') ||
-                                 title.startsWith('activité importée') || title === 'songon' || title === 'bingerville';
-                return !isHeader;
-              }).map((act: any, i: number) => {
-                let priceNo = String(act.priceNo || act.wbsCode || act.code || `01.01.${String(i + 1).padStart(2, '0')}`).trim();
-                let description = String(act.description || act.name || act.designation || act.libelle || `Activité N°${i + 1}`).trim();
-                let unit = String(act.unit || 'm³').trim();
-                let qty = Number(act.contractQty || act.plannedQty || 1);
-                let pu = Number(act.marketUnitPrice || act.contractUnitPrice || act.unitCost || 0);
-
-                if (!isNaN(Number(description)) && Number(description) > 30000) {
-                  if (act.name && isNaN(Number(act.name)) && String(act.name).length > 3) {
-                    description = String(act.name).trim();
-                  } else if (act.section && isNaN(Number(act.section))) {
-                    description = String(act.section).trim();
-                  } else {
-                    description = `Activité WBS N°${i + 1}`;
-                  }
-                }
-
-                let dsAmt = Number(act.importedDsAmount || act.calculatedDsAmount || act.revisedBudget || act.initialBudget || 0);
-                let mktAmt = Number(act.marketAmount || (qty * pu));
-
-                if (mktAmt <= 0 && pu > 0 && qty > 0) {
-                  mktAmt = Math.round(qty * pu);
-                }
-                if (dsAmt <= 0 && mktAmt > 0) {
-                  dsAmt = Math.round(mktAmt * 0.80);
-                }
-
-                return {
-                  id: act.id || `WBS-${p.code}-${String(i + 1).padStart(3, '0')}`,
-                  projectId: p.id,
-                  code: priceNo,
-                  name: description,
-                  description: description,
-                  unit: unit,
-                  plannedQty: qty,
-                  contractQty: qty,
-                  unitCost: act.calculatedDsUnitPrice || (qty > 0 ? Math.round(dsAmt / qty) : dsAmt),
-                  contractUnitPrice: pu,
-                  marketUnitPrice: pu,
-                  contractAmount: mktAmt,
-                  marketAmount: mktAmt,
-                  initialBudget: dsAmt,
-                  revisedBudget: dsAmt,
-                  importedDsAmount: dsAmt,
-                  committed: 0,
-                  actualCost: 0,
-                  forecast: dsAmt,
-                  eac: dsAmt,
-                  progress: 0,
-                  nature: 'MAT' as const,
-                  manager: p.manager || 'SEA Alphonse'
-                };
-              });
-            }
-
-            if (importedDsNodes.length > 0) {
-              newWbsMap[p.id] = importedDsNodes;
-              if (p.code) newWbsMap[p.code] = importedDsNodes;
-              const sumWbsBudget = importedDsNodes.reduce((sum, n) => sum + n.revisedBudget, 0);
-              if (sumWbsBudget > 0 && (!p.revisedBudget || p.revisedBudget === 0)) {
-                p.revisedBudget = sumWbsBudget;
-                p.initialBudget = sumWbsBudget;
-              }
-            } else {
-              const nodes = await ApiService.getProjectWbs(p.id);
-              if (Array.isArray(nodes) && nodes.length > 0) {
-                newWbsMap[p.id] = nodes;
-                if (p.code) newWbsMap[p.code] = nodes;
-
-                const sumWbsBudget = nodes.reduce((sum: number, n: any) => sum + Number(n.revisedBudget || n.revised_budget || n.initialBudget || n.initial_budget || 0), 0);
-                if (sumWbsBudget > 0 && (!p.revisedBudget || p.revisedBudget === 0)) {
-                  p.revisedBudget = sumWbsBudget;
-                  p.revised_budget = sumWbsBudget;
-                  p.initialBudget = sumWbsBudget;
-                  p.initial_budget = sumWbsBudget;
-                }
-              } else if (localWbsMap[p.id] || localWbsMap[p.code]) {
-                const localNodes = localWbsMap[p.id] || localWbsMap[p.code];
-                newWbsMap[p.id] = localNodes;
-                if (p.code) newWbsMap[p.code] = localNodes;
-                const sumWbsBudget = localNodes.reduce((sum: number, n: any) => sum + Number(n.revisedBudget || n.initialBudget || 0), 0);
-                if (sumWbsBudget > 0) {
-                  p.revisedBudget = sumWbsBudget;
-                  p.initialBudget = sumWbsBudget;
-                }
-              } else {
-                newWbsMap[p.id] = [];
-                if (p.code) newWbsMap[p.code] = [];
-              }
-            }
-          } catch (e) {
-            if (localWbsMap[p.id] || localWbsMap[p.code]) {
-              const localNodes = localWbsMap[p.id] || localWbsMap[p.code];
-              newWbsMap[p.id] = localNodes;
-              if (p.code) newWbsMap[p.code] = localNodes;
-            }
-          }
-        }
-        setWbsMap(prev => ({ ...prev, ...newWbsMap }));
-      }
-
-      try {
-        const dbStock = await ApiService.getStockItems();
-        if (Array.isArray(dbStock) && dbStock.length > 0) setStockItems(dbStock);
-      } catch {}
-
-      try {
-        const dbDA = await ApiService.getPurchaseRequests();
-        if (Array.isArray(dbDA) && dbDA.length > 0) setPurchaseRequests(dbDA);
-      } catch {}
-
-      try {
-        const dbPO = await ApiService.getPurchaseOrders();
-        if (Array.isArray(dbPO) && dbPO.length > 0) setPurchaseOrders(dbPO);
-      } catch {}
-
-      try {
-        const dbMovements = await ApiService.getStockMovements();
-        if (Array.isArray(dbMovements) && dbMovements.length > 0) setStockMovements(dbMovements);
-      } catch {}
-
-      try {
-        const dbReports = await ApiService.getDailyReports();
-        if (Array.isArray(dbReports) && dbReports.length > 0) {
-          const normalizedReports: DailyReport[] = dbReports.map((r: any) => {
-            const qty = Number(r.realizedQty ?? r.realized_qty ?? 0);
-            const pu = Number(r.pu ?? 5000);
-            let cost = Number(r.totalCost ?? r.total_cost ?? (qty * pu));
-            if (isNaN(cost) || cost <= 0) cost = qty * pu;
-
-            return {
-              id: String(r.id),
-              code: String(r.code || r.reportCode || r.report_code || `REP-${r.id}`),
-              reportCode: String(r.reportCode || r.code || r.report_code || `REP-${r.id}`),
-              date: String(r.date || ''),
-              projectId: String(r.projectId || r.project_id || 'CIV-2026-ASS-SON-001'),
-              project_id: String(r.project_id || r.projectId || 'CIV-2026-ASS-SON-001'),
-              wbsCode: String(r.wbsCode || r.wbs_id || r.wbs_code || '04.02.001'),
-              wbsId: String(r.wbsId || r.wbs_id || '04.02.001'),
-              activityName: String(r.activityName || r.activity_name || r.notes || 'Travaux de production'),
-              unit: String(r.unit || 'm3'),
-              pu: pu,
-              plannedQty: Number(r.plannedQty ?? r.planned_qty ?? qty),
-              realizedQty: qty,
-              totalCost: cost,
-              productivityRate: Number(r.productivityRate ?? r.productivity_rate ?? 100),
-              workersCount: Number(r.workersCount ?? r.workers_count ?? 10),
-              equipmentCount: Number(r.equipmentCount ?? r.equipment_count ?? 2),
-              weather: String(r.weather || 'Ensoleillé'),
-              notes: String(r.notes || ''),
-              status: String(r.status || 'Validé'),
-              createdAt: String(r.createdAt || r.created_at || r.date || '')
-            };
-          });
-          setDailyReports(prev => {
-            const localStatusMap = new Map(prev.map(r => [r.id, r.status]));
-            const localCodeMap = new Map(prev.map(r => [r.code, r.status]));
-            const userCreatedReports = prev.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
-            const userReportIds = new Set(userCreatedReports.map(r => r.id));
-            const serverRest = normalizedReports.filter(r => !userReportIds.has(r.id));
-            
-            const merged = [...userCreatedReports, ...serverRest].map(r => {
-              const localStat = localStatusMap.get(r.id) || localCodeMap.get(r.code);
-              if (localStat) {
-                return { ...r, status: localStat };
-              }
-              return r;
-            });
-            safeSaveToStorage('gebat_daily_reports', merged);
-            return merged;
-          });
-        }
-      } catch (e) {
-        console.warn('⚠️ Erreur chargement rapports production API:', e);
-      }
-
-      try {
-        const dbAlerts = await ApiService.getAlerts();
-        if (Array.isArray(dbAlerts)) {
-          const clean = dbAlerts.filter(a => !isTestAlert(a));
-          setAlerts(clean);
-          safeSaveToStorage('gebat_alerts', clean);
-        }
-      } catch (e) {
-        console.warn('⚠️ Erreur chargement alertes API:', e);
-      }
-
-      try {
-        const dbAudit = await ApiService.getAuditLogs();
-        if (Array.isArray(dbAudit) && dbAudit.length > 0) {
-          setAuditLogs(dbAudit);
-          safeSaveToStorage('gebat_audit_logs', dbAudit);
-        }
-      } catch (e) {
-        console.warn('⚠️ Erreur chargement audit logs API:', e);
-      }
-
-      try {
-        const dbNatures = await ApiService.getCostNatures();
-        if (Array.isArray(dbNatures) && dbNatures.length > 0) setCostNatures(dbNatures);
-      } catch (e) {
-        console.warn('⚠️ Erreur chargement natures de coûts API:', e);
-      }
-
-      try {
-        const dbST = await ApiService.getSubcontracts();
-        if (Array.isArray(dbST) && dbST.length > 0) {
-          setSubcontracts(dbST);
-          safeSaveToStorage('gebat_subcontracts', dbST);
-        }
-      } catch (e) {
-        console.warn('⚠️ Erreur chargement sous-traitants API:', e);
-      }
-
-    } catch (err) {
-      console.error('⚠️ Erreur chargement des données réelles depuis MySQL:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (isBackendConnected && currentUser) {
-      loadDatabaseData();
-    }
-  }, [isBackendConnected, currentUser]);
 
 
   const addAuditLog = (action: string | any, module?: string, objectRef?: string, newValue?: string, oldValue?: string, justification?: string) => {
@@ -1397,11 +1135,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             user: currentUser,
           }),
         });
-        console.log(`✅ ${initialNodes.length} nœuds WBS persistés dans MySQL pour le projet ${id}`);
       }
-
-      // Synchronisation immédiate de l'état global depuis MySQL
-      await loadDatabaseData();
     } catch (err) {
       console.error(`⚠️ Erreur lors de la persistance MySQL du projet ${id}:`, err);
     }
@@ -1463,8 +1197,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await ApiService.request(`/projects/${projectId}`, {
         method: 'DELETE',
       });
-      console.log(`✅ Projet ${projectId} supprimé dans MySQL`);
-      await loadDatabaseData();
+
     } catch (err) {
       console.error(`⚠️ Erreur suppression projet ${projectId}:`, err);
     }
