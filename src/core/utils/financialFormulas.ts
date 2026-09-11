@@ -2,6 +2,7 @@
  * GEBAT 360° — CENTRALIZED FINANCIAL & OPERATIONAL FORMULAS
  * Single Source of Truth for all financial and operational metric calculations.
  */
+import { calculateProjectOverallProgress } from '../database/projectProgressEngine';
 
 /**
  * Format clean FCFA currency without floating point decimals
@@ -201,60 +202,18 @@ export const getProjectFinancialSummary = (
     committed = pDAs.reduce((s, da) => s + Number(da.estimatedTotal || da.totalAmount || da.amount || 0), 0);
   }
 
-  // 4. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain en Priorité Absolue)
-  let progressPct = 0;
+  // 4. Progress (Harmonisé et Unifié 100% SSOT : Avancement Physique Terrain Moteur Unique)
+  let progressPct = Number(project?.progress || project?.physicalProgress || 0);
 
-  // Priorité 1 : Avancement physique réel calculé à partir des rapports de production validés
-  if (Array.isArray(dailyReports) && dailyReports.length > 0) {
-    const validReports = dailyReports.filter(r => {
-      if (!r) return false;
-      const rProj = String(r.projectId || r.project_id || '').toUpperCase();
-      const s = (r.status || '').toUpperCase();
-      const isValid = s.includes('VALID') || s.includes('VERROU') || s.includes('APPROVED') || s.includes('CLOSED');
-      return isValid && (rProj === pId || rProj === pCode || (pId && rProj.includes(pId)) || (pCode && rProj.includes(pCode)));
-    });
-
-    if (validReports.length > 0 && revisedBudget > 0) {
-      const totalReportCost = validReports.reduce((sum, r) => {
-        let cost = Number(r.totalCost);
-        const qte = Number(r.realizedQty || 0);
-        let pu = Number(r.pu || r.unitCost || r.contractUnitPrice || 0);
-        if (!pu || pu === 0) pu = 1000;
-        if (isNaN(cost) || cost <= 0) cost = qte * pu;
-        return sum + (cost || 0);
-      }, 0);
-
-      if (totalReportCost > 0) {
-        progressPct = Math.min(100, Number(((totalReportCost / revisedBudget) * 100).toFixed(1)));
-      }
-    }
+  // Moteur de calcul SSOT unifié (calculateProjectOverallProgress)
+  const summarySSOT = calculateProjectOverallProgress(project, wbsNodes || [], dailyReports || []);
+  if (summarySSOT && summarySSOT.overallPhysicalProgress > 0) {
+    progressPct = summarySSOT.overallPhysicalProgress;
   }
 
-  // Priorité 2 : Avancement physique explicitement renseigné sur le projet (si pas de rapport validé)
-  if (progressPct === 0 && project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) > 0) {
+  // Priorité absolue au taux SSOT enregistré sur le projet s'il est supérieur
+  if (project?.progress !== undefined && project?.progress !== null && !isNaN(Number(project.progress)) && Number(project.progress) > progressPct) {
     progressPct = Number(project.progress);
-  }
-
-  // Priorité 3 : Avancement physique pondéré des nœuds WBS (si 0)
-  if (progressPct === 0 && Array.isArray(wbsNodes) && wbsNodes.length > 0) {
-    const getLeaves = (arr: any[]): any[] => {
-      let res: any[] = [];
-      arr.forEach(n => {
-        if (!n.children || n.children.length === 0) res.push(n);
-        else res = res.concat(getLeaves(n.children));
-      });
-      return res;
-    };
-    const leafNodes = getLeaves(wbsNodes);
-    const totalPlanned = leafNodes.reduce((acc, n) => acc + Number(n.revisedBudget || n.contractAmount || n.initialBudget || 0), 0);
-    const totalDone = leafNodes.reduce((acc, n) => {
-      const budget = Number(n.revisedBudget || n.contractAmount || n.initialBudget || 0);
-      const prog = Number(n.progress || n.progressPct || n.physicalProgress || 0);
-      return acc + (budget * (prog / 100));
-    }, 0);
-    if (totalPlanned > 0 && totalDone > 0) {
-      progressPct = Number(((totalDone / totalPlanned) * 100).toFixed(1));
-    }
   }
 
   progressPct = Math.min(100, Math.max(0, Number(progressPct.toFixed(1))));

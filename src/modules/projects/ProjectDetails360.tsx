@@ -608,21 +608,14 @@ export const ProjectDetails360: React.FC<ProjectDetails360Props> = ({ projectId,
   const marginEac = Math.max(0, contractAmount - totalEac);
   const marginPct = contractAmount > 0 ? ((marginEac / contractAmount) * 100).toFixed(1) : '0.0';
   
-  // KPI AVANCEMENT = valeur réelle enregistrée en BDD (project.progress), prioritaire sur tout calcul estimé
-  // Le recalcul depuis totalProductionVal n'est fiable que si les rapports journaliers ont des totalCost valides
+  // KPI AVANCEMENT = Avancement Physique Réel 100% Unifié SSOT (projectProgressEngine)
   const progressPct = useMemo(() => {
-    // 1. Si la production valorisée est disponible et supérieure à zéro, on peut l'utiliser
-    if (contractAmount > 0 && totalProductionVal > 0) {
-      const computed = parseFloat(((totalProductionVal / contractAmount) * 100).toFixed(1));
-      // Garde-fou : ne jamais afficher un avancement calculé < 0.5 quand la BDD dit plus de 1%
-      // (évite les valeurs aberrantes liées à un totalCost manquant dans les rapports backend)
-      if (computed > 0.5 || Number(project.progress || 0) <= 0) {
-        return computed.toFixed(1);
-      }
+    const summarySSOT = calculateProjectOverallProgress(project, projectWbsNodes, projectReports);
+    if (summarySSOT && summarySSOT.overallPhysicalProgress > 0) {
+      return summarySSOT.overallPhysicalProgress.toFixed(1);
     }
-    // 2. Sinon, utiliser la valeur SSOT enregistrée dans la table projects de la BDD
-    return Number(project.progress || 0).toFixed(1);
-  }, [contractAmount, totalProductionVal, project]);
+    return Number(project?.progress || 0).toFixed(1);
+  }, [project, projectWbsNodes, projectReports]);
 
   // Formateur monétaire exact en chiffres complets (sans Mds/M)
   const fmtMds = (val: number) => {
