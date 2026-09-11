@@ -1,33 +1,34 @@
 /**
- * GEBAT 360° — OFFICIAL PWA SERVICE WORKER
- * Complies with Chrome, Edge, Safari & Mobile PWA Installation Criteria.
+ * GEBAT 360° — OFFICIAL PWA SERVICE WORKER v563
+ * Network-first pour tous les assets JS/CSS afin de garantir la synchronisation SSOT.
+ * Les assets statiques (images, icônes) sont en stale-while-revalidate.
  */
 
-const CACHE_NAME = 'gebat360-pwa-v507-final';
-
-// Ne PAS inclure index.html ni '/' dans le precache pour forcer le chargement de la dernière version du HTML
-const STATIC_ASSETS = [
+const CACHE_NAME = 'gebat360-pwa-v563-ssot';
+const STATIC_ASSETS_ONLY = [
   '/manifest.json',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
   '/logo_gebat.png',
-  '/logo_gebat_official.png'
+  '/logo_gebat_official.png',
+  '/favicon.svg'
 ];
 
 self.addEventListener('install', (event) => {
-  console.log('📱 [PWA] Service Worker Install Engine Activated');
+  console.log('📱 [PWA v563] Service Worker Install — SSOT Sync');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
+      return cache.addAll(STATIC_ASSETS_ONLY).catch((err) => {
         console.warn('⚠️ [PWA] Pre-cache partiel:', err);
       });
     })
   );
+  // Force activation immédiate sans attendre la fermeture des onglets
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('📱 [PWA] Service Worker Activated & Claiming Clients');
+  console.log('📱 [PWA v563] Service Worker Activated — Purge anciens caches');
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -44,16 +45,20 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  
-  // Ne pas intercepter les requêtes API backend
-  if (event.request.url.includes('/api/')) {
+
+  // Ne pas intercepter les requêtes API backend ou Supabase
+  const url = new URL(event.request.url);
+  if (
+    url.pathname.includes('/api/') ||
+    url.hostname.includes('supabase') ||
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('supabase.io')
+  ) {
     return;
   }
 
-  const url = new URL(event.request.url);
-
-  // Navigation (HTML index.html) -> TOUJOURS EN DIRECT DU RÉSEAU SANS CACHE
-  if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+  // Navigation (HTML) → TOUJOURS réseau, jamais cache
+  if (event.request.mode === 'navigate' || (event.request.headers.get('accept') || '').includes('text/html')) {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' })
         .catch(() => caches.match('/index.html'))
@@ -61,37 +66,47 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets JS / CSS / Images
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
-          if (url.pathname.endsWith('.js')) {
-            console.warn('⚠️ [PWA SW] Fichier JS non-200 ou introuvable:', url.pathname);
-            return new Response(
-              'console.warn("Script obsolète détecté. Purge et réinitialisation..."); if("caches" in window){caches.keys().then(ns=>ns.forEach(n=>caches.delete(n)));} window.location.replace(window.location.origin + window.location.pathname + "?_t=" + Date.now());',
-              { headers: { 'Content-Type': 'application/javascript' } }
-            );
+  // Fichiers JS et CSS → NETWORK FIRST (garantit que la dernière version du moteur de calcul est toujours utilisée)
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const contentType = networkResponse.headers.get('content-type') || '';
+            // Si le serveur retourne du HTML pour un .js (hash obsolète SPA), purger
+            if (url.pathname.endsWith('.js') && contentType.includes('text/html')) {
+              console.warn('⚠️ [PWA v563] JS obsolète (HTML fallback détecté) — Purge et refresh');
+              caches.keys().then(ns => ns.forEach(n => caches.delete(n)));
+              return new Response(
+                `window.location.replace(window.location.origin + window.location.pathname + "?_r=" + Date.now());`,
+                { headers: { 'Content-Type': 'application/javascript' } }
+              );
+            }
+            // Mettre en cache pour usage hors ligne
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           }
           return networkResponse;
-        }
+        })
+        .catch(() => {
+          // Hors ligne : servir depuis le cache si disponible
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
 
-        const contentType = networkResponse.headers.get('content-type') || '';
-        // Si un fichier JS renvoie text/html (Single Page App 404 Fallback), le hash est obsolète
-        if (url.pathname.endsWith('.js') && contentType.includes('text/html')) {
-          console.warn('⚠️ [PWA SW] Fichier JS obsolète retourné sous forme text/html:', url.pathname);
-          return new Response(
-            'console.warn("Script obsolète détecté (Fallback HTML). Purge et réinitialisation..."); if("caches" in window){caches.keys().then(ns=>ns.forEach(n=>caches.delete(n)));} window.location.replace(window.location.origin + window.location.pathname + "?_t=" + Date.now());',
-            { headers: { 'Content-Type': 'application/javascript' } }
-          );
+  // Autres assets (images, icônes, fonts) → stale-while-revalidate
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      const networkFetch = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
-
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(event.request);
-      })
+      });
+      return cached || networkFetch;
+    })
   );
 });

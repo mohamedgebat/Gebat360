@@ -377,13 +377,32 @@ export const calculateProjectOverallProgress = (
     };
   }
 
+  // Filtrer strictement les rapports par projectId pour éviter toute contamination inter-chantiers
+  const pIdFilter = String(project?.id || '').toUpperCase().trim();
+  const pCodeFilter = String(project?.code || '').toUpperCase().trim();
+  const isSongonFilter = pIdFilter.includes('SON') || pCodeFilter.includes('SON');
+  const isBingervilleFilter = pIdFilter.includes('BEN') || pCodeFilter.includes('BEN');
+
+  const projectFilteredReports = (allReports || []).filter(r => {
+    const rProj = String(r.projectId || r.project_id || '').toUpperCase().trim();
+    const rId = String(r.id || r.code || '').toUpperCase();
+    // Exclusion explicite de l'autre chantier
+    if (isSongonFilter && (rId.startsWith('BINGERVILLE-') || rId.startsWith('REP-BEN-') || rProj.includes('BEN'))) return false;
+    if (isBingervilleFilter && (rId.startsWith('SONGON-') || rId.startsWith('REP-SON-') || rProj.includes('SON'))) return false;
+    // Match positif par projectId
+    if (rProj === pIdFilter || rProj === pCodeFilter) return true;
+    if (isSongonFilter && (rProj.includes('SON') || rId.startsWith('SONGON-'))) return true;
+    if (isBingervilleFilter && (rProj.includes('BEN') || rId.startsWith('BINGERVILLE-'))) return true;
+    return false;
+  });
+
   let totalContractAmount = 0;
   let totalEarnedAmount = 0;
   let totalPlannedAmount = 0;
   let totalOverproductionAmount = 0;
 
   leaves.forEach(leaf => {
-    const metrics = calculateActivityProgress(leaf, allReports);
+    const metrics = calculateActivityProgress(leaf, projectFilteredReports);
     const weight = metrics.contractAmount || Number(leaf.revisedBudget || leaf.initialBudget || 1000);
 
     totalContractAmount += weight;
