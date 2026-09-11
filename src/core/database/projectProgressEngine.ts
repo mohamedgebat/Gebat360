@@ -249,14 +249,12 @@ export const calculateActivityProgress = (
     }
   });
 
-  // Calcul du % d'avancement réel
+  // Calcul du % d'avancement réel (100% SSOT basé EXCLUSIVEMENT sur la production réelle validée)
   let realizedProgress = 0;
-  if (contractQty > 0) {
+  if (contractQty > 0 && validatedRealizedQty > 0) {
     realizedProgress = Math.min(100, Number(((validatedRealizedQty / contractQty) * 100).toFixed(1)));
-  } else if (validatedRealizedQty > 0) {
+  } else if (contractQty === 0 && validatedRealizedQty > 0) {
     realizedProgress = 100;
-  } else if (node.progress !== undefined && !isNaN(Number(node.progress))) {
-    realizedProgress = Math.min(100, Math.max(0, Number(node.progress)));
   }
 
   // Avancement planifié

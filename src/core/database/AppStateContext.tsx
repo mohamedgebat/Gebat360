@@ -701,12 +701,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [isBackendConnected, currentUser]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
-    const saved = localStorage.getItem('gebat_wbs');
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('gebat_wbs') : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          return parsed;
+          return {
+            ...INITIAL_WBS,
+            ...parsed,
+            'CIV-2026-ASS-BEN-002': (parsed['CIV-2026-ASS-BEN-002'] && parsed['CIV-2026-ASS-BEN-002'].length === REAL_DS_BINGERVILLE_ACTIVITIES.length) ? parsed['CIV-2026-ASS-BEN-002'] : REAL_DS_BINGERVILLE_ACTIVITIES,
+            'CIV-2026-ASS-SON-001': (parsed['CIV-2026-ASS-SON-001'] && parsed['CIV-2026-ASS-SON-001'].length === REAL_DS_SONGON_ACTIVITIES.length) ? parsed['CIV-2026-ASS-SON-001'] : REAL_DS_SONGON_ACTIVITIES,
+          };
         }
       } catch (e) {}
     }
