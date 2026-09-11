@@ -50,24 +50,19 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Enregistrement immédiat et résilient du Service Worker PWA GEBAT 360°
+// Désactivation et purge systématique des anciens Service Workers PWA pour garantir le chargement en direct du code v567
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  const registerSW = () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then((registration) => {
-        console.log('📱 [PWA] GEBAT 360° Service Worker enregistré avec succès:', registration.scope);
-        // Vérifier les mises à jour immédiatement
-        registration.update();
-      })
-      .catch((error) => {
-        console.error('⚠️ [PWA] Échec enregistrement Service Worker:', error);
-      });
-  };
-
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    registerSW();
-  } else {
-    window.addEventListener('load', registerSW);
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister();
+    }
+  });
+  if ('caches' in window) {
+    caches.keys().then((names) => {
+      for (const name of names) {
+        caches.delete(name);
+      }
+    });
   }
 }
 
