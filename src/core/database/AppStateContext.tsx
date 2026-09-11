@@ -2259,7 +2259,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updated = [report, ...prev];
       }
       safeSaveToStorage('gebat_daily_reports', updated);
-      const userCreated = updated.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      const userCreated = updated.filter(r => !isCanonicalExcelReport(r));
       safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
       return updated;
     });
@@ -2372,7 +2372,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       safeSaveToStorage('gebat_daily_reports', clean);
-      const userCreated = clean.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      const userCreated = clean.filter(r => !isCanonicalExcelReport(r));
       safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
       safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
       return clean;
@@ -2450,7 +2450,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       updatedReportsList = updated;
       safeSaveToStorage('gebat_daily_reports', updated);
-      const userCreated = updated.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      const userCreated = updated.filter(r => !isCanonicalExcelReport(r));
       safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
       safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
       return updated;
