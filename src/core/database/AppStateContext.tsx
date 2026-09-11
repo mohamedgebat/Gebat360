@@ -145,6 +145,21 @@ export const isDemoReportObj = (r: any): boolean => {
   return strId === 'DEMO-CR-EXCEL-001' || strId === 'DEMO-CR-EXCEL-002';
 };
 
+export const isCanonicalExcelReport = (r: any): boolean => {
+  if (!r) return false;
+  const id = String(typeof r === 'string' ? r : (r.id || r.code || r.reportCode || '')).toUpperCase();
+  return (
+    id.startsWith('SONGON-') ||
+    id.startsWith('BINGERVILLE-') ||
+    id.startsWith('REP-EXCEL-') ||
+    id.startsWith('REAL-RPT-') ||
+    id.startsWith('REP-SON-') ||
+    id.startsWith('REP-BEN-') ||
+    id.startsWith('SONGON-NEW-') ||
+    id.startsWith('BINGERVILLE-PROD-')
+  );
+};
+
 // Comparateur structurel ultra-rapide pour éviter les re-renders inutiles et le gel de l'interface
 export function isEqualFast(a: any, b: any): boolean {
   if (a === b) return true;
@@ -249,7 +264,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_11_ssot_dqe_final_v565';
+      const DATA_VERSION = 'v2026_09_11_ssot_multiuser_sync_v566';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_subcontracts');
@@ -612,7 +627,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             // 3. Intégrer uniquement les nouveaux rapports créés localement par l'utilisateur (pas de vieux doublons Excel en cache)
             [...prev, ...localBackup].forEach(lr => {
               const lId = lr.id || lr.code || lr.reportCode;
-              if (lId && !isDemoReportObj(lr) && !lId.startsWith('REP-EXCEL-') && !lId.startsWith('REAL-RPT-')) {
+              if (lId && !isDemoReportObj(lr) && !isCanonicalExcelReport(lr)) {
                 if (!existingMap.has(lId)) {
                   existingMap.set(lId, lr);
                 } else {
@@ -844,7 +859,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (Array.isArray(parsed) && parsed.length > 0) {
           const clean = parsed.filter((r: any) => !isDemoReportObj(r));
           if (clean.length > 0) {
-            return clean;
+            // Remplacer les rapports canoniques sauvegardés par la source SSOT canonique inchangée
+            const map = new Map<string, DailyReport>();
+            REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
+            clean.forEach(r => {
+              if (!isCanonicalExcelReport(r)) {
+                map.set(r.id, r);
+              }
+            });
+            return Array.from(map.values());
           }
         }
       } catch (e) {}
@@ -854,7 +877,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed) && backupParsed.length > 0) {
-          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r) && !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r) && !isCanonicalExcelReport(r));
           const map = new Map<string, DailyReport>();
           REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
           cleanBackup.forEach(r => map.set(r.id, r));
@@ -869,7 +892,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (dailyReports.length > 0) {
       safeSaveToStorage('gebat_daily_reports', dailyReports);
-      const userCreated = dailyReports.filter(r => !r.id.startsWith('REP-EXCEL-') && !r.id.startsWith('REAL-RPT-'));
+      const userCreated = dailyReports.filter(r => !isCanonicalExcelReport(r));
       if (userCreated.length > 0) {
         safeSaveToStorage('gebat_user_created_reports_backup', userCreated);
         safeSaveToStorage('gebat_submitted_reports_permanent_lock', userCreated);
