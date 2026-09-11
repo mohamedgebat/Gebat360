@@ -145,6 +145,17 @@ export const isDemoReportObj = (r: any): boolean => {
   return strId === 'DEMO-CR-EXCEL-001' || strId === 'DEMO-CR-EXCEL-002';
 };
 
+// Comparateur structurel ultra-rapide pour éviter les re-renders inutiles et le gel de l'interface
+export function isEqualFast(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    if (a.length === 0) return true;
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -173,10 +184,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Cache des valeurs brutes pour ne déclencher setState QUE SI la chaîne dans localStorage a réellement changé
     const lastRawCache: Record<string, string | null> = {};
 
-    // Écouteur synchrone d'évènement universel pour synchroniser en temps réel multi-onglets / composants / sessions
+    // Écouteur événementiel universel pour synchroniser en temps réel multi-onglets / composants / sessions
     const syncStateFromStorage = () => {
       try {
-        const checkAndSync = (key: string, setter: (val: any) => void, transform?: (val: any) => any) => {
+        const checkAndSync = (key: string, setter: React.Dispatch<React.SetStateAction<any>>, transform?: (val: any) => any) => {
           const raw = localStorage.getItem(key);
           if (raw !== null && raw !== lastRawCache[key]) {
             lastRawCache[key] = raw;
@@ -184,7 +195,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               const parsed = JSON.parse(raw);
               if (parsed !== undefined && parsed !== null) {
                 const finalVal = transform ? transform(parsed) : parsed;
-                if (finalVal !== undefined) setter(finalVal);
+                if (finalVal !== undefined) {
+                  setter(prev => isEqualFast(prev, finalVal) ? prev : finalVal);
+                }
               }
             } catch (e) {}
           }
@@ -224,16 +237,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } catch (e) {}
     }
 
-    // Intervalle de synchronisation synchrone continu (Heartbeat 1s) pour garantir l'identité absolue inter-onglets/fenêtres/profils
-    const syncInterval = setInterval(syncStateFromStorage, 1000);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('gebat_state_updated', handleCustomStateUpdate);
       if (bcChannel) {
         try { bcChannel.close(); } catch (e) {}
       }
-      clearInterval(syncInterval);
     };
   }, []);
 
@@ -559,10 +568,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (Array.isArray(dbProjects) && dbProjects.length > 0) {
           const cleanProjects = sanitizeOfficialProjectsOnly(dbProjects);
-          setProjects(cleanProjects);
-          localStorage.setItem('gebat_projects', JSON.stringify(cleanProjects));
+          setProjects(prev => {
+            if (isEqualFast(prev, cleanProjects)) return prev;
+            safeSaveToStorage('gebat_projects', cleanProjects);
+            return cleanProjects;
+          });
         }
         if (Array.isArray(dbReports) && dbReports.length > 0) {
+          const cleanDbReports = dbReports.filter((r: any) => !isDemoReportObj(r));
           setDailyReports(prev => {
             const backupRaw = typeof window !== 'undefined' ? localStorage.getItem('gebat_user_created_reports_backup') : null;
             let localBackup: DailyReport[] = [];
@@ -571,9 +584,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
             
             const existingMap = new Map<string, DailyReport>();
-            dbReports.forEach(r => {
+            cleanDbReports.forEach(r => {
               const rId = r.id || r.code || r.reportCode;
               if (rId) existingMap.set(rId, r);
+            });
+
+            // Garantir la persistance des 85 rapports réels Excel officiels
+            REAL_ALL_DAILY_REPORTS.forEach(r => {
+              const rId = r.id || r.code || r.reportCode;
+              if (rId && !existingMap.has(rId)) {
+                existingMap.set(rId, r);
+              }
             });
 
             [...prev, ...localBackup].forEach(lr => {
@@ -591,34 +612,53 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
 
             const mergedList = Array.from(existingMap.values());
+            if (isEqualFast(prev, mergedList)) return prev;
             safeSaveToStorage('gebat_daily_reports', mergedList);
             return mergedList;
           });
         }
         if (Array.isArray(dbDA) && dbDA.length > 0) {
-          setPurchaseRequests(dbDA);
-          localStorage.setItem('gebat_purchase_requests', JSON.stringify(dbDA));
+          setPurchaseRequests(prev => {
+            if (isEqualFast(prev, dbDA)) return prev;
+            safeSaveToStorage('gebat_purchase_requests', dbDA);
+            return dbDA;
+          });
         }
         if (Array.isArray(dbPO) && dbPO.length > 0) {
-          setPurchaseOrders(dbPO);
-          localStorage.setItem('gebat_purchase_orders', JSON.stringify(dbPO));
+          setPurchaseOrders(prev => {
+            if (isEqualFast(prev, dbPO)) return prev;
+            safeSaveToStorage('gebat_purchase_orders', dbPO);
+            return dbPO;
+          });
         }
         if (Array.isArray(dbStock) && dbStock.length > 0) {
-          setStockItems(dbStock);
-          localStorage.setItem('gebat_stock_items', JSON.stringify(dbStock));
+          setStockItems(prev => {
+            if (isEqualFast(prev, dbStock)) return prev;
+            safeSaveToStorage('gebat_stock_items', dbStock);
+            return dbStock;
+          });
         }
         if (Array.isArray(dbMovements) && dbMovements.length > 0) {
-          setStockMovements(dbMovements);
-          localStorage.setItem('gebat_stock_movements', JSON.stringify(dbMovements));
+          setStockMovements(prev => {
+            if (isEqualFast(prev, dbMovements)) return prev;
+            safeSaveToStorage('gebat_stock_movements', dbMovements);
+            return dbMovements;
+          });
         }
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-          setUsers(dbUsers);
-          localStorage.setItem('gebat_users', JSON.stringify(dbUsers));
+          setUsers(prev => {
+            if (isEqualFast(prev, dbUsers)) return prev;
+            safeSaveToStorage('gebat_users', dbUsers);
+            return dbUsers;
+          });
         }
         if (Array.isArray(dbAlerts)) {
           const clean = dbAlerts.filter(a => !isTestAlert(a));
-          setAlerts(clean);
-          localStorage.setItem('gebat_alerts', JSON.stringify(clean));
+          setAlerts(prev => {
+            if (isEqualFast(prev, clean)) return prev;
+            safeSaveToStorage('gebat_alerts', clean);
+            return clean;
+          });
         }
       } catch (err) {
         console.warn('⚠️ Erreur de synchronisation globale MySQL:', err);
@@ -626,9 +666,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     loadDbData();
-    // Synchronisation en tâche de fond ultra-rapide toutes les 5 secondes pour garantir l'uniformité instantanée des données sur tous les profils
-    const interval = setInterval(loadDbData, 5000);
-    return () => clearInterval(interval);
+    // Synchronisation périodique douce (20s) et sur focus de la page pour synchroniser tous les postes
+    const interval = setInterval(loadDbData, 20000);
+    const handleFocus = () => { loadDbData(); };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+    };
   }, [isBackendConnected, currentUser]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
     const saved = localStorage.getItem('gebat_wbs');
@@ -834,7 +881,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       nextMap[pKey] = updateNodeDeterministic(tree);
     });
 
-    setWbsMap(nextMap);
+    setWbsMap(prevMap => isEqualFast(prevMap, nextMap) ? prevMap : nextMap);
 
     // 2. Mettre à jour les projets avec la valeur calculée SSOT
     setProjects(prevProjects => {

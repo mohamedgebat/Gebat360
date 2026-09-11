@@ -15,6 +15,9 @@ import {
 } from '../types';
 
 import { REAL_EXCEL_PROJECTS, REAL_EXCEL_WBS, REAL_EXCEL_PRODUCTION } from '../../data/realExcelData';
+import { REAL_ALL_DAILY_REPORTS } from './realExcelProductionData';
+import { REAL_DS_BINGERVILLE_ACTIVITIES } from './realBingervilleDsData';
+import { REAL_DS_SONGON_ACTIVITIES } from './realSongonDsData';
 
 export const INITIAL_PROJECTS: Project[] = [
   {
@@ -37,7 +40,7 @@ export const INITIAL_PROJECTS: Project[] = [
     endDate: '2027-01-31',
     initialBudget: 778028406,
     revisedBudget: 778028406,
-    progress: 3.0,
+    progress: 12.6,
     status: 'En cours',
     risk: 'Modéré'
   },
@@ -61,13 +64,15 @@ export const INITIAL_PROJECTS: Project[] = [
     endDate: '2027-09-01',
     initialBudget: 1890812405,
     revisedBudget: 1890812405,
-    progress: 13.0,
+    progress: 13.3,
     status: 'En cours',
     risk: 'Faible'
   }
 ];
 
 export const INITIAL_WBS: Record<string, WBSNode[]> = {
+  'CIV-2026-ASS-BEN-002': REAL_DS_BINGERVILLE_ACTIVITIES,
+  'CIV-2026-ASS-SON-001': REAL_DS_SONGON_ACTIVITIES,
   ...REAL_EXCEL_WBS,
 };
 
@@ -140,7 +145,7 @@ const REAL_DAILY_REPORTS: DailyReport[] = REAL_EXCEL_PRODUCTION.map((item, idx) 
   productivityRate: item.totalQteProd > 0 ? Number(((item.totalQteProd / (item.totalQteProd * 1.05)) * 100).toFixed(1)) : 95.0
 }));
 
-export const INITIAL_DAILY_REPORTS: DailyReport[] = [];
+export const INITIAL_DAILY_REPORTS: DailyReport[] = REAL_ALL_DAILY_REPORTS;
 
 export const INITIAL_ALERTS: SystemAlert[] = [];
 
