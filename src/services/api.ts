@@ -302,6 +302,20 @@ export class ApiService {
     });
   }
 
+  static async updateDailyReport(id: string, updates: any): Promise<any> {
+    return this.request<any>(`/daily-reports/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }).catch(err => {
+      console.warn(`⚠️ MAJ statut rapport ${id} MySQL non trouvée:`, err);
+      return null;
+    });
+  }
+
+  static async updateDailyReportStatus(id: string, status: string, comment?: string): Promise<any> {
+    return this.updateDailyReport(id, { status, comment });
+  }
+
   static async deleteDailyReport(id: string): Promise<any> {
     return this.request<any>(`/daily-reports/${id}`, {
       method: 'DELETE',

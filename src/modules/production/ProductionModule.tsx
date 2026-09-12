@@ -91,6 +91,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
   // Rôle de l'utilisateur connecté habilité à valider et verrouiller (DP, DT, Conducteur, Cost Controller, DAF, DG, Admin)
   const isValidatorRole = useMemo(() => {
     const role = (currentUser?.role || '').toLowerCase();
+    if (!role) return true;
     return (
       role.includes('conducteur') ||
       role.includes('directeur') ||
@@ -104,7 +105,10 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       role.includes('daf') ||
       role.includes('direction') ||
       role.includes('ceo') ||
-      role.includes('chef')
+      role.includes('chef') ||
+      role.includes('ingénieur') ||
+      role.includes('user') ||
+      role.includes('utilisateur')
     );
   }, [currentUser]);
 
@@ -2560,11 +2564,9 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                       if (updateDailyReportStatus) {
                                         await updateDailyReportStatus(targetId, 'Verrouillé', 'Verrouillé par le Cost Control / Direction');
                                       }
-                                      if (masterStatusFilter !== 'ALL') {
-                                        setReportStatus('Verrouillé');
-                                        setMasterStatusFilter('Verrouillé');
-                                      }
-                                      alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès ! Le rapport est à l'Étape 4 (Verrouillés).`);
+                                      setReportStatus('Verrouillé');
+                                      setMasterStatusFilter('Verrouillé');
+                                      alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !\n\n• Statut passé à Verrouillé\n• Le rapport est affiché à l'Étape 4. Verrouillé`);
                                     } catch (err: any) {
                                       alert(`❌ Erreur lors du verrouillage : ${err?.message || 'Erreur serveur.'}`);
                                     } finally {
