@@ -377,9 +377,6 @@ export const calculateProjectOverallProgress = (
         unassignedEarnedAmount += cost;
       } else if (pu > 0 && qty > 0) {
         unassignedEarnedAmount += pu * qty;
-      } else if (qty > 0) {
-        // Fallback coût moyen si PU non renseigné sur le rapport non assigné
-        unassignedEarnedAmount += qty * 10000;
       }
     }
   });
