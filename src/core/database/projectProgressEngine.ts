@@ -340,9 +340,20 @@ export const calculateProjectOverallProgress = (
 
   // 3. Valorisation Totale de la Production Réalisée Validée (RJC)
   const totalEarnedAmount = projectValidReports.reduce((s, r) => {
-    const cost = Number(r.totalCost || 0);
+    let cost = Number(r.totalCost || 0);
+    let pu = Number(r.pu || 0);
+    if (cost <= 0 && pu <= 0 && wbsNodes && wbsNodes.length > 0) {
+      const rCodeUpper = String(r.wbsCode || r.wbsId || '').toUpperCase().trim();
+      const matchingNode = (wbsNodes || []).find((n: any) => 
+        String(n.code || n.wbsCode || n.id || '').toUpperCase().trim() === rCodeUpper
+      );
+      if (matchingNode) {
+        pu = Math.max(0, Number(matchingNode.contractUnitPrice || matchingNode.marketUnitPrice || matchingNode.priceNoUnit || matchingNode.unitCost || matchingNode.pu || 0));
+        cost = Number(r.realizedQty || 0) * pu;
+      }
+    }
     if (cost > 0) return s + cost;
-    return s + (Number(r.realizedQty || 0) * Number(r.pu || 0));
+    return s + (Number(r.realizedQty || 0) * pu);
   }, 0);
 
   // 4. Avancement Physico-Financier Réel (%) = (Production Validée / Montant Marché DQE) * 100

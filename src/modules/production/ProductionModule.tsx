@@ -1606,6 +1606,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     const itemsToSave = Array.from(mapByWbs.values());
 
     try {
+      const projTreeNodes = (wbsMap[selectedProject?.id || ''] || wbsMap[selectedProject?.code || ''] || selectedProject?.wbsNodes || []);
+      const allTreeFlat = (Object.values(wbsMap || {}).flat() as any[]);
       for (const [index, item] of itemsToSave.entries()) {
         const rowAdvancePct = item.targetQty > 0 ? parseFloat(((item.realizedQty / item.targetQty) * 100).toFixed(1)) : 0;
         const currentYear = new Date().getFullYear();
@@ -1613,6 +1615,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
         const existingId = editingReport?.id;
         const existingCode = editingReport?.code || editingReport?.reportCode;
         const rjcCode = (existingId && index === 0) ? (existingCode || existingId) : `RJC-${currentYear}-${String(dailyReports.length + index + 1).padStart(5, '0')}-${timestamp}`;
+        
+        const itemCodeUpper = String(item.wbsCode || '').toUpperCase().trim();
+        const matchedWbsNode = projTreeNodes.find((n: any) => 
+          String(n.code || n.wbsCode || n.id || '').toUpperCase().trim() === itemCodeUpper
+        ) || allTreeFlat.find((n: any) => 
+          String(n.code || n.wbsCode || n.id || '').toUpperCase().trim() === itemCodeUpper
+        );
+        const itemPu = Math.max(0, Number(matchedWbsNode?.contractUnitPrice || matchedWbsNode?.marketUnitPrice || matchedWbsNode?.priceNoUnit || matchedWbsNode?.unitCost || matchedWbsNode?.pu || (item as any).pu || 0));
+        const itemTotalCost = Number(item.realizedQty || 0) * itemPu;
+
         await createDailyReport({
           id: (existingId && index === 0) ? existingId : rjcCode,
           code: rjcCode,
@@ -1624,6 +1636,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
           locationZone, generalComment, teamLeader, unit: item.unit, targetQty: item.targetQty,
           plannedQty: item.targetQty, realizedQty: item.realizedQty, cumulDate: item.cumulDate,
           totalPlanned: item.totalPlanned, advancePct: rowAdvancePct,
+          pu: itemPu,
+          totalCost: itemTotalCost,
           recordedActivities: itemsToSave,
           personnel: personnelRows,
           materiel: materielRows,
@@ -2460,7 +2474,8 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                   onClick={async () => {
                                     setIsValidating(true);
                                     try {
-                                      if (updateDailyReportStatus) await updateDailyReportStatus(rep.id, 'Verrouillé', 'Verrouillé par le Cost Control');
+                                      const targetId = rep.id || rep.code || (rep as any).reportCode;
+                                      if (updateDailyReportStatus) await updateDailyReportStatus(targetId, 'Verrouillé', 'Verrouillé par le Cost Control');
                                       alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
                                     } catch (err: any) {
                                       alert(`❌ Erreur lors du verrouillage : ${err?.message || 'Erreur serveur.'}`);

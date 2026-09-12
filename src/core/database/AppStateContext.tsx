@@ -2404,16 +2404,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setDailyReports(prev => {
       const updated = prev.map(r => {
-        const cleanReqId = String(reportId).replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+        const reqIdUpper = String(reportId || '').toUpperCase().trim();
+        const cleanReqUpper = reqIdUpper.replace('VAL-RPT-', '').replace('TSK-RPT-', '').trim();
+        const rIdUpper = String(r.id || '').toUpperCase().trim();
+        const rCodeUpper = String(r.code || '').toUpperCase().trim();
+        const rReportCodeUpper = String(r.reportCode || '').toUpperCase().trim();
+
         const matches = 
-          r.id === reportId || 
-          r.code === reportId || 
-          r.reportCode === reportId ||
-          r.id === cleanReqId ||
-          r.code === cleanReqId ||
-          r.reportCode === cleanReqId ||
-          (r.code && cleanReqId.includes(r.code)) ||
-          (r.id && cleanReqId.includes(r.id));
+          rIdUpper === reqIdUpper || 
+          rCodeUpper === reqIdUpper || 
+          rReportCodeUpper === reqIdUpper ||
+          (cleanReqUpper !== '' && (
+            rIdUpper === cleanReqUpper ||
+            rCodeUpper === cleanReqUpper ||
+            rReportCodeUpper === cleanReqUpper ||
+            (rCodeUpper !== '' && cleanReqUpper.includes(rCodeUpper)) ||
+            (rIdUpper !== '' && cleanReqUpper.includes(rIdUpper))
+          ));
 
         if (matches) {
           const currentHistory = Array.isArray(r.historyLogs) ? r.historyLogs : [];
