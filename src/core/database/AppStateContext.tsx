@@ -2540,13 +2540,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 
 
-    // Synchronisation backend MySQL
+    // Synchronisation backend MySQL avec auto-upsert si le rapport est absent en base
     ApiService.updateDailyReport(reportId, {
       status: newStatus,
       comment,
       validatedBy: newStatus === 'Validé' ? actorName : undefined,
       lockedBy: newStatus === 'Verrouillé' ? actorName : undefined
-    }).catch(err => console.warn('⚠️ Imp. MAJ statut rapport MySQL:', err));
+    }).catch(err => {
+      console.warn('⚠️ MAJ statut rapport MySQL non trouvée, tentative d\'auto-création:', err);
+      const reqIdUpper = String(reportId || '').toUpperCase().trim();
+      const targetReport = updatedReportsList.find(r => 
+        String(r.id || '').toUpperCase().trim() === reqIdUpper || 
+        String(r.code || '').toUpperCase().trim() === reqIdUpper ||
+        String(r.reportCode || '').toUpperCase().trim() === reqIdUpper
+      );
+      if (targetReport) {
+        ApiService.createDailyReport({ ...targetReport, status: newStatus }).catch(() => {});
+      }
+    });
 
     // Diffusion temps réel multi-fenêtres / multi-onglets
     if (typeof window !== 'undefined') {
