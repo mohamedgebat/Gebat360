@@ -2525,8 +2525,14 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                                     setIsValidating(true);
                                     try {
                                       const targetId = rep.id || rep.code || (rep as any).reportCode;
-                                      if (updateDailyReportStatus) await updateDailyReportStatus(targetId, 'Verrouillé', 'Verrouillé par le Cost Control');
-                                      alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès !`);
+                                      if (updateDailyReportStatus) {
+                                        await updateDailyReportStatus(targetId, 'Verrouillé', 'Verrouillé par le Cost Control / Direction');
+                                      }
+                                      if (masterStatusFilter !== 'ALL') {
+                                        setReportStatus('Verrouillé');
+                                        setMasterStatusFilter('Verrouillé');
+                                      }
+                                      alert(`🔒 Rapport ${rep.code || rep.id} verrouillé et certifié avec succès ! Le rapport est à l'Étape 4 (Verrouillés).`);
                                     } catch (err: any) {
                                       alert(`❌ Erreur lors du verrouillage : ${err?.message || 'Erreur serveur.'}`);
                                     } finally {
