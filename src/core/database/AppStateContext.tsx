@@ -611,7 +611,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               if (rId) existingMap.set(rId, r);
             });
 
-            // 2. Synchroniser les rapports de la base distante
+            // 2. Synchroniser les rapports de la base distante MySQL (Source de vérité SSOT distante prioritaire)
             cleanDbReports.forEach(r => {
               const rId = r.id || r.code || r.reportCode;
               if (rId) {
@@ -624,17 +624,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
             });
 
-            // 3. Intégrer la mémoire locale et la sauvegarde permanente (preserver les statuts modifiés)
+            // 3. Intégrer uniquement les nouveaux rapports locaux non encore enregistrés sur le serveur MySQL
+            const dbIdsSet = new Set(cleanDbReports.map((r: any) => r.id || r.code || r.reportCode));
             [...prev, ...localBackup].forEach(lr => {
               const lId = lr.id || lr.code || lr.reportCode;
-              if (lId && !isDemoReportObj(lr)) {
+              if (lId && !isDemoReportObj(lr) && !dbIdsSet.has(lId)) {
                 if (!existingMap.has(lId)) {
                   existingMap.set(lId, lr);
-                } else {
-                  const dbRep = existingMap.get(lId)!;
-                  if (lr.status && lr.status !== dbRep.status) {
-                    existingMap.set(lId, { ...dbRep, ...lr });
-                  }
                 }
               }
             });
