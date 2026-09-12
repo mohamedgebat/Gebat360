@@ -335,26 +335,62 @@ export const calculateProjectOverallProgress = (
     return false;
   });
 
-  // 2. Budget DQE = Montant Contractuel du Marché (Source de vérité SSOT absolue)
-  const totalContractAmount = Number(project?.contractAmount || project?.marketAmount || project?.initialBudget || 1000000);
+  // 2. Traiter les feuilles WBS pour comptabiliser l'avancement physique réel
+  const leaves = getLeavesWBS(wbsNodes || []);
+  let totalContractAmountFromLeaves = 0;
+  let totalEarnedAmountFromLeaves = 0;
+  const processedReportIdsInLeaves = new Set<string>();
 
-  // 3. Valorisation Totale de la Production Réalisée Validée (RJC)
-  const totalEarnedAmount = projectValidReports.reduce((s, r) => {
-    let cost = Number(r.totalCost || 0);
-    let pu = Number(r.pu || 0);
-    if (cost <= 0 && pu <= 0 && wbsNodes && wbsNodes.length > 0) {
-      const rCodeUpper = String(r.wbsCode || r.wbsId || '').toUpperCase().trim();
-      const matchingNode = (wbsNodes || []).find((n: any) => 
-        String(n.code || n.wbsCode || n.id || '').toUpperCase().trim() === rCodeUpper
-      );
-      if (matchingNode) {
-        pu = Math.max(0, Number(matchingNode.contractUnitPrice || matchingNode.marketUnitPrice || matchingNode.priceNoUnit || matchingNode.unitCost || matchingNode.pu || 0));
-        cost = Number(r.realizedQty || 0) * pu;
+  if (leaves.length > 0) {
+    leaves.forEach(leaf => {
+      const metrics = calculateActivityProgress(leaf, projectValidReports);
+      const contractAmt = metrics.contractAmount > 0 ? metrics.contractAmount : (metrics.contractQty * metrics.contractUnitPrice);
+      totalContractAmountFromLeaves += contractAmt;
+
+      // Montant gagné (Earned Value) pour cette activité = Quantité validée * PU contractuel
+      let earned = 0;
+      if (metrics.contractUnitPrice > 0 && metrics.validatedRealizedQty > 0) {
+        earned = metrics.validatedRealizedQty * metrics.contractUnitPrice;
+      } else if (contractAmt > 0 && metrics.realizedProgress > 0) {
+        earned = contractAmt * (metrics.realizedProgress / 100);
+      }
+      totalEarnedAmountFromLeaves += earned;
+
+      // Marquer les rapports associés à cette feuille WBS comme traités
+      projectValidReports.forEach(r => {
+        if (isReportForWbsNode(r, leaf)) {
+          processedReportIdsInLeaves.add(String(r.id || r.code || r.reportCode));
+        }
+      });
+    });
+  }
+
+  // 3. Valorisation des rapports validés n'appartenant pas directement à une feuille WBS connue
+  let unassignedEarnedAmount = 0;
+  projectValidReports.forEach(r => {
+    const rId = String(r.id || r.code || r.reportCode);
+    if (!processedReportIdsInLeaves.has(rId)) {
+      let cost = Number(r.totalCost || 0);
+      let pu = Number(r.pu || 0);
+      let qty = Number(r.realizedQty || 0);
+      if (cost > 0) {
+        unassignedEarnedAmount += cost;
+      } else if (pu > 0 && qty > 0) {
+        unassignedEarnedAmount += pu * qty;
+      } else if (qty > 0) {
+        // Fallback coût moyen si PU non renseigné sur le rapport non assigné
+        unassignedEarnedAmount += qty * 10000;
       }
     }
-    if (cost > 0) return s + cost;
-    return s + (Number(r.realizedQty || 0) * pu);
-  }, 0);
+  });
+
+  const totalEarnedAmount = totalEarnedAmountFromLeaves + unassignedEarnedAmount;
+
+  // Budget DQE = Montant Contractuel du Marché (Source de vérité SSOT absolue)
+  const totalContractAmount = Math.max(
+    totalContractAmountFromLeaves,
+    Number(project?.contractAmount || project?.marketAmount || project?.initialBudget || 1000000)
+  );
 
   // 4. Avancement Physico-Financier Réel (%) = (Production Validée / Montant Marché DQE) * 100
   const overallPhysicalProgress = totalContractAmount > 0
