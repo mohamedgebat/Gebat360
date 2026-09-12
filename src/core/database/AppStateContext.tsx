@@ -624,10 +624,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
             });
 
-            // 3. Intégrer uniquement les nouveaux rapports créés localement par l'utilisateur (pas de vieux doublons Excel en cache)
+            // 3. Intégrer la mémoire locale et la sauvegarde permanente (preserver les statuts modifiés)
             [...prev, ...localBackup].forEach(lr => {
               const lId = lr.id || lr.code || lr.reportCode;
-              if (lId && !isDemoReportObj(lr) && !isCanonicalExcelReport(lr)) {
+              if (lId && !isDemoReportObj(lr)) {
                 if (!existingMap.has(lId)) {
                   existingMap.set(lId, lr);
                 } else {
@@ -863,8 +863,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const map = new Map<string, DailyReport>();
             REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
             clean.forEach(r => {
-              if (!isCanonicalExcelReport(r)) {
-                map.set(r.id, r);
+              const rId = r.id || r.code || (r as any).reportCode;
+              if (rId) {
+                const base = map.get(rId);
+                map.set(rId, { ...base, ...r });
               }
             });
             return Array.from(map.values());
@@ -877,10 +879,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed) && backupParsed.length > 0) {
-          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r) && !isCanonicalExcelReport(r));
+          const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r));
           const map = new Map<string, DailyReport>();
           REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
-          cleanBackup.forEach(r => map.set(r.id, r));
+          cleanBackup.forEach(r => {
+            const rId = r.id || r.code || (r as any).reportCode;
+            if (rId) {
+              const base = map.get(rId);
+              map.set(rId, { ...base, ...r });
+            }
+          });
           return Array.from(map.values());
         }
       } catch (e) {}

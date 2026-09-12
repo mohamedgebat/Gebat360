@@ -51,10 +51,10 @@ export interface SCurvePeriodPoint {
 export const isReportValidatedOrLocked = (report: DailyReport | any): boolean => {
   if (!report) return false;
   const status = String(report.status || '').toUpperCase().trim();
-  if (status === 'REFUSÉ' || status === 'REFUSE' || status === 'REJECTED' || status === 'BROUILLON' || status === 'DRAFT') {
+  if (status === 'REFUSÉ' || status === 'REFUSE' || status === 'REJECTED' || status === 'BROUILLON' || status === 'DRAFT' || status === 'SOUMIS' || status === 'SUBMITTED' || status === 'PENDING') {
     return false;
   }
-  return true;
+  return status === 'VALIDÉ' || status === 'VALIDE' || status === 'APPROVED' || status === 'VERROUILLÉ' || status === 'VERROUILLE' || status === 'LOCKED' || report.isAccounted === true;
 };
 
 export const isReportSubmitted = (report: DailyReport | any): boolean => {
