@@ -327,6 +327,19 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     let code = String(rep.wbsCode || rep.wbsId || rep.activityCode || rep.codeWbs || '').trim();
     let name = String(rep.activityName || rep.taskName || rep.activity || rep.wbsName || rep.name || rep.description || rep.designation || '').trim();
 
+    // Correction du code WBS générique ou dupliqué (ex: 04.02.001 pour DÉMOLITION)
+    if (code === '04.02.001' && name && !name.toUpperCase().includes('LITS') && !name.toUpperCase().includes('SECHAGE') && !name.toUpperCase().includes('REMBLAI')) {
+      const searchPool = [...projectWbsNodes, ...realActivitiesSource];
+      const nameClean = name.toUpperCase().replace('DEMOLITION - ', '').replace('DEMOLITION ', '').trim();
+      const matchByName = searchPool.find(n => {
+        const desc = String(n.description || n.name || '').toUpperCase().trim();
+        return desc && (name.toUpperCase().includes(desc) || desc.includes(nameClean));
+      });
+      if (matchByName) {
+        code = matchByName.wbsCode || matchByName.code || matchByName.priceNo || matchByName.id || code;
+      }
+    }
+
     if (code && name && name !== 'Activité' && name !== code) {
       return {
         code,
@@ -2328,7 +2341,29 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                         })()}
                       </td>
                       <td className="p-3 text-right font-mono font-black text-slate-900">{formatQty(rep.realizedQty)} {rep.unit}</td>
-                      <td className="p-3 text-center font-mono font-black text-emerald-700">{rep.productivityRate || 100}%</td>
+                      <td className="p-3 text-center font-mono font-black">
+                        {(() => {
+                          const realized = Number(rep.realizedQty || 0);
+                          const planned = Number(rep.plannedQty || rep.targetQty || 0);
+                          let rate: number;
+                          if (planned > 0) {
+                            rate = parseFloat(((realized / planned) * 100).toFixed(1));
+                          } else if (rep.productivityRate && rep.productivityRate !== 95) {
+                            rate = Number(rep.productivityRate);
+                          } else if (rep.advancePct) {
+                            rate = Number(rep.advancePct);
+                          } else {
+                            rate = Number(rep.productivityRate || 100);
+                          }
+                          return (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-black font-mono inline-block ${
+                              rate >= 90 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : rate >= 50 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-rose-100 text-rose-800 border border-rose-200'
+                            }`}>
+                              {rate}%
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="p-3 text-center text-slate-600 font-bold">{rep.createdBy || rep.teamLeader || 'Conducteur'}</td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -3929,7 +3964,12 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               <div>
                 <span className="text-slate-400 block text-[10.5px]">Productivité Globale</span>
                 <span className="font-mono font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 inline-block text-xs">
-                  {viewingReportDetail.productivityRate || viewingReportDetail.advancePct || 100}%
+                  {(() => {
+                    const realized = Number(viewingReportDetail.realizedQty || 0);
+                    const planned = Number(viewingReportDetail.plannedQty || viewingReportDetail.targetQty || 0);
+                    if (planned > 0) return parseFloat(((realized / planned) * 100).toFixed(1));
+                    return viewingReportDetail.productivityRate || viewingReportDetail.advancePct || 100;
+                  })()}%
                 </span>
               </div>
             </div>
@@ -4012,9 +4052,16 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                     <span className="text-2xl font-black text-blue-950 block">
                       {formatQty(viewingReportDetail.realizedQty)} {viewingReportDetail.unit || 'm³'}
                     </span>
-                    <span className="text-xs font-extrabold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full inline-block mt-1">
-                      Avancement : {viewingReportDetail.productivityRate || 100}%
-                    </span>
+                    {(() => {
+                      const realized = Number(viewingReportDetail.realizedQty || 0);
+                      const planned = Number(viewingReportDetail.plannedQty || viewingReportDetail.targetQty || 0);
+                      const rate = planned > 0 ? parseFloat(((realized / planned) * 100).toFixed(1)) : (viewingReportDetail.productivityRate || 100);
+                      return (
+                        <span className="text-xs font-extrabold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full inline-block mt-1">
+                          Avancement : {rate}%
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
