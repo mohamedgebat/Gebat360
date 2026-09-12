@@ -429,6 +429,21 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
     return { code, name, display };
   };
 
+  const resolveReportAuthor = (rep: DailyReport | any): string => {
+    if (!rep) return currentUser?.name || 'Yao N’Guessan';
+    const raw = String(rep.createdBy || rep.teamLeader || rep.submittedBy || rep.author || rep.authorName || rep.created_by || '').trim();
+    if (raw && raw !== 'Conducteur' && raw !== 'Chef de Chantier' && raw !== 'Admin') {
+      return raw;
+    }
+    if (currentUser?.name && currentUser.name !== 'Conducteur') {
+      return currentUser.name;
+    }
+    if (selectedProject?.manager && selectedProject.manager !== 'Conducteur') {
+      return `${selectedProject.manager}`;
+    }
+    return 'Yao N’Guessan';
+  };
+
   // 1. INFORMATIONS GÉNÉRALES
   const [locationZone, setLocationZone] = useState<string>('');
   const [weather, setWeather] = useState<string>('');
@@ -1769,7 +1784,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       r.productivityRate || 100,
       `"${r.weather || ''}"`,
       `"${r.locationZone || ''}"`,
-      `"${(r.createdBy || r.teamLeader || '').replace(/"/g, '""')}"`,
+      `"${(resolveReportAuthor(r)).replace(/"/g, '""')}"`,
       `"${r.status || 'Validé'}"`,
       `"${(r.validatedBy || '').replace(/"/g, '""')}"`,
       `"${(r.notes || r.generalComment || '').replace(/"/g, '""')}"`
@@ -1806,7 +1821,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       'Productivité (%)': r.productivityRate || 100,
       'Météo': r.weather,
       'Zone': r.locationZone,
-      'Auteur / Chef': r.createdBy || r.teamLeader,
+      'Auteur / Chef': resolveReportAuthor(r),
       'Statut': r.status,
       'Validateur': r.validatedBy || '-'
     }));
@@ -2364,7 +2379,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
                           );
                         })()}
                       </td>
-                      <td className="p-3 text-center text-slate-600 font-bold">{rep.createdBy || rep.teamLeader || 'Conducteur'}</td>
+                      <td className="p-3 text-center text-slate-800 font-bold">{resolveReportAuthor(rep)}</td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -3934,7 +3949,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               <div>
                 <span className="text-slate-400 block text-[10.5px]">Chef / Auteur Terrain</span>
                 <span className="font-bold text-slate-900 text-sm">
-                  {viewingReportDetail.createdBy || viewingReportDetail.teamLeader || 'Conducteur'}
+                  {resolveReportAuthor(viewingReportDetail)}
                 </span>
               </div>
               <div>
@@ -4353,7 +4368,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               <div className="space-y-2 max-h-48 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
                 <div className="flex items-center justify-between p-2 bg-white rounded-xl border border-slate-100 shadow-2xs">
                   <span className="font-mono font-bold text-slate-500">{formatFrenchDate(viewingReportDetail.date)}</span>
-                  <span className="font-semibold text-slate-800">{viewingReportDetail.createdBy || viewingReportDetail.teamLeader || 'Conducteur'}</span>
+                  <span className="font-semibold text-slate-800">{resolveReportAuthor(viewingReportDetail)}</span>
                   <span className="font-bold text-blue-700">Création / Enregistrement rapport</span>
                 </div>
                 {viewingReportDetail.validatedBy && (
