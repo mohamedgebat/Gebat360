@@ -1915,6 +1915,7 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
               }}
               className="bg-blue-50/90 border border-blue-300 text-blue-950 font-black text-xs px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-xs transition hover:bg-blue-100 max-w-[450px] truncate"
             >
+              <option value="ALL">🌐 TOUS LES CHANTIERS (Vue Consolidée & Complète)</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>
                   🏗️ {p.code} · {p.name}
@@ -1985,6 +1986,37 @@ export const ProductionModule: React.FC<ProductionModuleProps> = ({ onBackToProj
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex-1 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            {/* Tab Tous les statuts */}
+            <button
+              onClick={() => {
+                setMasterStatusFilter('ALL');
+              }}
+              className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition text-left cursor-pointer ${
+                masterStatusFilter === 'ALL'
+                  ? 'bg-slate-900 border-slate-800 text-white shadow-2xs ring-2 ring-slate-700/30'
+                  : 'bg-slate-50/60 border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${
+                masterStatusFilter === 'ALL' ? 'bg-blue-500 text-white shadow-xs' : 'bg-slate-200 text-slate-700'
+              }`}>
+                <Layers size={18} />
+              </div>
+              <div>
+                <span className="font-black text-xs block flex items-center gap-1.5">
+                  <span>Tous les statuts</span>
+                  <span className={`px-2 py-0.5 font-black rounded-full text-[10.5px] ${
+                    masterStatusFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-800'
+                  }`}>
+                    {dailyReports.filter(r => !isDemoReportObj(r) && isProjectReportMatch(r, selectedProject)).length}
+                  </span>
+                </span>
+                <span className={`text-[10.5px] font-medium ${masterStatusFilter === 'ALL' ? 'text-slate-300' : 'text-slate-500'}`}>Vue globale consolidée</span>
+              </div>
+            </button>
+
+            <ChevronRight size={18} className="text-slate-300 shrink-0 hidden sm:block" />
+
             {/* Step 1 : Brouillon */}
             <button
               onClick={() => handleStepTabClick('Brouillon')}

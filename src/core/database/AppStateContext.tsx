@@ -32,6 +32,23 @@ import {
   isReportValidatedOrLocked,
   isReportForWbsNode
 } from './projectProgressEngine';
+
+export const mergeReportSsot = (base: DailyReport | undefined, incoming: DailyReport): DailyReport => {
+  if (!base) return incoming;
+  const baseStatus = String(base.status || '').toUpperCase().trim();
+  const incStatus = String(incoming.status || '').toUpperCase().trim();
+  const baseIsValidOrLocked = baseStatus.includes('VALID') || baseStatus.includes('VERROU') || baseStatus.includes('APPROVED') || baseStatus.includes('LOCKED');
+  const incIsDraftOrSubmitted = incStatus.includes('BROUILLON') || incStatus.includes('SOUMIS') || incStatus.includes('DRAFT') || incStatus.includes('SUBMITTED');
+
+  const finalStatus = (baseIsValidOrLocked && incIsDraftOrSubmitted) ? base.status : (incoming.status || base.status);
+
+  return {
+    ...base,
+    ...incoming,
+    status: finalStatus,
+    productionItems: (incoming.productionItems && incoming.productionItems.length > 0) ? incoming.productionItems : (base.productionItems || [])
+  };
+};
 import { indexedDBStorage, safeSaveToStorage } from './indexedDBStorage';
 import {
   INITIAL_PROJECTS,
@@ -615,12 +632,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             cleanDbReports.forEach(r => {
               const rId = r.id || r.code || r.reportCode;
               if (rId) {
-                if (existingMap.has(rId)) {
-                  const base = existingMap.get(rId)!;
-                  existingMap.set(rId, { ...base, ...r, productionItems: (base.productionItems && base.productionItems.length > 0) ? base.productionItems : r.productionItems });
-                } else {
-                  existingMap.set(rId, r);
-                }
+                const base = existingMap.get(rId);
+                existingMap.set(rId, mergeReportSsot(base, r));
               }
             });
 
@@ -629,9 +642,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             [...prev, ...localBackup].forEach(lr => {
               const lId = lr.id || lr.code || lr.reportCode;
               if (lId && !isDemoReportObj(lr) && !dbIdsSet.has(lId)) {
-                if (!existingMap.has(lId)) {
-                  existingMap.set(lId, lr);
-                }
+                const base = existingMap.get(lId);
+                existingMap.set(lId, mergeReportSsot(base, lr));
               }
             });
 
@@ -849,24 +861,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const saved = typeof window !== 'undefined' ? localStorage.getItem('gebat_daily_reports') : null;
     const backupRaw = typeof window !== 'undefined' ? localStorage.getItem('gebat_user_created_reports_backup') : null;
 
+    const map = new Map<string, DailyReport>();
+    REAL_ALL_DAILY_REPORTS.forEach(r => {
+      const rId = r.id || r.code || (r as any).reportCode;
+      if (rId) map.set(rId, r);
+    });
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const clean = parsed.filter((r: any) => !isDemoReportObj(r));
-          if (clean.length > 0) {
-            // Remplacer les rapports canoniques sauvegardés par la source SSOT canonique inchangée
-            const map = new Map<string, DailyReport>();
-            REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
-            clean.forEach(r => {
-              const rId = r.id || r.code || (r as any).reportCode;
-              if (rId) {
-                const base = map.get(rId);
-                map.set(rId, { ...base, ...r });
-              }
-            });
-            return Array.from(map.values());
-          }
+          clean.forEach(r => {
+            const rId = r.id || r.code || (r as any).reportCode;
+            if (rId) {
+              const base = map.get(rId);
+              map.set(rId, mergeReportSsot(base, r));
+            }
+          });
         }
       } catch (e) {}
     }
@@ -876,21 +888,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const backupParsed = JSON.parse(backupRaw);
         if (Array.isArray(backupParsed) && backupParsed.length > 0) {
           const cleanBackup = backupParsed.filter((r: any) => !isDemoReportObj(r));
-          const map = new Map<string, DailyReport>();
-          REAL_ALL_DAILY_REPORTS.forEach(r => map.set(r.id, r));
           cleanBackup.forEach(r => {
             const rId = r.id || r.code || (r as any).reportCode;
             if (rId) {
               const base = map.get(rId);
-              map.set(rId, { ...base, ...r });
+              map.set(rId, mergeReportSsot(base, r));
             }
           });
-          return Array.from(map.values());
         }
       } catch (e) {}
     }
 
-    return REAL_ALL_DAILY_REPORTS;
+    return Array.from(map.values());
   });
 
   useEffect(() => {
