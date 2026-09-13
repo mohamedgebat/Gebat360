@@ -33,8 +33,25 @@ import {
   isReportForWbsNode
 } from './projectProgressEngine';
 
+export const sanitizeDailyReportCost = (r: DailyReport | any): DailyReport => {
+  if (!r) return r;
+  const cost = Number(r.totalCost || r.total_cost || 0);
+  const pu = Number(r.pu || 0);
+  const qty = Number(r.realizedQty || r.realized_qty || 0);
+
+  if (cost > 50000000 || (pu * qty > 50000000)) {
+    return {
+      ...r,
+      totalCost: 0,
+      total_cost: 0,
+      pu: (pu * qty > 50000000) ? 0 : r.pu
+    };
+  }
+  return r;
+};
+
 export const mergeReportSsot = (base: DailyReport | undefined, incoming: DailyReport): DailyReport => {
-  if (!base) return incoming;
+  if (!base) return sanitizeDailyReportCost(incoming);
   const baseStatus = String(base.status || '').toUpperCase().trim();
   const incStatus = String(incoming.status || '').toUpperCase().trim();
   const baseIsValidOrLocked = baseStatus.includes('VALID') || baseStatus.includes('VERROU') || baseStatus.includes('APPROVED') || baseStatus.includes('LOCKED');
@@ -42,12 +59,20 @@ export const mergeReportSsot = (base: DailyReport | undefined, incoming: DailyRe
 
   const finalStatus = (baseIsValidOrLocked && incIsDraftOrSubmitted) ? base.status : (incoming.status || base.status);
 
-  return {
+  const merged = {
     ...base,
     ...incoming,
     status: finalStatus,
     productionItems: (incoming.productionItems && incoming.productionItems.length > 0) ? incoming.productionItems : (base.productionItems || [])
   };
+
+  const mergedCost = Number(merged.totalCost || 0);
+  const baseCost = Number(base.totalCost || 0);
+  if (mergedCost > 50000000) {
+    merged.totalCost = baseCost <= 50000000 ? baseCost : 0;
+  }
+
+  return sanitizeDailyReportCost(merged);
 };
 import { indexedDBStorage, safeSaveToStorage } from './indexedDBStorage';
 import {
@@ -281,7 +306,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Purge automatique des données obsolètes enregistrées dans local/IndexedDB (DATA_VERSION v400 - End-to-End Async Production & Automatic Stock Accounting)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const DATA_VERSION = 'v2026_09_11_ssot_force_purge_v567';
+      const DATA_VERSION = 'v2026_09_13_force_purge_songon_50_4_final_fix_v2';
       const savedVer = localStorage.getItem('gebat_data_version');
       if (savedVer !== DATA_VERSION) {
         localStorage.removeItem('gebat_subcontracts');
