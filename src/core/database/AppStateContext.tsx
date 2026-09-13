@@ -752,15 +752,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     loadDbData();
-    // Synchronisation périodique douce (20s) et sur focus de la page pour synchroniser tous les postes
-    const interval = setInterval(loadDbData, 20000);
+    // Synchronisation haute fréquence (5s), sur événement BroadcastChannel inter-onglets/postes et sur focus de page
+    const interval = setInterval(loadDbData, 5000);
     const handleFocus = () => { loadDbData(); };
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
+
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('gebat_realtime_sync_channel');
+        bc.onmessage = (event) => {
+          if (event.data && event.data.type === 'REFRESH_ALL_DATA') {
+            loadDbData();
+          }
+        };
+      } catch(e) {}
+    }
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
+      if (bc) bc.close();
     };
   }, [isBackendConnected, currentUser]);
   const [wbsMap, setWbsMap] = useState<Record<string, WBSNode[]>>(() => {
