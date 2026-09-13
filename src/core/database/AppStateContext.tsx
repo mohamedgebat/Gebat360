@@ -215,7 +215,36 @@ export function isEqualFast(a: any, b: any): boolean {
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
+export const ensureSynchronousVersionPurge = () => {
+  if (typeof window !== 'undefined') {
+    const CURRENT_DATA_VERSION = 'v2026_09_13_force_purge_songon_50_4_FINAL_SSOT_v10';
+    const savedVer = localStorage.getItem('gebat_data_version');
+    if (savedVer !== CURRENT_DATA_VERSION) {
+      localStorage.removeItem('gebat_subcontracts');
+      localStorage.removeItem('gebat_daily_reports');
+      localStorage.removeItem('gebat_user_created_reports_backup');
+      localStorage.removeItem('gebat_submitted_reports_permanent_lock');
+      localStorage.removeItem('gebat_wbs');
+      localStorage.removeItem('gebat_projects');
+      localStorage.removeItem('gebat_stock_items');
+      localStorage.removeItem('gebat_stock_movements');
+      localStorage.removeItem('gebat_warehouses');
+      localStorage.removeItem('gebat_purchase_requests');
+      localStorage.removeItem('gebat_purchase_orders');
+      localStorage.removeItem('gebat_receipts');
+      localStorage.removeItem('gebat_alerts');
+      localStorage.removeItem('gebat_leaves');
+      localStorage.removeItem('gebat_personnel');
+      localStorage.setItem('gebat_data_version', CURRENT_DATA_VERSION);
+      console.log('🧹 [SSOT FORCE PURGE] Purge synchrone de la mémoire navigateur effectuée vers version:', CURRENT_DATA_VERSION);
+      return true;
+    }
+  }
+  return false;
+};
+
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  ensureSynchronousVersionPurge();
   const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -927,6 +956,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('gebat_stock_movements', JSON.stringify(stockMovements));
   }, [stockMovements]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
+    ensureSynchronousVersionPurge();
     const saved = typeof window !== 'undefined' ? localStorage.getItem('gebat_daily_reports') : null;
     const backupRaw = typeof window !== 'undefined' ? localStorage.getItem('gebat_user_created_reports_backup') : null;
 
