@@ -121,8 +121,8 @@ const evaluateReportNodeMatch = (report: DailyReport | any, node: WBSNode | any)
     if (rActivityCode && !isGenericCode(rActivityCode) && (c === rActivityCode || c.startsWith(rActivityCode) || rActivityCode.startsWith(c))) return true;
   }
 
-  // 3. Match nom / désignation d'activité exacte ou sous-chaîne
-  if (nName && rName && (nName === rName || nName.includes(rName) || rName.includes(nName))) {
+  // 3. Match nom / désignation d'activité exacte ou sous-chaîne (au moins 3 caractères significatifs)
+  if (nName && rName && nName.length >= 3 && rName.length >= 3 && (nName === rName || nName.includes(rName) || rName.includes(nName))) {
     return true;
   }
 
@@ -348,12 +348,12 @@ export const calculateProjectOverallProgress = (
       const contractAmt = metrics.contractAmount > 0 ? metrics.contractAmount : (metrics.contractQty * metrics.contractUnitPrice);
       totalContractAmountFromLeaves += contractAmt;
 
-      // Montant gagné (Earned Value) pour cette activité = Quantité validée * PU contractuel
+      // Montant gagné (Earned Value) pour cette activité = Plafoiné au montant contractuel * (% avancement réel / 100)
       let earned = 0;
-      if (metrics.contractUnitPrice > 0 && metrics.validatedRealizedQty > 0) {
-        earned = metrics.validatedRealizedQty * metrics.contractUnitPrice;
-      } else if (contractAmt > 0 && metrics.realizedProgress > 0) {
+      if (contractAmt > 0) {
         earned = contractAmt * (metrics.realizedProgress / 100);
+      } else if (metrics.contractUnitPrice > 0 && metrics.validatedRealizedQty > 0) {
+        earned = metrics.validatedRealizedQty * metrics.contractUnitPrice;
       }
       totalEarnedAmountFromLeaves += earned;
 
