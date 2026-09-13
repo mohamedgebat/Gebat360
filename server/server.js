@@ -658,6 +658,7 @@ async function initDatabase() {
         site_id = VALUES(site_id);
     `);
     console.log('✅ Projets Songon et Bingerville insérés/mis à jour dans MySQL.');
+    await refreshAllProjectsProgress(conn);
 
 
 
@@ -782,26 +783,77 @@ async function audit(connection, req, action, module, objectRef, newValue, oldVa
 
 async function recalculateProductionMetrics(connection, projectId, wbsId) {
   // Seuls les rapports validés/verrouillés alimentent les indicateurs officiels.
-  const [wbsRows] = await connection.query('SELECT id, planned_qty FROM wbs_nodes WHERE id = ?', [wbsId]);
-  if (wbsRows.length > 0) {
-    const [totals] = await connection.query(
-      `SELECT COALESCE(SUM(realized_qty), 0) AS realized FROM daily_reports
-       WHERE project_id = ? AND wbs_id = ? AND status IN ('VALIDÉ', 'VERROUILLÉ')`,
-      [projectId, wbsId]
-    );
-    const planned = Number(wbsRows[0].planned_qty || 0);
-    const progress = planned > 0 ? Math.min(100, (Number(totals[0].realized) / planned) * 100) : 0;
-    await connection.query('UPDATE wbs_nodes SET progress = ? WHERE id = ?', [progress, wbsId]);
+  if (wbsId) {
+    const [wbsRows] = await connection.query('SELECT id, planned_qty FROM wbs_nodes WHERE id = ?', [wbsId]);
+    if (wbsRows.length > 0) {
+      const [totals] = await connection.query(
+        `SELECT COALESCE(SUM(realized_qty), 0) AS realized FROM daily_reports
+         WHERE project_id = ? AND wbs_id = ? AND status IN ('VALIDÉ', 'VERROUILLÉ')`,
+        [projectId, wbsId]
+      );
+      const planned = Number(wbsRows[0].planned_qty || 0);
+      const progress = planned > 0 ? Math.min(100, (Number(totals[0].realized) / planned) * 100) : 0;
+      await connection.query('UPDATE wbs_nodes SET progress = ? WHERE id = ?', [progress, wbsId]);
+    }
   }
 
-  const [projectTotals] = await connection.query(
-    `SELECT COALESCE(SUM(planned_qty), 0) AS planned, COALESCE(SUM(realized_qty), 0) AS realized
-     FROM daily_reports WHERE project_id = ? AND status IN ('VALIDÉ', 'VERROUILLÉ')`,
-    [projectId]
-  );
-  const planned = Number(projectTotals[0].planned || 0);
-  const progress = planned > 0 ? Math.min(100, (Number(projectTotals[0].realized) / planned) * 100) : 0;
-  await connection.query('UPDATE projects SET progress = ? WHERE id = ?', [progress, projectId]);
+  // Calcul du % d'avancement physique global SSOT = (Production Validée FCFA / Montant Marché Contractuel FCFA) * 100
+  const [projRows] = await connection.query('SELECT id, contract_amount FROM projects WHERE id = ? OR code = ?', [projectId, projectId]);
+  if (projRows.length > 0) {
+    const pId = projRows[0].id;
+    const contractAmount = Number(projRows[0].contract_amount || 0);
+    if (contractAmount > 0) {
+      const [earnedRows] = await connection.query(
+        `SELECT COALESCE(SUM(
+           CASE 
+             WHEN r.total_cost > 0 THEN r.total_cost
+             WHEN r.pu > 0 AND r.realized_qty > 0 THEN (r.realized_qty * r.pu)
+             WHEN w.contract_unit_price > 0 AND r.realized_qty > 0 THEN (r.realized_qty * w.contract_unit_price)
+             ELSE 0
+           END
+         ), 0) AS total_earned
+         FROM daily_reports r
+         LEFT JOIN wbs_nodes w ON r.wbs_id = w.id
+         WHERE (r.project_id = ? OR r.project_id = ? OR r.project_id LIKE CONCAT('%', ?, '%')) AND r.status IN ('VALIDÉ', 'VERROUILLÉ')`,
+        [pId, projectId, pId.includes('SON') ? 'SON' : (pId.includes('BEN') ? 'BEN' : pId)]
+      );
+      const totalEarned = Number(earnedRows[0]?.total_earned || 0);
+      const progress = Math.min(100, Math.max(0, Number(((totalEarned / contractAmount) * 100).toFixed(1))));
+      await connection.query('UPDATE projects SET progress = ? WHERE id = ?', [progress, pId]);
+    }
+  }
+}
+
+async function refreshAllProjectsProgress(connection) {
+  try {
+    const [projects] = await connection.query('SELECT id, code, contract_amount FROM projects');
+    for (const p of projects) {
+      const contractAmount = Number(p.contract_amount || 0);
+      if (contractAmount > 0) {
+        const keyword = p.id.includes('SON') || (p.code && p.code.includes('SON')) ? 'SON' : ((p.id.includes('BEN') || (p.code && p.code.includes('BEN'))) ? 'BEN' : p.id);
+        const [earnedRows] = await connection.query(
+          `SELECT COALESCE(SUM(
+             CASE 
+               WHEN r.total_cost > 0 THEN r.total_cost
+               WHEN r.pu > 0 AND r.realized_qty > 0 THEN (r.realized_qty * r.pu)
+               WHEN w.contract_unit_price > 0 AND r.realized_qty > 0 THEN (r.realized_qty * w.contract_unit_price)
+               ELSE 0
+             END
+           ), 0) AS total_earned
+           FROM daily_reports r
+           LEFT JOIN wbs_nodes w ON r.wbs_id = w.id
+           WHERE (r.project_id = ? OR r.project_id = ? OR r.project_id LIKE CONCAT('%', ?, '%')) AND r.status IN ('VALIDÉ', 'VERROUILLÉ')`,
+          [p.id, p.code || p.id, keyword]
+        );
+        const totalEarned = Number(earnedRows[0]?.total_earned || 0);
+        const progress = Math.min(100, Math.max(0, Number(((totalEarned / contractAmount) * 100).toFixed(1))));
+        await connection.query('UPDATE projects SET progress = ? WHERE id = ?', [progress, p.id]);
+      }
+    }
+    console.log('✅ Recalcul SSOT de l\'avancement global de tous les projets effectué.');
+  } catch (err) {
+    console.warn('⚠️ Erreur lors du rafraîchissement global du progress:', err);
+  }
 }
 
 async function resolveWbsId(connection, projectId, identifier) {

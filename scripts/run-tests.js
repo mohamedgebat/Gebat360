@@ -4,6 +4,11 @@
  */
 
 import { calculateCostControlMetrics } from '../src/utils/costControlEngine.ts';
+import { INITIAL_PROJECTS } from '../src/core/database/initialData.ts';
+import { REAL_ALL_DAILY_REPORTS } from '../src/core/data/realDailyReports.ts';
+import { calculateProjectOverallProgress } from '../src/core/database/projectProgressEngine.ts';
+import { getProjectFinancialSummary } from '../src/core/utils/financialFormulas.ts';
+import { getProjectWbsNodes } from '../src/core/utils/projectMatcher.ts';
 
 let passed = 0;
 let failed = 0;
@@ -136,6 +141,29 @@ async function runTests() {
   const isOverBudget = totalProposed > daBudgetCheck.budgetDs;
 
   assert(isOverBudget === false, 'Vérification du contrôle budgétaire DA (25.25M <= 40M XOF)');
+
+  // ------------------------------------------------------------------------------
+  // 5. TESTS MOTEUR AVANCEMENT PHYSIQUE ET FINANCIER SSOT
+  // ------------------------------------------------------------------------------
+  console.log('\n🔹 5. TESTS MOTEUR AVANCEMENT PHYSIQUE SSOT (SONGON & BINGERVILLE)');
+  const songon = INITIAL_PROJECTS.find(p => p.id.includes('SON'));
+  const bingerville = INITIAL_PROJECTS.find(p => p.id.includes('BEN'));
+
+  if (songon) {
+    const songonWbs = getProjectWbsNodes(songon);
+    const songonProg = calculateProjectOverallProgress(songon, songonWbs, REAL_ALL_DAILY_REPORTS);
+    const songonFin = getProjectFinancialSummary(songon, songonWbs, [], [], REAL_ALL_DAILY_REPORTS);
+    assert(songonProg.overallPhysicalProgress > 0 && songonProg.overallPhysicalProgress < 100, `Songon avancement réel SSOT (${songonProg.overallPhysicalProgress}%) est entre 0% et 100%`);
+    assert(songonFin.progressPct === songonProg.overallPhysicalProgress, `Songon financial summary progress (${songonFin.progressPct}%) correspond exactement au moteur SSOT`);
+  }
+
+  if (bingerville) {
+    const benWbs = getProjectWbsNodes(bingerville);
+    const benProg = calculateProjectOverallProgress(bingerville, benWbs, REAL_ALL_DAILY_REPORTS);
+    const benFin = getProjectFinancialSummary(bingerville, benWbs, [], [], REAL_ALL_DAILY_REPORTS);
+    assert(benProg.overallPhysicalProgress > 0 && benProg.overallPhysicalProgress < 100, `Bingerville avancement réel SSOT (${benProg.overallPhysicalProgress}%) est entre 0% et 100%`);
+    assert(benFin.progressPct === benProg.overallPhysicalProgress, `Bingerville financial summary progress (${benFin.progressPct}%) correspond exactement au moteur SSOT`);
+  }
 
   // ------------------------------------------------------------------------------
   // RÉCAPITULATIF DES TESTS

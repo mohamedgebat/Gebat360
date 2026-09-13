@@ -578,11 +578,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return sanitizeOfficialProjectsOnly(parsed);
+          const sanitized = sanitizeOfficialProjectsOnly(parsed);
+          // Purge de l'ancienne valeur erronée à 100% conservée en cache local
+          return sanitized.map(p => {
+            const pWbs = getProjectWbsNodes(p);
+            const calc = calculateProjectOverallProgress(p, pWbs, REAL_ALL_DAILY_REPORTS);
+            return {
+              ...p,
+              progress: calc.overallPhysicalProgress,
+              physicalProgress: calc.overallPhysicalProgress
+            };
+          });
         }
       } catch (e) {}
     }
-    return INITIAL_PROJECTS;
+    return INITIAL_PROJECTS.map(p => {
+      const pWbs = getProjectWbsNodes(p);
+      const calc = calculateProjectOverallProgress(p, pWbs, REAL_ALL_DAILY_REPORTS);
+      return {
+        ...p,
+        progress: calc.overallPhysicalProgress,
+        physicalProgress: calc.overallPhysicalProgress
+      };
+    });
   });
 
   // Synchronisation globale et complète en temps réel depuis la base de données MySQL (Railway)
@@ -603,8 +621,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ApiService.getSubcontracts().catch(() => null)
         ]);
 
+        const activeReports = (Array.isArray(dbReports) && dbReports.length > 0) 
+          ? dbReports.filter((r: any) => !isDemoReportObj(r)) 
+          : REAL_ALL_DAILY_REPORTS;
+
         if (Array.isArray(dbProjects) && dbProjects.length > 0) {
-          const cleanProjects = sanitizeOfficialProjectsOnly(dbProjects);
+          const cleanProjects = sanitizeOfficialProjectsOnly(dbProjects).map(p => {
+            const pWbs = getProjectWbsNodes(p);
+            const calc = calculateProjectOverallProgress(p, pWbs, activeReports);
+            return {
+              ...p,
+              progress: calc.overallPhysicalProgress,
+              physicalProgress: calc.overallPhysicalProgress
+            };
+          });
           setProjects(prev => {
             if (isEqualFast(prev, cleanProjects)) return prev;
             safeSaveToStorage('gebat_projects', cleanProjects);
