@@ -24,6 +24,7 @@ import {
 import { SiteSelector } from '../../shared/components/SiteSelector';
 
 import { isProjectMatch } from '../../utils/projectMatcher';
+import { getProjectFinancialSummary } from '../../core/utils/financialFormulas';
 
 interface DashboardProjectProps {
   onBackToProject?: () => void;
@@ -59,12 +60,9 @@ export const DashboardProject: React.FC<DashboardProjectProps> = ({ onBackToProj
   // Calcul dynamique du coût réel (depuis rapports de production et WBS)
   const totalActualCost = projectWbs.reduce((sum, w) => sum + (w.actualCost || 0), 0);
 
-  // Avancement physique global calculé sur la pondération des lots WBS
-  const wbsTotalWeight = projectWbs.reduce((s, w) => s + (w.budget || w.initialBudget || 0), 0);
-  const calculatedProgressFromWBS = wbsTotalWeight > 0 
-    ? Math.round(projectWbs.reduce((s, w) => s + ((w.progress || 0) * (w.budget || w.initialBudget || 0)), 0) / wbsTotalWeight)
-    : (project.progress || 0);
-  const actualProgress = calculatedProgressFromWBS || project.progress || 0;
+  // Avancement physique et synthèse financière unifiés SSOT
+  const summary = getProjectFinancialSummary(project, projectWbs, [], projectDAs, dailyReports);
+  const actualProgress = summary.progressPct;
   const targetProgress = Math.min(100, Math.round(actualProgress * 0.93));
 
   // EVM dynamique (BCWS, BCWP, ACWP, CPI, SPI, EAC, ETC)
