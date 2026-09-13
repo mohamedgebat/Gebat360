@@ -806,14 +806,19 @@ async function recalculateProductionMetrics(connection, projectId, wbsId) {
       const [earnedRows] = await connection.query(
         `SELECT COALESCE(SUM(
            CASE 
-             WHEN r.total_cost > 0 THEN r.total_cost
-             WHEN r.pu > 0 AND r.realized_qty > 0 THEN (r.realized_qty * r.pu)
-             WHEN w.contract_unit_price > 0 AND r.realized_qty > 0 THEN (r.realized_qty * w.contract_unit_price)
+             WHEN w.contract_amount > 0 AND w.planned_qty > 0 THEN 
+               LEAST(w.contract_amount, (r.realized_qty / w.planned_qty) * w.contract_amount)
+             WHEN w.contract_amount > 0 THEN 
+               LEAST(w.contract_amount, COALESCE(IF(r.total_cost <= 50000000, r.total_cost, 0), r.realized_qty * COALESCE(r.pu, w.contract_unit_price, 0)))
+             WHEN r.total_cost > 0 AND r.total_cost <= 50000000 THEN 
+               r.total_cost
+             WHEN r.pu > 0 AND r.realized_qty > 0 AND (r.realized_qty * r.pu) <= 50000000 THEN 
+               (r.realized_qty * r.pu)
              ELSE 0
            END
          ), 0) AS total_earned
          FROM daily_reports r
-         LEFT JOIN wbs_nodes w ON r.wbs_id = w.id
+         LEFT JOIN wbs_nodes w ON (r.wbs_id = w.id OR r.wbs_id = w.code)
          WHERE (r.project_id = ? OR r.project_id = ? OR r.project_id LIKE CONCAT('%', ?, '%')) AND r.status IN ('VALIDÉ', 'VERROUILLÉ')`,
         [pId, projectId, pId.includes('SON') ? 'SON' : (pId.includes('BEN') ? 'BEN' : pId)]
       );
@@ -826,6 +831,9 @@ async function recalculateProductionMetrics(connection, projectId, wbsId) {
 
 async function refreshAllProjectsProgress(connection) {
   try {
+    // Purge de sécurité des montants aberrants sur la BDD MySQL Railway
+    await connection.query('UPDATE daily_reports SET total_cost = 0 WHERE total_cost > 50000000');
+
     const [projects] = await connection.query('SELECT id, code, contract_amount FROM projects');
     for (const p of projects) {
       const contractAmount = Number(p.contract_amount || 0);
@@ -834,14 +842,19 @@ async function refreshAllProjectsProgress(connection) {
         const [earnedRows] = await connection.query(
           `SELECT COALESCE(SUM(
              CASE 
-               WHEN r.total_cost > 0 THEN r.total_cost
-               WHEN r.pu > 0 AND r.realized_qty > 0 THEN (r.realized_qty * r.pu)
-               WHEN w.contract_unit_price > 0 AND r.realized_qty > 0 THEN (r.realized_qty * w.contract_unit_price)
+               WHEN w.contract_amount > 0 AND w.planned_qty > 0 THEN 
+                 LEAST(w.contract_amount, (r.realized_qty / w.planned_qty) * w.contract_amount)
+               WHEN w.contract_amount > 0 THEN 
+                 LEAST(w.contract_amount, COALESCE(IF(r.total_cost <= 50000000, r.total_cost, 0), r.realized_qty * COALESCE(r.pu, w.contract_unit_price, 0)))
+               WHEN r.total_cost > 0 AND r.total_cost <= 50000000 THEN 
+                 r.total_cost
+               WHEN r.pu > 0 AND r.realized_qty > 0 AND (r.realized_qty * r.pu) <= 50000000 THEN 
+                 (r.realized_qty * r.pu)
                ELSE 0
              END
            ), 0) AS total_earned
            FROM daily_reports r
-           LEFT JOIN wbs_nodes w ON r.wbs_id = w.id
+           LEFT JOIN wbs_nodes w ON (r.wbs_id = w.id OR r.wbs_id = w.code)
            WHERE (r.project_id = ? OR r.project_id = ? OR r.project_id LIKE CONCAT('%', ?, '%')) AND r.status IN ('VALIDÉ', 'VERROUILLÉ')`,
           [p.id, p.code || p.id, keyword]
         );

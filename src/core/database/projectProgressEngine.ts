@@ -369,14 +369,22 @@ export const calculateProjectOverallProgress = (
   // 3. Valorisation des rapports validés n'appartenant pas directement à une feuille WBS connue
   let unassignedEarnedAmount = 0;
   projectValidReports.forEach(r => {
-    const rId = String(r.id || r.code || r.reportCode);
-    if (!processedReportIdsInLeaves.has(rId)) {
+    const rId = String(r.id || '');
+    const rCode = String(r.code || '');
+    const rReportCode = String(r.reportCode || '');
+
+    const isProcessed = (rId !== '' && processedReportIdsInLeaves.has(rId)) ||
+                        (rCode !== '' && processedReportIdsInLeaves.has(rCode)) ||
+                        (rReportCode !== '' && processedReportIdsInLeaves.has(rReportCode));
+
+    if (!isProcessed) {
       let cost = Number(r.totalCost || 0);
       let pu = Number(r.pu || 0);
       let qty = Number(r.realizedQty || 0);
-      if (cost > 0) {
+      // Seuls les coûts normaux de rapports journaliers (<= 50M FCFA) sont comptabilisés
+      if (cost > 0 && cost <= 50000000) {
         unassignedEarnedAmount += cost;
-      } else if (pu > 0 && qty > 0) {
+      } else if (pu > 0 && qty > 0 && (pu * qty) <= 50000000) {
         unassignedEarnedAmount += pu * qty;
       }
     }
